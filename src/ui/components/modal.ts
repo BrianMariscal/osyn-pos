@@ -1,0 +1,179 @@
+import { esc, html, setHtml } from "../../core/html";
+
+export interface ModalAction {
+  label: string;
+  kind?: "primary" | "ghost" | "danger";
+  onClick?: (close: () => void) => void;
+}
+
+export interface ModalOptions {
+  title: string;
+  content: ReturnType<typeof html>;
+  actions?: ModalAction[];
+  onOpen?: (root: HTMLElement, close: () => void) => void;
+}
+
+let openCount = 0;
+
+export function openModal(options: ModalOptions): () => void {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  setHtml(
+    backdrop,
+    html`
+      <div class="modal" role="dialog" aria-modal="true" aria-label="${options.title}">
+        <header class="modal-head">
+          <h2>${options.title}</h2>
+          <button class="modal-close ghost" type="button" aria-label="Cerrar">✕</button>
+        </header>
+        <div class="modal-body">${options.content}</div>
+        <footer class="modal-actions">
+          ${(options.actions ?? []).map(
+            (action) =>
+              html`<button class="${action.kind ?? "primary"}" type="button" data-modal-action="${esc(action.label)}">${action.label}</button>`
+          )}
+        </footer>
+      </div>
+    `
+  );
+
+  const close = (): void => {
+    backdrop.remove();
+    openCount = Math.max(0, openCount - 1);
+    if (!openCount) document.body.classList.remove("modal-open");
+  };
+
+  backdrop.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    if (target === backdrop || target.closest(".modal-close")) close();
+    const actionButton = target.closest<HTMLElement>("[data-modal-action]");
+    if (actionButton) {
+      const action = (options.actions ?? []).find((a) => a.label === actionButton.dataset.modalAction);
+      if (action?.onClick) action.onClick(close);
+      else close();
+    }
+  });
+  const onKey = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") {
+      close();
+      document.removeEventListener("keydown", onKey);
+    }
+  };
+  document.addEventListener("keydown", onKey);
+
+  document.body.appendChild(backdrop);
+  openCount += 1;
+  document.body.classList.add("modal-open");
+  options.onOpen?.(backdrop, close);
+  const focusTarget = backdrop.querySelector<HTMLElement>("input, select, textarea, button");
+  focusTarget?.focus();
+  return close;
+}
+
+export function confirmDialog(options: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  /** Si se define, el usuario debe escribir exactamente esta palabra. */
+  keyword?: string;
+}): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const content = options.keyword
+      ? html`
+          <p>${options.message}</p>
+          <label class="form-field">
+            Escribe <strong>${options.keyword}</strong> para confirmar
+            <input class="input" type="text" id="confirmKeyword" autocomplete="off">
+          </label>
+        `
+      : html`<p>${options.message}</p>`;
+    openModal({
+      title: options.title,
+      content,
+      actions: [
+        { label: options.cancelLabel ?? "Cancelar", kind: "ghost", onClick: (close) => { close(); finish(false); } },
+        {
+          label: options.confirmLabel ?? "Confirmar",
+          kind: options.danger ? "danger" : "primary",
+          onClick: (close) => {
+            if (options.keyword) {
+              const input = document.querySelector<HTMLInputElement>("#confirmKeyword");
+              if (!input || input.value.trim() !== options.keyword) return;
+            }
+            close();
+            finish(true);
+          }
+        }
+      ]
+    });
+  });
+}
+
+export function promptDialog(options: {
+  title: string;
+  message?: string;
+  type?: string;
+  placeholder?: string;
+  initial?: string;
+  confirmLabel?: string;
+  required?: boolean;
+}): Promise<string | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: string | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    openModal({
+      title: options.title,
+      content: html`
+        ${options.message ? html`<p>${options.message}</p>` : html``}
+        <label class="form-field">
+          <input class="input" type="${options.type ?? "text"}" id="promptInput" placeholder="${options.placeholder ?? ""}" value="${options.initial ?? ""}">
+        </label>
+      `,
+      actions: [
+        { label: "Cancelar", kind: "ghost", onClick: (close) => { close(); finish(null); } },
+        {
+          label: options.confirmLabel ?? "Aceptar",
+          kind: "primary",
+          onClick: (close) => {
+            const input = document.querySelector<HTMLInputElement>("#promptInput");
+            const value = input?.value.trim() ?? "";
+            if (options.required && !value) return;
+            close();
+            finish(value);
+          }
+        }
+      ],
+      onOpen: (root, close) => {
+        const input = root.querySelector<HTMLInputElement>("#promptInput");
+        input?.focus();
+        input?.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            const value = input.value.trim();
+            if (options.required && !value) return;
+            close();
+            finish(value);
+          }
+        });
+      }
+    });
+  });
+}
+
+export function closeAllModals(): void {
+  document.querySelectorAll(".modal-backdrop").forEach((el) => el.remove());
+  openCount = 0;
+  document.body.classList.remove("modal-open");
+}

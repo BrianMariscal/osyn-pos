@@ -1,0 +1,242 @@
+import { html, setHtml } from "../../core/html";
+import { fmtDateTime, todayInputValue } from "../../core/dates";
+import { fmtMoneyPesos } from "../../core/money";
+import { fmtQty } from "../../core/qty";
+import { confirmDialog } from "../components/modal";
+import { openModal } from "../components/modal";
+import { openWhatsapp } from "../whatsapp";
+import type { Shift } from "../../core/types";
+import type { TabModule } from "./tab-module";
+
+export const corteTab: TabModule = {
+  id: "corte",
+  render(root, ctx) {
+    setHtml(
+      root,
+      html`
+        <div class="split">
+          <article class="card">
+            <h2>Corte de caja</h2>
+            <form id="shiftForm" class="form">
+              <input id="openingCash" class="input" type="number" step="0.01" min="0" placeholder="Base inicial de caja">
+              <input id="cashCounted" class="input" type="number" step="0.01" min="0" placeholder="Efectivo contado en caja">
+              <input id="cashWithdrawn" class="input" type="number" step="0.01" min="0" placeholder="Dinero retirado / entregado">
+              <input id="nextOpeningCash" class="input" type="number" step="0.01" min="0" placeholder="Base para iniciar el siguiente día">
+              <textarea id="cashNotes" class="input" rows="3" placeholder="Notas del corte"></textarea>
+            </form>
+            <div id="cashSummary" class="summary"></div>
+            <div class="actions">
+              <button id="closeShift" class="primary" type="button">Cerrar corte</button>
+              <button id="sendWhatsapp" class="ghost" type="button">Enviar por WhatsApp</button>
+            </div>
+          </article>
+          <article class="card">
+            <h2>Historial de cortes</h2>
+            <div id="shiftsList" class="list"></div>
+          </article>
+        </div>
+      `
+    );
+
+    const opening = root.querySelector<HTMLInputElement>("#openingCash")!;
+    const counted = root.querySelector<HTMLInputElement>("#cashCounted")!;
+    const withdrawn = root.querySelector<HTMLInputElement>("#cashWithdrawn")!;
+    const nextBase = root.querySelector<HTMLInputElement>("#nextOpeningCash")!;
+    const notes = root.querySelector<HTMLTextAreaElement>("#cashNotes")!;
+    const summaryEl = root.querySelector<HTMLElement>("#cashSummary")!;
+    const historyEl = root.querySelector<HTMLElement>("#shiftsList")!;
+
+    const branchId = (): string => ctx.branches.operationalId();
+
+    const renderSummary = (): void => {
+      const summary = ctx.shifts.summarize(branchId());
+      const openingValue = Number(opening.value || 0);
+      const countedValue = Number(counted.value || 0);
+      const withdrawnValue = Number(withdrawn.value || 0);
+      const nextValue = Number(nextBase.value || 0);
+      const expectedWithBase = openingValue + summary.efectivoEsperado;
+      const rows: Array<[string, string]> = [
+        ["Base inicial", fmtMoneyPesos(openingValue)],
+        ["Ventas", fmtMoneyPesos(summary.ventas)],
+        ["Efectivo vendido", fmtMoneyPesos(summary.efectivo)],
+        ["Transferencia", fmtMoneyPesos(summary.transferencia)],
+        ["Tarjeta", fmtMoneyPesos(summary.tarjeta)],
+        ["Fiado", fmtMoneyPesos(summary.fiado)],
+        ["Gastos", fmtMoneyPesos(summary.gastos)],
+        ["Proveedores", fmtMoneyPesos(summary.proveedores)],
+        ["Mermas", fmtMoneyPesos(summary.mermas)],
+        ["Ganancia estimada", fmtMoneyPesos(summary.ganancia)],
+        ["Efectivo esperado con base", fmtMoneyPesos(expectedWithBase)],
+        ["Efectivo contado", fmtMoneyPesos(countedValue)],
+        ["Retirado / entregado", fmtMoneyPesos(withdrawnValue)],
+        ["Base siguiente día", fmtMoneyPesos(nextValue)],
+        ["Diferencia", fmtMoneyPesos(countedValue - withdrawnValue - nextValue)]
+      ];
+      setHtml(
+        summaryEl,
+        html`${rows.map(([label, value]) => html`<div><span>${label}</span><strong>${value}</strong></div>`)}`
+      );
+    };
+
+    const renderHistory = (): void => {
+      const shifts = ctx.shifts.history(branchId());
+      setHtml(
+        historyEl,
+        shifts.length
+          ? html`${shifts.map(
+              (shift) => html`
+                <div class="list-item">
+                  <div class="item-line">
+                    <strong>${fmtDateTime(shift.closed_at)}</strong>
+                    <strong>${fmtMoneyPesos(shift.summary?.ventas ?? 0)}</strong>
+                  </div>
+                  <p class="muted">Dif ${fmtMoneyPesos(shift.difference)} | Base siguiente ${fmtMoneyPesos(shift.next_opening_cash)}</p>
+                  ${shift.notes ? html`<p class="muted">Notas: ${shift.notes}</p>` : html``}
+                </div>
+              `
+            )}`
+          : html`<p class="muted">Aún no hay cortes cerrados.</p>`
+      );
+    };
+
+    const renderAll = (): void => {
+      renderSummary();
+      renderHistory();
+    };
+
+    // Base inicial sugerida: la base dejada por el último corte.
+    if (!opening.value) {
+      const last = ctx.shifts.lastShift(branchId());
+      const suggested = last?.next_opening_cash || 0;
+      if (suggested) opening.value = String(suggested);
+    }
+
+    [opening, counted, withdrawn, nextBase].forEach((input) => input.addEventListener("input", renderSummary));
+
+    const buildMessage = (shift: Shift, reportForTop: { top_products: Array<{ name: string; qty: number; um: string }>; slow_products: Array<{ name: string; qty: number; um: string }> }): string => {
+      const s = shift.summary;
+      const storeName = ctx.store.getState().settings.storeName || "Mi tienda";
+      const top = reportForTop.top_products
+        .slice(0, 10)
+        .map((p, i) => `${i + 1}. ${p.name}: ${fmtQty(p.qty)} ${p.um}`)
+        .join("\n") || "Sin ventas";
+      const slow = reportForTop.slow_products
+        .slice(0, 10)
+        .map((p, i) => `${i + 1}. ${p.name}: ${fmtQty(p.qty)} ${p.um}`)
+        .join("\n") || "Sin productos";
+      return [
+        storeName,
+        "CIERRE DEL DÍA / CORTE DE CAJA",
+        `Fecha: ${fmtDateTime(shift.closed_at)}`,
+        `Base inicial: ${fmtMoneyPesos(shift.opening_cash)}`,
+        `Ventas: ${fmtMoneyPesos(s.ventas)}`,
+        `Efectivo vendido: ${fmtMoneyPesos(s.efectivo)}`,
+        `Transferencia: ${fmtMoneyPesos(s.transferencia)}`,
+        `Tarjeta: ${fmtMoneyPesos(s.tarjeta)}`,
+        `Fiado: ${fmtMoneyPesos(s.fiado)}`,
+        `Gastos: ${fmtMoneyPesos(s.gastos)}`,
+        `Proveedores: ${fmtMoneyPesos(s.proveedores)}`,
+        `Mermas: ${fmtMoneyPesos(s.mermas)}`,
+        `Ganancia estimada: ${fmtMoneyPesos(s.ganancia)}`,
+        `Efectivo esperado con base: ${fmtMoneyPesos(shift.expected_cash_with_base)}`,
+        `Efectivo contado: ${fmtMoneyPesos(shift.counted_cash)}`,
+        `Dinero retirado/entregado: ${fmtMoneyPesos(shift.withdrawn_cash)}`,
+        `Base para siguiente día: ${fmtMoneyPesos(shift.next_opening_cash)}`,
+        `Diferencia contra esperado: ${fmtMoneyPesos(shift.difference)}`,
+        `Diferencia contado vs retirado+base: ${fmtMoneyPesos(shift.distribution_difference)}`,
+        "",
+        "TOP 10 MÁS VENDIDOS",
+        top,
+        "",
+        "10 MENOR ROTACIÓN",
+        slow,
+        "",
+        `Notas: ${shift.notes || "Sin notas"}`
+      ].join("\n");
+    };
+
+    const reportAround = (closedAt: string): { top_products: Array<{ name: string; qty: number; um: string }>; slow_products: Array<{ name: string; qty: number; um: string }> } => {
+      const shifts = ctx.shifts.history(branchId(), 2);
+      const previous = shifts.find((shift) => shift.closed_at < closedAt);
+      const start = previous?.closed_at ?? new Date(`${todayInputValue()}T00:00:00`).toISOString();
+      return ctx.reports.periodReport(branchId(), start, closedAt);
+    };
+
+    root.querySelector<HTMLButtonElement>("#closeShift")!.addEventListener("click", async () => {
+      const summary = ctx.shifts.summarize(branchId());
+      const confirmed = await confirmDialog({
+        title: "Cerrar corte",
+        message: `Ventas: ${fmtMoneyPesos(summary.ventas)} | Efectivo esperado: ${fmtMoneyPesos(summary.efectivoEsperado)}. Se cerrará el corte de esta sucursal.`,
+        confirmLabel: "Cerrar corte"
+      });
+      if (!confirmed) return;
+      const shift = ctx.shifts.closeShift({
+        opening_cash: Number(opening.value || 0),
+        counted_cash: Number(counted.value || 0),
+        withdrawn_cash: Number(withdrawn.value || 0),
+        next_opening_cash: Number(nextBase.value || 0),
+        notes: notes.value
+      });
+      ctx.toast(`Corte cerrado: ${fmtMoneyPesos(shift.summary.ventas)} en ventas`);
+      opening.value = String(shift.next_opening_cash || "");
+      counted.value = "";
+      withdrawn.value = "";
+      nextBase.value = "";
+      notes.value = "";
+      renderAll();
+    });
+
+    root.querySelector<HTMLButtonElement>("#sendWhatsapp")!.addEventListener("click", () => {
+      const settings = ctx.store.getState().settings;
+      const numbers = [settings.whatsappNumber, settings.whatsapp2, settings.whatsapp3]
+        .map((number) => (number || "").trim())
+        .filter(Boolean);
+      if (!numbers.length) {
+        ctx.toast("Configura un número de WhatsApp en Ajustes");
+        return;
+      }
+      const last = ctx.shifts.lastShift(branchId());
+      if (!last) {
+        ctx.toast("Primero cierra un corte");
+        return;
+      }
+      const report = reportAround(last.closed_at);
+      const message = buildMessage(last, report);
+      if (numbers.length === 1) {
+        openWhatsapp(numbers[0]!, message);
+        return;
+      }
+      // Varios números: enlaces directos (evita el bloqueo de pop-ups)
+      openModal({
+        title: "Enviar corte por WhatsApp",
+        content: html`
+          <p class="muted">Toca cada número para enviarle el corte.</p>
+          <div class="more-list">
+            ${numbers.map(
+              (number) => html`
+                <a class="ghost more-item wa-link" href="https://wa.me/${number.replace(/\D/g, "")}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">${number}</a>
+              `
+            )}
+          </div>
+        `,
+        actions: [{ label: "Cerrar", kind: "primary" }]
+      });
+    });
+
+    // Gancho del asistente IA
+    ctx.hooks.prepareShiftClose = (input) => {
+      if (input.opening_cash !== undefined) opening.value = String(input.opening_cash || 0);
+      if (input.counted_cash !== undefined) counted.value = String(input.counted_cash || 0);
+      if (input.withdrawn_cash !== undefined) withdrawn.value = String(input.withdrawn_cash || 0);
+      if (input.next_opening_cash !== undefined) nextBase.value = String(input.next_opening_cash || 0);
+      if (input.notes) notes.value = input.notes;
+      renderSummary();
+    };
+
+    ctx.store.watch(
+      (s) => [s.sales, s.expenses, s.purchases, s.shifts, s.branches, s.currentBranchId] as const,
+      renderAll
+    );
+    renderAll();
+  }
+};
