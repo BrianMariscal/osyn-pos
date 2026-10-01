@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.osynpos.abarrotes",
+    "sha256_cert_fingerprints": ["6F:1E:82:F6:55:36:F7:A1:C1:E0:51:20:8A:20:A4:A4:79:39:65:36:6D:8D:C4:0B:3B:94:7D:17:29:F4:80:5C"]
+  }
+}]
