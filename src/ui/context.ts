@@ -5,6 +5,7 @@ import type { BranchService } from "../domain/branch-service";
 import type { CreditService } from "../domain/credit-service";
 import type { InventoryService } from "../domain/inventory-service";
 import type { ReportService } from "../domain/report-service";
+import type { ExpenseService } from "../domain/expense-service";
 import type { SaleService } from "../domain/sale-service";
 import type { SettingsService } from "../domain/settings-service";
 import type { ShiftService } from "../domain/shift-service";
@@ -36,6 +37,7 @@ export interface AppContext {
   inventory: InventoryService;
   shifts: ShiftService;
   reports: ReportService;
+  expenses: ExpenseService;
   userAdmin: UserAdminService;
   toast: (message: string) => void;
   speak: (message: string) => void;

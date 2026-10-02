@@ -38,13 +38,19 @@ export class Store<T extends object> {
     };
   }
 
-  /** Llama a cb con el valor inicial y después en cada cambio relevante. */
+  /**
+   * Llama a cb con el valor inicial y después en cada cambio relevante.
+   * Los selectores de tupla (`[s.products, s.sales] as const`) se comparan
+   * elemento por elemento: antes se comparaba el arreglo nuevo por referencia,
+   * así que CUALQUIER cambio (estado de sync, carrito) redibujaba todas las
+   * pestañas y borraba lo que el usuario estaba capturando.
+   */
   watch<S>(selector: (state: T) => S, cb: (value: S) => void): Unsubscribe {
     let current = selector(this.state);
     cb(current);
     return this.subscribe(() => {
       const next = selector(this.state);
-      if (!Object.is(next, current)) {
+      if (!sameSelection(next, current)) {
         current = next;
         cb(next);
       }
@@ -54,4 +60,11 @@ export class Store<T extends object> {
   private emit(): void {
     this.listeners.forEach((listener) => listener());
   }
+}
+
+/** Igualdad de selección: misma referencia, o tuplas con los mismos elementos. */
+export function sameSelection(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  return a.every((value, index) => Object.is(value, b[index]));
 }

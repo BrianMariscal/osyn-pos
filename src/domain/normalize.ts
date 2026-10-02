@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_BRANCH_ID, MERMA_REASONS, SETTINGS_ROW_ID, UNITS } from "../core/types";
+import { DEFAULT_BRANCH_ID, MERMA_REASONS, PAYMENT_METHODS, SALE_GROUPS, SETTINGS_ROW_ID, UNITS } from "../core/types";
 import type {
   Branch,
   Customer,
@@ -23,6 +23,11 @@ import type { Merma, Supplier } from "../core/types";
 const iso = z.string().catch("");
 const num = z.coerce.number().catch(0);
 const bool = z.coerce.boolean().catch(false);
+
+/** Opcional que tolera basura: valor inválido → undefined (nunca rompe el arranque). */
+const optionalString = z.string().optional().catch(undefined);
+const optionalPositive = z.coerce.number().positive().optional().catch(undefined);
+const saleGroupSchema = z.enum(SALE_GROUPS as unknown as [string, ...string[]]).optional().catch(undefined);
 
 const unitSchema = z
   .string()
@@ -94,6 +99,9 @@ const productSchema = z.object({
   stock: num.optional(),
   min_stock: num.optional(),
   barcode: z.string().optional(),
+  supplier_id: optionalString,
+  pack_size: optionalPositive,
+  sale_group: saleGroupSchema,
   active: bool,
   seed_example: bool.optional(),
   created_at: iso.optional(),
@@ -116,6 +124,7 @@ const movementSchema = z.object({
   type: z.enum(["cargo", "pago"]).catch("cargo"),
   amount: num,
   note: z.string().catch(""),
+  sale_id: optionalString,
   created_at: iso
 });
 
@@ -124,6 +133,7 @@ const customerSchema = z.object({
   branch_id: z.string().catch(""),
   name: z.string().catch(""),
   phone: z.string().catch(""),
+  notes: z.string().catch(""),
   balance: num,
   movements: z.array(movementSchema).catch([]),
   created_at: iso,
@@ -137,7 +147,8 @@ const saleItemSchema = z.object({
   qty: num,
   price: num,
   cost: num,
-  um: unitSchema
+  um: unitSchema,
+  group: saleGroupSchema
 });
 
 const saleSchema = z.object({
@@ -147,7 +158,7 @@ const saleSchema = z.object({
   total: num,
   cost: num,
   profit: num,
-  payment: z.enum(["efectivo", "transferencia", "tarjeta", "fiado"]).catch("efectivo"),
+  payment: z.enum(PAYMENT_METHODS as unknown as [string, ...string[]]).catch("efectivo"),
   customer_id: z.string().nullable().catch(null),
   created_at: iso,
   updated_at: iso,
@@ -160,6 +171,7 @@ const expenseSchema = z.object({
   concept: z.string().catch(""),
   amount: num,
   category: z.string().catch("Varios"),
+  kind: z.enum(["fijo", "extra"]).optional().catch(undefined),
   created_at: iso,
   updated_at: iso,
   deleted: bool.optional()
@@ -174,6 +186,8 @@ const purchaseSchema = z.object({
   um: unitSchema,
   qty: num,
   total: num,
+  packs: optionalPositive,
+  pack_size: optionalPositive,
   created_at: iso,
   updated_at: iso,
   deleted: bool.optional()
@@ -221,7 +235,9 @@ const inventoryCountSchema = z.object({
 
 const supplierSchema = z.object({
   id: z.string().min(1),
+  number: optionalPositive,
   name: z.string().catch(""),
+  type: z.string().catch(""),
   phone: z.string().catch(""),
   notes: z.string().catch(""),
   created_at: iso.optional(),

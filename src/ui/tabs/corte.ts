@@ -1,6 +1,6 @@
 import { html, setHtml } from "../../core/html";
 import { fmtDateTime, todayInputValue } from "../../core/dates";
-import { fmtMoneyPesos } from "../../core/money";
+import { fmtMoneyPesos, toCents, toPesos } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import { confirmDialog } from "../components/modal";
 import { openModal } from "../components/modal";
@@ -18,11 +18,25 @@ export const corteTab: TabModule = {
           <article class="card">
             <h2>Corte de caja</h2>
             <form id="shiftForm" class="form">
-              <input id="openingCash" class="input" type="number" step="0.01" min="0" placeholder="Base inicial de caja">
-              <input id="cashCounted" class="input" type="number" step="0.01" min="0" placeholder="Efectivo contado en caja">
-              <input id="cashWithdrawn" class="input" type="number" step="0.01" min="0" placeholder="Dinero retirado / entregado">
-              <input id="nextOpeningCash" class="input" type="number" step="0.01" min="0" placeholder="Base para iniciar el siguiente día">
-              <textarea id="cashNotes" class="input" rows="3" placeholder="Notas del corte"></textarea>
+              <div class="row">
+                <label class="form-field">Base inicial de caja
+                  <input id="openingCash" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+                </label>
+                <label class="form-field">Efectivo contado
+                  <input id="cashCounted" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+                </label>
+              </div>
+              <div class="row">
+                <label class="form-field">Retirado / entregado
+                  <input id="cashWithdrawn" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+                </label>
+                <label class="form-field">Base siguiente día
+                  <input id="nextOpeningCash" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+                </label>
+              </div>
+              <label class="form-field">Notas
+                <textarea id="cashNotes" class="input" rows="2" placeholder="Notas del corte"></textarea>
+              </label>
             </form>
             <div id="cashSummary" class="summary"></div>
             <div class="actions">
@@ -54,27 +68,34 @@ export const corteTab: TabModule = {
       const countedValue = Number(counted.value || 0);
       const withdrawnValue = Number(withdrawn.value || 0);
       const nextValue = Number(nextBase.value || 0);
-      const expectedWithBase = openingValue + summary.efectivoEsperado;
-      const rows: Array<[string, string]> = [
+      const expectedWithBase = toPesos(toCents(openingValue) + toCents(summary.efectivoEsperado));
+      const difference = toPesos(toCents(countedValue) - toCents(expectedWithBase));
+      const rest = toPesos(toCents(summary.ventas) - toCents(summary.cigarros ?? 0) - toCents(summary.cerveza ?? 0));
+      const rows: Array<[string, string, string?]> = [
         ["Base inicial", fmtMoneyPesos(openingValue)],
-        ["Ventas", fmtMoneyPesos(summary.ventas)],
+        ["Ventas", fmtMoneyPesos(summary.ventas), "strong"],
+        ["  Cigarros", fmtMoneyPesos(summary.cigarros ?? 0), "group"],
+        ["  Cerveza", fmtMoneyPesos(summary.cerveza ?? 0), "group"],
+        ["  Resto de productos", fmtMoneyPesos(rest), "group"],
         ["Efectivo vendido", fmtMoneyPesos(summary.efectivo)],
         ["Transferencia", fmtMoneyPesos(summary.transferencia)],
         ["Tarjeta", fmtMoneyPesos(summary.tarjeta)],
         ["Fiado", fmtMoneyPesos(summary.fiado)],
-        ["Gastos", fmtMoneyPesos(summary.gastos)],
+        ["Consumo interno (a costo, no es venta)", fmtMoneyPesos(summary.interno ?? 0)],
+        ["Gastos extra (de caja)", fmtMoneyPesos(summary.gastos)],
         ["Proveedores", fmtMoneyPesos(summary.proveedores)],
         ["Mermas", fmtMoneyPesos(summary.mermas)],
         ["Ganancia estimada", fmtMoneyPesos(summary.ganancia)],
-        ["Efectivo esperado con base", fmtMoneyPesos(expectedWithBase)],
+        ["Efectivo esperado con base", fmtMoneyPesos(expectedWithBase), "strong"],
         ["Efectivo contado", fmtMoneyPesos(countedValue)],
+        ["Diferencia contra esperado", fmtMoneyPesos(difference), difference < 0 ? "neg" : difference > 0 ? "pos" : "strong"],
         ["Retirado / entregado", fmtMoneyPesos(withdrawnValue)],
         ["Base siguiente día", fmtMoneyPesos(nextValue)],
-        ["Diferencia", fmtMoneyPesos(countedValue - withdrawnValue - nextValue)]
+        ["Sin repartir (contado − retiro − base)", fmtMoneyPesos(toPesos(toCents(countedValue) - toCents(withdrawnValue) - toCents(nextValue)))]
       ];
       setHtml(
         summaryEl,
-        html`${rows.map(([label, value]) => html`<div><span>${label}</span><strong>${value}</strong></div>`)}`
+        html`${rows.map(([label, value, kind]) => html`<div class="${kind ? `row-${kind}` : ""}"><span>${label.trim()}</span><strong>${value}</strong></div>`)}`
       );
     };
 
@@ -90,7 +111,7 @@ export const corteTab: TabModule = {
                     <strong>${fmtDateTime(shift.closed_at)}</strong>
                     <strong>${fmtMoneyPesos(shift.summary?.ventas ?? 0)}</strong>
                   </div>
-                  <p class="muted">Dif ${fmtMoneyPesos(shift.difference)} | Base siguiente ${fmtMoneyPesos(shift.next_opening_cash)}</p>
+                  <p class="muted">Cigarros ${fmtMoneyPesos(shift.summary?.cigarros ?? 0)} | Cerveza ${fmtMoneyPesos(shift.summary?.cerveza ?? 0)} | Dif ${fmtMoneyPesos(shift.difference)} | Base siguiente ${fmtMoneyPesos(shift.next_opening_cash)}</p>
                   ${shift.notes ? html`<p class="muted">Notas: ${shift.notes}</p>` : html``}
                 </div>
               `
@@ -130,11 +151,15 @@ export const corteTab: TabModule = {
         `Fecha: ${fmtDateTime(shift.closed_at)}`,
         `Base inicial: ${fmtMoneyPesos(shift.opening_cash)}`,
         `Ventas: ${fmtMoneyPesos(s.ventas)}`,
+        `  - Cigarros: ${fmtMoneyPesos(s.cigarros ?? 0)}`,
+        `  - Cerveza: ${fmtMoneyPesos(s.cerveza ?? 0)}`,
+        `  - Resto: ${fmtMoneyPesos(toPesos(toCents(s.ventas) - toCents(s.cigarros ?? 0) - toCents(s.cerveza ?? 0)))}`,
         `Efectivo vendido: ${fmtMoneyPesos(s.efectivo)}`,
         `Transferencia: ${fmtMoneyPesos(s.transferencia)}`,
         `Tarjeta: ${fmtMoneyPesos(s.tarjeta)}`,
         `Fiado: ${fmtMoneyPesos(s.fiado)}`,
-        `Gastos: ${fmtMoneyPesos(s.gastos)}`,
+        `Consumo interno (a costo): ${fmtMoneyPesos(s.interno ?? 0)}`,
+        `Gastos extra: ${fmtMoneyPesos(s.gastos)}`,
         `Proveedores: ${fmtMoneyPesos(s.proveedores)}`,
         `Mermas: ${fmtMoneyPesos(s.mermas)}`,
         `Ganancia estimada: ${fmtMoneyPesos(s.ganancia)}`,
@@ -234,7 +259,7 @@ export const corteTab: TabModule = {
     };
 
     ctx.store.watch(
-      (s) => [s.sales, s.expenses, s.purchases, s.shifts, s.branches, s.currentBranchId] as const,
+      (s) => [s.sales, s.expenses, s.purchases, s.mermas, s.shifts, s.products, s.branches, s.currentBranchId] as const,
       renderAll
     );
     renderAll();

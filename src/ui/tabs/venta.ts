@@ -1,15 +1,16 @@
 import { html, setHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
-import { fmtQty, normalizeQty } from "../../core/qty";
-import { nowISO } from "../../core/dates";
-import { uid } from "../../core/id";
-import { PAYMENT_LABELS, type PaymentMethod, type Product, type Sale } from "../../core/types";
-import { matchOrdersToProducts, findProductByBarcode } from "../../domain/voice/product-matcher";
+import { fmtQty } from "../../core/qty";
+import { PAYMENT_LABELS, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
+import { matchOrdersToProducts } from "../../domain/voice/product-matcher";
 import { parseVoiceSale } from "../../domain/voice/voice-parser";
+import { productMatches, resolveScannedCode, supplierCode, supplierLabel } from "../../domain/catalog";
 import { parseSaleWithAi, type AiSaleItem } from "../../ai/assistant-client";
 import { scanBarcode } from "../scanner";
 import { openModal } from "../components/modal";
+import { iconFor } from "../icons";
 import { listenOnce, speak, speechSupported, vibrate, isVoiceEnabled } from "../voice-recognition";
+import { openNewProductModal } from "./inventario";
 import type { TabModule } from "./tab-module";
 
 /** Paso del stepper según la unidad: piezas enteras, medio litro/kilo, 50 gramos. */
@@ -18,6 +19,8 @@ function qtyStep(um: string): number {
   if (um === "Gr") return 50;
   return 0.5;
 }
+
+const NEW_CUSTOMER = "__nuevo__";
 
 export const ventaTab: TabModule = {
   id: "venta",
@@ -28,11 +31,14 @@ export const ventaTab: TabModule = {
         <div class="split">
           <article class="card">
             <div class="search-row">
-              <input id="productSearch" class="input" placeholder="Buscar producto" autocomplete="off">
-              <button id="scanButton" class="ghost" type="button" hidden>Escanear</button>
+              <input id="productSearch" class="input" type="search" placeholder="Buscar producto, código o proveedor (#3)" autocomplete="off" enterkeyhint="search" aria-label="Buscar producto">
+              <button id="scanButton" class="ghost" type="button" title="Escanear código de barras o QR">${iconFor("barcode")} <span class="hide-sm">Escanear</span></button>
+            </div>
+            <div class="filter-row">
+              <select id="supplierFilter" class="input" aria-label="Filtrar por proveedor"></select>
             </div>
             <div class="voice-sale-box">
-              <button id="voiceSaleButton" class="primary" type="button">Hablar venta</button>
+              <button id="voiceSaleButton" class="primary" type="button">${iconFor("mic")} Hablar venta</button>
               <p id="voiceSaleText" class="hint">Di: "dos cocas, una leche y tres panes".</p>
             </div>
             <div id="productGrid" class="product-grid"></div>
@@ -45,18 +51,30 @@ export const ventaTab: TabModule = {
             <div class="cart-body" id="cartBody">
               <div id="cartItems" class="list cart-items"><p class="muted">Sin productos</p></div>
               <div class="cart-pay">
-                <div class="total-row"><span>Total</span><strong id="cartTotal">$0.00</strong></div>
+                <div class="total-row"><span id="cartTotalLabel">Total</span><strong id="cartTotal">$0.00</strong></div>
                 <label class="form-field">Forma de pago
                   <select id="paymentType" class="input">
                     <option value="efectivo">Efectivo</option>
                     <option value="transferencia">Transferencia</option>
                     <option value="tarjeta">Tarjeta</option>
-                    <option value="fiado">Fiado</option>
+                    <option value="fiado">Fiado (a cuenta del cliente)</option>
+                    <option value="interno">Venta interna (uso de la tienda)</option>
                   </select>
                 </label>
-                <select id="creditCustomer" class="input hidden" aria-label="Cliente de fiado"></select>
+                <div id="creditBox" class="credit-box hidden">
+                  <label class="form-field">Cliente
+                    <select id="creditCustomer" class="input"></select>
+                  </label>
+                  <div id="newCustomerFields" class="form hidden">
+                    <input id="ncName" class="input" placeholder="Nombre del cliente" aria-label="Nombre del cliente" autocomplete="off">
+                    <input id="ncPhone" class="input" type="tel" placeholder="Teléfono (opcional)" aria-label="Teléfono">
+                    <input id="ncNotes" class="input" placeholder="Domicilio / referencias (opcional)" aria-label="Domicilio o referencias">
+                  </div>
+                  <p class="hint" id="creditHint"></p>
+                </div>
+                <p id="internalHint" class="hint notice hidden">Se descuenta del inventario pero no suma a las ventas del día. Se registra a costo para el control.</p>
                 <div class="actions">
-                  <button id="completeSale" class="primary">Cobrar</button>
+                  <button id="completeSale" class="primary grow">Cobrar</button>
                   <button id="clearCart" class="ghost danger">Vaciar</button>
                 </div>
               </div>
@@ -67,12 +85,22 @@ export const ventaTab: TabModule = {
     );
 
     const search = root.querySelector<HTMLInputElement>("#productSearch")!;
+    const supplierFilter = root.querySelector<HTMLSelectElement>("#supplierFilter")!;
     const grid = root.querySelector<HTMLElement>("#productGrid")!;
     const items = root.querySelector<HTMLElement>("#cartItems")!;
     const totalEl = root.querySelector<HTMLElement>("#cartTotal")!;
+    const totalLabelEl = root.querySelector<HTMLElement>("#cartTotalLabel")!;
     const toggleTotalEl = root.querySelector<HTMLElement>("#cartToggleTotal")!;
     const payment = root.querySelector<HTMLSelectElement>("#paymentType")!;
+    const creditBox = root.querySelector<HTMLElement>("#creditBox")!;
     const customer = root.querySelector<HTMLSelectElement>("#creditCustomer")!;
+    const newCustomerFields = root.querySelector<HTMLElement>("#newCustomerFields")!;
+    const ncName = root.querySelector<HTMLInputElement>("#ncName")!;
+    const ncPhone = root.querySelector<HTMLInputElement>("#ncPhone")!;
+    const ncNotes = root.querySelector<HTMLInputElement>("#ncNotes")!;
+    const creditHint = root.querySelector<HTMLElement>("#creditHint")!;
+    const internalHint = root.querySelector<HTMLElement>("#internalHint")!;
+    const completeButton = root.querySelector<HTMLButtonElement>("#completeSale")!;
     const voiceButton = root.querySelector<HTMLButtonElement>("#voiceSaleButton")!;
     const voiceText = root.querySelector<HTMLElement>("#voiceSaleText")!;
     const cartCard = root.querySelector<HTMLElement>("#cartCard")!;
@@ -83,39 +111,83 @@ export const ventaTab: TabModule = {
     // iPhone: sin dictado — se oculta el bloque de venta por voz
     root.querySelector(".voice-sale-box")?.classList.toggle("hidden", !speechSupported());
 
-    const renderGrid = (): void => {
-      const q = search.value.toLowerCase().trim();
-      const products = ctx.repos.products
+    const suppliersById = (): Map<string, Supplier> => new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
+
+    const filteredProducts = (): Product[] => {
+      const q = search.value.trim();
+      const supplierId = supplierFilter.value;
+      const suppliers = suppliersById();
+      return ctx.repos.products
         .list()
-        .filter((p) => p.active !== false && (!q || p.name.toLowerCase().includes(q)))
+        .filter((p) => p.active !== false)
+        .filter((p) => !supplierId || (supplierId === "none" ? !p.supplier_id || !suppliers.has(p.supplier_id) : p.supplier_id === supplierId))
+        .filter((p) => productMatches(p, q, p.supplier_id ? suppliers.get(p.supplier_id) : undefined))
         .sort((a, b) => a.name.localeCompare(b.name));
+    };
+
+    const renderSupplierFilter = (): void => {
+      const suppliers = ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
+      const selected = supplierFilter.value;
+      supplierFilter.closest(".filter-row")?.classList.toggle("hidden", !suppliers.length);
+      setHtml(
+        supplierFilter,
+        html`<option value="">Todos los proveedores</option>
+          ${suppliers.map((s) => html`<option value="${s.id}" ${s.id === selected ? "selected" : null}>${supplierLabel(s)}</option>`)}
+          <option value="none" ${selected === "none" ? "selected" : null}>Sin proveedor</option>`
+      );
+      if (selected && supplierFilter.value !== selected) supplierFilter.value = "";
+    };
+
+    const renderGrid = (): void => {
+      const products = filteredProducts();
       if (!products.length) {
-        setHtml(grid, html`<p class="muted">Agrega productos para vender.</p>`);
+        const empty = !ctx.repos.products.list().length;
+        setHtml(grid, html`<p class="muted grid-empty">${empty ? "Agrega productos para vender." : "Ningún producto coincide con la búsqueda."}</p>`);
         return;
       }
+      const suppliers = suppliersById();
       setHtml(
         grid,
         html`${products.map((product) => {
           const stock = ctx.sales.stockOf(product.id);
           const min = ctx.sales.minStockOf(product.id);
           const out = stock <= 0;
+          const supplier = product.supplier_id ? suppliers.get(product.supplier_id) : undefined;
           return html`<button
             class="product-tile ${stock <= min ? "low" : ""} ${out ? "out" : ""}"
             type="button"
             data-add="${product.id}"
             ${out ? "disabled" : null}
           >
-            <strong>${product.name}</strong><span>${product.category || "Sin categoría"}</span>
+            <strong>${product.name}</strong>
+            <span class="tile-cat">${product.category || "Sin categoría"}${supplier ? ` · ${supplierCode(supplier) || supplier.name}` : ""}</span>
             <b>${fmtMoneyPesos(product.price)}</b>
-            <span class="tile-stock">Stock: ${fmtQty(stock)} ${product.um}</span>
+            <span class="tile-stock">${out ? "Agotado" : `Stock: ${fmtQty(stock)} ${product.um}`}</span>
           </button>`;
         })}`
       );
     };
 
+    const renderPaymentState = (): void => {
+      const method = payment.value as PaymentMethod;
+      const fiado = method === "fiado";
+      const internal = method === "interno";
+      creditBox.classList.toggle("hidden", !fiado);
+      newCustomerFields.classList.toggle("hidden", !(fiado && customer.value === NEW_CUSTOMER));
+      internalHint.classList.toggle("hidden", !internal);
+      completeButton.textContent = internal ? "Registrar uso interno" : fiado ? "Fiar" : "Cobrar";
+      totalLabelEl.textContent = internal ? "Total (a precio de venta)" : "Total";
+      const selected = customer.value && customer.value !== NEW_CUSTOMER ? ctx.repos.customers.byId(customer.value) : undefined;
+      creditHint.textContent = selected
+        ? `Saldo actual: ${fmtMoneyPesos(selected.balance)}. La venta se suma a su cuenta en Fiado.`
+        : fiado
+          ? "La venta se envía al módulo de Fiado a nombre de este cliente."
+          : "";
+    };
+
     const renderCart = (): void => {
       const cart = ctx.sales.cart();
-      customer.classList.toggle("hidden", payment.value !== "fiado");
+      renderPaymentState();
       cartCard.classList.toggle("cart-empty", cart.length === 0);
       if (!cart.length) cartCard.classList.remove("cart-open");
       const countLabel = root.querySelector<HTMLElement>("#cartCount");
@@ -148,7 +220,7 @@ export const ventaTab: TabModule = {
               </div>
               <div class="qty-stepper" data-step="${step}">
                 <button type="button" data-qty-dec="${line.productId}" aria-label="Menos cantidad">−</button>
-                <input class="input" type="number" min="0" max="${ctx.sales.stockOf(line.productId)}" step="${step}" value="${line.qty}" data-qty="${line.productId}" inputmode="decimal" aria-label="Cantidad">
+                <input class="input" type="number" min="0" max="${ctx.sales.stockOf(line.productId)}" step="${step}" value="${line.qty}" data-qty="${line.productId}" inputmode="decimal" aria-label="Cantidad de ${product.name}">
                 <button type="button" data-qty-inc="${line.productId}" aria-label="Más cantidad">+</button>
               </div>
               <div class="cart-item-total">
@@ -163,19 +235,83 @@ export const ventaTab: TabModule = {
 
     const renderCustomers = (): void => {
       const branchId = ctx.branches.operationalId();
-      const customers = ctx.repos.customers.list().filter((c) => c.branch_id === branchId);
+      const selected = customer.value;
+      const customers = ctx.repos.customers
+        .list()
+        .filter((c) => c.branch_id === branchId)
+        .sort((a, b) => a.name.localeCompare(b.name));
       setHtml(
         customer,
-        html`<option value="">Cliente de fiado</option>${customers.map(
-          (c) => html`<option value="${c.id}">${c.name}</option>`
-        )}`
+        html`<option value="">Elige cliente…</option>
+          <option value="${NEW_CUSTOMER}" ${selected === NEW_CUSTOMER ? "selected" : null}>+ Cliente nuevo</option>
+          ${customers.map(
+            (c) => html`<option value="${c.id}" ${c.id === selected ? "selected" : null}>${c.name}${c.balance > 0 ? ` (debe ${fmtMoneyPesos(c.balance)})` : ""}</option>`
+          )}`
       );
+      renderPaymentState();
+    };
+
+    const addProduct = (product: Product): void => {
+      const result = ctx.sales.addToCart(product.id);
+      if (result.ok) {
+        vibrate(40);
+        ctx.toast(`${product.name} agregado`);
+      } else {
+        ctx.toast(result.error);
+      }
+    };
+
+    /** Código leído (cámara, lector USB/Bluetooth o QR): producto o alta rápida. */
+    const handleCode = (code: string): void => {
+      const product = resolveScannedCode(ctx.repos.products.list(), code);
+      if (product) {
+        addProduct(product);
+        return;
+      }
+      // Texto que no es un código (QR con nombre): se usa como búsqueda.
+      search.value = code;
+      renderGrid();
+      const matches = filteredProducts();
+      if (matches.length === 1) {
+        addProduct(matches[0]!);
+        search.value = "";
+        renderGrid();
+        return;
+      }
+      if (!matches.length) {
+        search.value = "";
+        renderGrid();
+        openNewProductModal(ctx, (created) => addProduct(created), { barcode: code });
+      }
     };
 
     search.addEventListener("input", () => {
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(renderGrid, 180);
     });
+
+    // Enter en la búsqueda: los lectores de código (USB/Bluetooth) "teclean" el
+    // código y Enter. Código exacto o un solo resultado → al carrito.
+    search.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const value = search.value.trim();
+      if (!value) return;
+      if (searchTimer) clearTimeout(searchTimer);
+      const exact = resolveScannedCode(ctx.repos.products.list(), value);
+      const matches = exact ? [exact] : filteredProducts();
+      if (matches.length === 1) {
+        addProduct(matches[0]!);
+        search.value = "";
+        renderGrid();
+      } else if (!matches.length && /^\d{6,}$/.test(value)) {
+        handleCode(value);
+      } else {
+        renderGrid();
+      }
+    });
+
+    supplierFilter.addEventListener("change", renderGrid);
 
     grid.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLElement>("[data-add]");
@@ -193,6 +329,11 @@ export const ventaTab: TabModule = {
 
     items.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
+      const remove = target.closest<HTMLElement>("[data-remove]");
+      if (remove) {
+        ctx.sales.removeFromCart(remove.dataset.remove!);
+        return;
+      }
       const inc = target.closest<HTMLElement>("[data-qty-inc]");
       const dec = target.closest<HTMLElement>("[data-qty-dec]");
       if (!inc && !dec) return;
@@ -205,15 +346,12 @@ export const ventaTab: TabModule = {
       if (!result.ok) ctx.toast(result.error);
     });
 
-    items.addEventListener("click", (event) => {
-      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-remove]");
-      if (button) ctx.sales.removeFromCart(button.dataset.remove!);
-    });
-
-    // La tarjeta del carrito en móvil siempre se muestra desplegada: nada se colapsa solo
-
     ctx.store.watch((s) => s.cart, renderCart);
-    ctx.store.watch((s) => s.customers, renderCustomers);
+    ctx.store.watch((s) => [s.customers, s.branches, s.currentBranchId] as const, renderCustomers);
+    ctx.store.watch((s) => s.suppliers, () => {
+      renderSupplierFilter();
+      renderGrid();
+    });
     ctx.store.watch(
       (s) => [s.products, s.product_stocks, s.branches, s.currentBranchId] as const,
       () => {
@@ -222,7 +360,11 @@ export const ventaTab: TabModule = {
       }
     );
 
-    payment.addEventListener("change", renderCart);
+    payment.addEventListener("change", renderPaymentState);
+    customer.addEventListener("change", () => {
+      renderPaymentState();
+      if (customer.value === NEW_CUSTOMER) ncName.focus();
+    });
 
     root.querySelector<HTMLButtonElement>("#clearCart")!.addEventListener("click", () => ctx.sales.clearCart());
 
@@ -233,76 +375,53 @@ export const ventaTab: TabModule = {
       root.querySelector<HTMLButtonElement>("#cartToggle")!.setAttribute("aria-expanded", String(open));
     });
 
-    root.querySelector<HTMLButtonElement>("#completeSale")!.addEventListener("click", () => {
+    completeButton.addEventListener("click", () => {
       const method = payment.value as PaymentMethod;
-      const customerId = method === "fiado" ? (customer.value || null) : null;
-      const result = ctx.sales.completeSale({ payment: method, customerId });
+      const isNew = method === "fiado" && customer.value === NEW_CUSTOMER;
+      const customerId = method === "fiado" && !isNew ? customer.value || null : null;
+      if (isNew && !ncName.value.trim()) {
+        ctx.toast("Escribe el nombre del cliente nuevo");
+        ncName.focus();
+        return;
+      }
+      const result = ctx.sales.completeSale({
+        payment: method,
+        customerId,
+        newCustomer: isNew ? { name: ncName.value, phone: ncPhone.value, notes: ncNotes.value } : null
+      });
       if (!result.ok) {
         ctx.toast(result.error);
         return;
       }
-      ctx.toast(`Venta registrada: ${fmtMoneyPesos(result.sale.total)}`);
-      speak(`Venta registrada por ${speakPesos(result.sale.total)}.`, voiceEnabled());
+      const sale = result.sale;
+      if (method === "interno") {
+        ctx.toast(`Uso interno registrado (${fmtMoneyPesos(sale.cost)} a costo)`);
+      } else {
+        ctx.toast(`Venta registrada: ${fmtMoneyPesos(sale.total)}`);
+        speak(`Venta registrada por ${speakPesos(sale.total)}.`, voiceEnabled());
+      }
       vibrate(80);
-      openReceipt(result.sale);
+      if (isNew) {
+        ncName.value = "";
+        ncPhone.value = "";
+        ncNotes.value = "";
+        customer.value = sale.customer_id ?? "";
+      }
+      // Fiado e interno son excepciones: se vuelve a efectivo para la siguiente venta.
+      if (method === "interno" || method === "fiado") {
+        payment.value = "efectivo";
+        customer.value = "";
+      }
+      openReceipt(sale);
       renderCart();
     });
-
-    // Código no registrado: alta rápida y directo al carrito
-    const openRegisterByBarcode = (code: string): void => {
-      openModal({
-        title: "Producto nuevo",
-        content: html`
-          <p class="muted">El código ${code} no está registrado. Captura el producto para agregarlo.</p>
-          <label class="form-field">Nombre
-            <input id="rName" class="input">
-          </label>
-          <div class="row">
-            <label class="form-field">Precio
-              <input id="rPrice" class="input" type="number" step="0.01" min="0">
-            </label>
-            <label class="form-field">Costo
-              <input id="rCost" class="input" type="number" step="0.01" min="0">
-            </label>
-          </div>
-          <label class="form-field">Existencia inicial
-            <input id="rStock" class="input" type="number" step="0.001" value="0">
-          </label>
-        `,
-        actions: [
-          { label: "Cancelar", kind: "ghost", onClick: (close) => close() },
-          {
-            label: "Crear y agregar",
-            kind: "primary",
-            onClick: (close) => {
-              const nameInput = document.getElementById("rName") as HTMLInputElement;
-              const price = Number((document.getElementById("rPrice") as HTMLInputElement).value || 0);
-              const cost = Number((document.getElementById("rCost") as HTMLInputElement).value || 0);
-              const stock = normalizeQty((document.getElementById("rStock") as HTMLInputElement).value);
-              const name = nameInput.value.trim();
-              if (!name || price <= 0) {
-                ctx.toast("Nombre y precio son obligatorios");
-                return;
-              }
-              const ts = nowISO();
-              const product: Product = { id: uid(), name, category: "", um: "Pza", cost, price, barcode: code, active: true, created_at: ts, updated_at: ts };
-              ctx.repos.products.upsert(product);
-              const branchId = ctx.branches.operationalId();
-              ctx.repos.stocks.upsert({ id: `${product.id}:${branchId}`, product_id: product.id, branch_id: branchId, stock, min_stock: 0, updated_at: ts });
-              close();
-              const added = ctx.sales.addToCart(product.id);
-              ctx.toast(added.ok ? `${name} agregado` : added.error);
-            }
-          }
-        ]
-      });
-    };
 
     const openReceipt = (sale: Sale): void => {
       const totalCents = sumCents(sale.items.map((item) => lineTotalCents(item.qty, item.price)));
       const customerName = sale.customer_id ? ctx.repos.customers.byId(sale.customer_id)?.name : undefined;
+      const internal = sale.payment === "interno";
       openModal({
-        title: "Venta registrada",
+        title: internal ? "Uso interno registrado" : sale.payment === "fiado" ? "Venta fiada registrada" : "Venta registrada",
         content: html`
           <div class="receipt">
             ${sale.items.map(
@@ -318,6 +437,8 @@ export const ventaTab: TabModule = {
               <strong>${fmtMoney(totalCents)}</strong>
             </div>
             <p class="muted">${PAYMENT_LABELS[sale.payment]}${customerName ? ` · ${customerName}` : ""}</p>
+            ${internal ? html`<p class="hint">No suma a las ventas. Valor a costo: ${fmtMoneyPesos(sale.cost)}.</p>` : html``}
+            ${sale.payment === "fiado" ? html`<p class="hint">Quedó en la cuenta del cliente en Fiado.</p>` : html``}
           </div>
         `,
         actions: [{ label: "Nueva venta", kind: "primary" }]
@@ -365,37 +486,19 @@ export const ventaTab: TabModule = {
         ctx.toast(error instanceof Error ? error.message : "No se pudo interpretar la venta");
       } finally {
         voiceButton.disabled = false;
-        voiceButton.textContent = "Hablar venta";
+        setHtml(voiceButton, html`${iconFor("mic")} Hablar venta`);
       }
     };
     voiceButton.addEventListener("click", () => void runVoice());
 
-    // Escáner de cámara: agrega el producto del código de barras
-    const scanButton = root.querySelector<HTMLButtonElement>("#scanButton")!;
-    scanButton.hidden = false;
-    scanButton.addEventListener("click", async () => {
+    // Escáner de cámara: código de barras o QR
+    root.querySelector<HTMLButtonElement>("#scanButton")!.addEventListener("click", async () => {
       try {
         const code = await scanBarcode();
-        if (!code) return;
-        const product = findProductByBarcode(ctx.repos.products.list(), code);
-        if (!product) {
-          openRegisterByBarcode(code);
-          return;
-        }
-        const result = ctx.sales.addToCart(product.id);
-        if (result.ok) {
-          vibrate(40);
-          ctx.toast(`${product.name} agregado`);
-        } else {
-          ctx.toast(result.error);
-        }
+        if (code) handleCode(code);
       } catch (error) {
         ctx.toast(error instanceof Error ? error.message : "No se pudo escanear");
       }
     });
-
-    renderGrid();
-    renderCart();
-    renderCustomers();
   }
 };

@@ -5,6 +5,8 @@ import type { Repositories } from "../data/repositories";
 import { VIEW_ALL } from "./app-state";
 import type { AppState } from "./app-state";
 import type { Store } from "./store";
+import { fixedCostsForRange, isFixedCost } from "./expense-service";
+import { groupTotalsCents, isInternalSale, isRevenueSale } from "./sale-groups";
 
 interface CacheEntry {
   version: number;
@@ -52,15 +54,22 @@ export class ReportService {
     const inScope = (branchId: string | undefined): boolean =>
       scope === VIEW_ALL || !branchId || branchId === scope;
     const inRange = (createdAt: string): boolean => createdAt >= start && createdAt < end;
-    const sales = this.repos.sales.list().filter((sale) => inScope(sale.branch_id) && inRange(sale.created_at));
-    const expenses = this.repos.expenses.list().filter((expense) => inScope(expense.branch_id) && inRange(expense.created_at));
+    const scopedSales = this.repos.sales.list().filter((sale) => inScope(sale.branch_id) && inRange(sale.created_at));
+    // La venta interna (consumo de la tienda) baja inventario pero no es ingreso.
+    const sales = scopedSales.filter(isRevenueSale);
+    const internal = scopedSales.filter(isInternalSale);
+    const scopedExpenses = this.repos.expenses.list().filter((expense) => inScope(expense.branch_id));
+    const extras = scopedExpenses.filter((expense) => !isFixedCost(expense) && inRange(expense.created_at));
+    const fixedCents = fixedCostsForRange(scopedExpenses, start, end);
     const purchases = this.repos.purchases.list().filter((purchase) => inScope(purchase.branch_id) && inRange(purchase.created_at));
     const mermas = this.repos.mermas.list().filter((merma) => inScope(merma.branch_id) && inRange(merma.created_at));
     const centsOf = (rows: Array<{ total: number }>): number => sumCents(rows.map((row) => toCents(row.total)));
     const salesTotalCents = centsOf(sales);
     const salesCostCents = sumCents(sales.map((sale) => toCents(sale.cost)));
-    const expensesTotalCents = sumCents(expenses.map((expense) => toCents(expense.amount)));
+    const extraCents = sumCents(extras.map((expense) => toCents(expense.amount)));
+    const expensesTotalCents = extraCents + fixedCents;
     const purchasesTotalCents = centsOf(purchases);
+    const groups = groupTotalsCents(sales, (id) => this.repos.products.byId(id));
     const stats = this.productStats(sales);
     return {
       start,
@@ -70,13 +79,18 @@ export class ReportService {
       sales_cost: toPesos(salesCostCents),
       gross_profit: toPesos(salesTotalCents - salesCostCents),
       expenses_total: toPesos(expensesTotalCents),
+      fixed_costs_total: toPesos(fixedCents),
+      extra_expenses_total: toPesos(extraCents),
+      cigarros_total: toPesos(groups.cigarros),
+      cerveza_total: toPesos(groups.cerveza),
+      internal_total: toPesos(sumCents(internal.map((sale) => toCents(sale.cost)))),
       purchases_total: toPesos(purchasesTotalCents),
       mermas_total: toPesos(sumCents(mermas.map((merma) => toCents(merma.cost_impact)))),
       mermas_count: mermas.length,
       profit_after_expenses: toPesos(salesTotalCents - salesCostCents - expensesTotalCents),
       credit_total: toPesos(centsOf(sales.filter((sale) => sale.payment === "fiado"))),
       sales_count: sales.length,
-      expenses_count: expenses.length,
+      expenses_count: extras.length,
       purchases_count: purchases.length,
       top_products: stats.top,
       slow_products: stats.slow

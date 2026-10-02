@@ -742,7 +742,7 @@ body.modal-open { overflow: hidden; }
   }
   .nav-group-label { display: none; }
   .nav-overflow { display: none; }
-  .nav-more { display: block; }
+  .nav-more { display: flex; }
   .tab {
     flex: 1;
     min-width: 0;
@@ -965,3 +965,217 @@ body { animation: app-in var(--t-slow) var(--ease); }
 .metric-grid-4, .hero-metrics { row-gap: var(--sp-2); }
 .list-item { padding: var(--sp-4); }
 .list .muted { line-height: 1.5; }
+
+/* ==========================================================================
+   Componentes nuevos: compras por caja, meta diaria, proveedores, QR
+   ========================================================================== */
+
+.block { width: 100%; }
+.grow { flex: 1; }
+.align-end { align-self: end; }
+.align-right { text-align: right; }
+.section-gap { margin-top: var(--sp-4); }
+.hidden-empty:empty { display: none; }
+
+/* Fila de etiquetas pequeñas (proveedor, caja, grupo) */
+.tag-row { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-2); }
+.tag-row:empty { display: none; }
+.tag svg { width: 13px; height: 13px; }
+.tag-accent {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
+}
+
+/* Chips que se acomodan en varias líneas (antes se salían de la tarjeta) */
+.chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  border: 0;
+  overflow: visible;
+  background: transparent;
+}
+.chips-wrap .chip { border: var(--line-w) solid var(--line); border-radius: 999px; min-height: 30px; }
+.chip-muted { background: var(--card-2); color: var(--muted); cursor: default; }
+
+/* Búsqueda + filtro */
+.filter-row { margin-top: var(--sp-2); }
+.search-row > select.input { min-width: 0; max-width: 220px; }
+.grid-empty { grid-column: 1 / -1; padding: var(--sp-3) 0; }
+
+/* Líneas de compra / entrada */
+.purchase-lines { display: grid; gap: var(--sp-2); }
+.purchase-line {
+  display: grid;
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.5fr) minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: var(--sp-3);
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card-2);
+}
+.purchase-qty { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-1); align-items: center; }
+.purchase-qty select.input { width: auto; padding-inline: 0.5rem; }
+.unit-tag { color: var(--muted); font-size: var(--fs-xs); font-weight: 700; padding: 0 var(--sp-1); }
+.purchase-hint { grid-column: 1 / -1; margin: 0; }
+.purchase-hint:empty { display: none; }
+.purchase-line button[data-remove-line] { min-height: 40px; padding: 0.4rem 0.7rem; }
+
+/* Venta: cliente de fiado y venta interna */
+.credit-box {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card-2);
+}
+.credit-box .form { gap: var(--sp-2); }
+.notice {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border: var(--line-w) solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 9%, var(--card));
+  color: var(--ink);
+}
+.product-tile .tile-cat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Proveedores */
+.supplier-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.supplier-num {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: var(--r-sm);
+  padding: 0.1rem 0.45rem;
+}
+.check-list {
+  display: grid;
+  gap: var(--sp-1);
+  max-height: 46dvh;
+  overflow-y: auto;
+  padding: 2px;
+}
+.check-row { align-items: flex-start; }
+.check-row span { display: grid; gap: 2px; }
+.check-row small { font-size: var(--fs-2xs); font-weight: 600; }
+
+/* Gastos: filas con acciones */
+.row-end { display: flex; align-items: center; gap: var(--sp-3); flex-shrink: 0; }
+.row-end small { font-weight: 600; }
+.icon-actions { display: flex; gap: var(--sp-1); }
+.icon-actions .icon-btn { width: 36px; height: 36px; min-height: 36px; }
+.icon-btn.danger { color: var(--danger); }
+.icon-btn.danger:hover { background: color-mix(in srgb, var(--danger) 8%, var(--card)); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+
+/* Meta diaria (Inicio y Gastos) */
+.target-box {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.target-box:has(> p:only-child) { display: block; background: var(--card-2); color: inherit; }
+.target-box .micro { color: inherit; opacity: 0.8; display: block; }
+.target-box strong { display: block; font-size: var(--fs-xl); font-weight: 800; font-variant-numeric: tabular-nums; }
+.target-box .hint { grid-column: 1 / -1; color: inherit; opacity: 0.85; }
+.target-head { display: flex; justify-content: space-between; gap: var(--sp-3); align-items: flex-end; }
+.target-head .micro { display: block; }
+.target-head strong { display: block; font-size: var(--fs-xl); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.target-head > div:first-child strong { color: var(--primary); }
+#dailyTarget { display: grid; gap: var(--sp-2); }
+#dailyTarget .ghost.block { margin-top: var(--sp-2); }
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--card-2);
+  border: var(--line-w) solid var(--line);
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--primary);
+  border-radius: inherit;
+  transition: width var(--t-slow) var(--ease);
+}
+.progress-bar.done { background: var(--success); }
+
+/* Resúmenes: filas destacadas, subgrupos y diferencias */
+.summary > div.row-strong > span { color: var(--ink); font-weight: 650; }
+.summary > div.row-strong > strong { font-weight: 800; }
+.summary > div.row-group { padding-left: var(--sp-4); }
+.summary > div.row-group > span::before { content: "↳ "; opacity: 0.6; }
+.summary > div.row-neg > strong { color: var(--danger); font-weight: 800; }
+.summary > div.row-pos > strong { color: var(--success); font-weight: 800; }
+
+/* Etiqueta QR */
+.qr-label {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  border: var(--line-w) dashed var(--line-strong);
+  border-radius: var(--r);
+  background: #fff;
+  color: #14251f;
+  text-align: center;
+}
+.qr-label svg { width: 200px; height: 200px; max-width: 100%; }
+
+@media (max-width: 860px) {
+  .purchase-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .purchase-line select[data-f="productId"] { grid-column: 1 / -1; }
+  .purchase-line button[data-remove-line] { grid-column: 1 / -1; justify-self: end; }
+  .search-row > select.input { max-width: none; }
+}
+
+@media (max-width: 520px) {
+  .hide-sm { display: none; }
+  .search-row:has(> select.input) { grid-template-columns: 1fr; }
+  .row-end { gap: var(--sp-2); }
+  .target-box { grid-template-columns: 1fr 1fr; padding: var(--sp-3); }
+  .target-box strong, .target-head strong { font-size: var(--fs-lg); }
+}
+
+/* ==========================================================================
+   Correcciones visuales
+   ========================================================================== */
+
+/* Los campos dentro de una etiqueta heredaban su letra pequeña y en negritas */
+.form-field .input,
+.form-field select.input,
+.form-field textarea.input {
+  font-size: var(--fs-md);
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Barra lateral a todo lo alto (antes el fondo terminaba a media pantalla) */
+@media (min-width: 861px) {
+  /* La columna se pinta desde el contenedor: llega al fondo aunque la página sea larga */
+  #appShell {
+    background: linear-gradient(to right, var(--card) 215px, var(--line) 215px, var(--line) 216px, transparent 216px);
+  }
+}
+
+/* Acciones de cada fila alineadas a la izquierda (antes se repartían a lo ancho) */
+.list-item .actions { justify-content: flex-start; }
+
+/* El botón del asistente no tapa el carrito abierto */
+body:has(.cart-card.cart-open) .assistant-fab { display: none; }
+
+@media (max-width: 860px) {
+  /* Espacio al final para que el botón flotante no tape la última fila */
+  main { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 84px); }
+}

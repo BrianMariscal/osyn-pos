@@ -19,12 +19,15 @@ export const fiadoTab: TabModule = {
             <h2>Clientes de fiado</h2>
             <form id="customerForm" class="form">
               <input id="customerName" class="input" placeholder="Nombre del cliente" required>
-              <input id="customerPhone" class="input" placeholder="Teléfono opcional">
+              <input id="customerPhone" class="input" type="tel" placeholder="Teléfono (opcional)">
+              <input id="customerNotes" class="input" placeholder="Domicilio / referencias (opcional)">
               <button class="primary" type="submit">Agregar cliente</button>
             </form>
           </article>
           <article class="card">
             <h2>Saldos</h2>
+            <p class="hint" id="creditTotal"></p>
+            <input id="customerSearch" class="input" type="search" placeholder="Buscar cliente" autocomplete="off">
             <div id="customersList" class="list"></div>
           </article>
         </div>
@@ -34,17 +37,23 @@ export const fiadoTab: TabModule = {
     const form = root.querySelector<HTMLFormElement>("#customerForm")!;
     const nameInput = root.querySelector<HTMLInputElement>("#customerName")!;
     const phoneInput = root.querySelector<HTMLInputElement>("#customerPhone")!;
+    const notesInput = root.querySelector<HTMLInputElement>("#customerNotes")!;
+    const searchInput = root.querySelector<HTMLInputElement>("#customerSearch")!;
+    const totalEl = root.querySelector<HTMLElement>("#creditTotal")!;
     const list = root.querySelector<HTMLElement>("#customersList")!;
 
     const customersOfBranch = (): string => ctx.branches.operationalId();
 
     const render = (): void => {
-      const customers = ctx.repos.customers
-        .list()
-        .filter((c) => c.branch_id === customersOfBranch())
-        .sort((a, b) => b.balance - a.balance);
+      const all = ctx.repos.customers.list().filter((c) => c.branch_id === customersOfBranch());
+      const owed = all.reduce((sum, c) => sum + Math.round(c.balance * 100), 0) / 100;
+      totalEl.textContent = all.length ? `${all.filter((c) => c.balance > 0).length} clientes deben en total ${fmtMoneyPesos(owed)}` : "";
+      const q = searchInput.value.trim().toLowerCase();
+      const customers = all
+        .filter((c) => !q || c.name.toLowerCase().includes(q) || c.phone.includes(q))
+        .sort((a, b) => b.balance - a.balance || a.name.localeCompare(b.name));
       if (!customers.length) {
-        setHtml(list, html`<p class="muted">Agrega clientes para manejar el fiado.</p>`);
+        setHtml(list, html`<p class="muted">${all.length ? "Ningún cliente coincide." : "Agrega clientes para manejar el fiado, o fía desde Venta eligiendo \"Cliente nuevo\"."}</p>`);
         return;
       }
       setHtml(
@@ -53,7 +62,7 @@ export const fiadoTab: TabModule = {
           (customer) => html`
             <div class="list-item ${customer.balance > 0 ? "" : "paid"}">
               <div class="item-line"><strong>${customer.name}</strong><strong>${fmtMoneyPesos(customer.balance)}</strong></div>
-              <p class="muted">${customer.phone || "Sin teléfono"}</p>
+              <p class="muted">${customer.phone || "Sin teléfono"}${customer.notes ? ` · ${customer.notes}` : ""}</p>
               <div class="actions">
                 <button class="ghost" type="button" data-pay="${customer.id}">Registrar pago</button>
                 <button class="ghost" type="button" data-charge="${customer.id}">Fiar</button>
@@ -68,14 +77,21 @@ export const fiadoTab: TabModule = {
       );
     };
 
+    searchInput.addEventListener("input", render);
+
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+      if (!nameInput.value.trim()) {
+        ctx.toast("Escribe el nombre del cliente");
+        return;
+      }
       const ts = nowISO();
       ctx.repos.customers.upsert({
         id: uid(),
         branch_id: customersOfBranch(),
         name: nameInput.value.trim(),
         phone: phoneInput.value.trim(),
+        notes: notesInput.value.trim(),
         balance: 0,
         movements: [],
         created_at: ts,
@@ -114,6 +130,9 @@ export const fiadoTab: TabModule = {
             <label class="form-field">Teléfono
               <input id="cPhone" class="input" type="tel" value="${customer.phone}">
             </label>
+            <label class="form-field">Domicilio / referencias
+              <input id="cNotes" class="input" value="${customer.notes ?? ""}">
+            </label>
           `,
           actions: [
             { label: "Cancelar", kind: "ghost", onClick: (close) => close() },
@@ -130,6 +149,7 @@ export const fiadoTab: TabModule = {
                   ...customer,
                   name,
                   phone: (document.getElementById("cPhone") as HTMLInputElement).value.trim(),
+                  notes: (document.getElementById("cNotes") as HTMLInputElement).value.trim(),
                   updated_at: nowISO()
                 });
                 close();
