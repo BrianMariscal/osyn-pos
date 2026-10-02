@@ -20,6 +20,7 @@ import { CreditService } from "./domain/credit-service";
 import { InventoryService } from "./domain/inventory-service";
 import { ShiftService } from "./domain/shift-service";
 import { ReportService } from "./domain/report-service";
+import { ExpenseService } from "./domain/expense-service";
 import { UserAdminService } from "./domain/user-admin-service";
 import { applyTheme, buildApp } from "./ui/app";
 import { toast } from "./ui/components/toast";
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   const inventory = new InventoryService(repos, branches);
   const shifts = new ShiftService(repos, branches);
   const reports = new ReportService(repos, store);
+  const expenses = new ExpenseService(repos, branches);
   const userAdmin = new UserAdminService(auth);
 
   const ctx: AppContext = {
@@ -66,6 +68,7 @@ async function main(): Promise<void> {
     inventory,
     shifts,
     reports,
+    expenses,
     userAdmin,
     toast,
     speak: (message) => speak(message, store.getState().settings.assistantVoiceEnabled),

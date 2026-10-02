@@ -2,15 +2,25 @@ import { nowISO } from "../core/dates";
 import { uid } from "../core/id";
 import { lineTotalCents, sumCents, toPesos } from "../core/money";
 import { normalizeQty } from "../core/qty";
-import type { CartLine, PaymentMethod, ProductStock, Sale, SaleItem } from "../core/types";
+import { fmtQty } from "../core/qty";
+import type { CartLine, Customer, PaymentMethod, ProductStock, Sale, SaleItem } from "../core/types";
+import { detectSaleGroup } from "./sale-groups";
 import type { Repositories } from "../data/repositories";
 import type { BranchService } from "./branch-service";
 import type { AppState } from "./app-state";
 import type { Store } from "./store";
 
+export interface NewCustomerInput {
+  name: string;
+  phone?: string;
+  notes?: string;
+}
+
 export interface CompleteSaleInput {
   payment: PaymentMethod;
   customerId: string | null;
+  /** Fiado a un cliente que aún no existe: se da de alta al cobrar. */
+  newCustomer?: NewCustomerInput | null;
 }
 
 export type CompleteSaleResult = { ok: true; sale: Sale } | { ok: false; error: string };
@@ -119,29 +129,59 @@ export class SaleService {
     const items: SaleItem[] = [];
     for (const line of cart) {
       const product = this.repos.products.byId(line.productId);
-      if (!product) return { ok: false, error: "Un producto del carrito ya no existe" };
+      if (!product || product.deleted) return { ok: false, error: "Un producto del carrito ya no existe" };
       const qty = normalizeQty(line.qty);
       const available = this.stockOf(line.productId);
       if (qty <= 0 || qty > available) return { ok: false, error: "Revisa cantidades y existencia" };
-      items.push({ productId: product.id, name: product.name, qty, price: product.price, cost: product.cost, um: product.um });
+      items.push({
+        productId: product.id,
+        name: product.name,
+        qty,
+        price: product.price,
+        cost: product.cost,
+        um: product.um,
+        group: detectSaleGroup(product)
+      });
     }
-    if (input.payment === "fiado" && !input.customerId) return { ok: false, error: "Selecciona cliente para fiado" };
-    if (input.payment === "fiado" && !this.repos.customers.byId(input.customerId as string)) {
-      return { ok: false, error: "No se encontró el cliente de fiado" };
+    const internal = input.payment === "interno";
+    let customer: Customer | undefined;
+    if (input.payment === "fiado") {
+      const newName = input.newCustomer?.name.trim() ?? "";
+      if (input.customerId) {
+        customer = this.repos.customers.byId(input.customerId);
+        if (!customer || customer.deleted) return { ok: false, error: "No se encontró el cliente de fiado" };
+      } else if (!newName) {
+        return { ok: false, error: "Elige un cliente o escribe el nombre del cliente nuevo" };
+      }
     }
     const totalCents = sumCents(items.map((item) => lineTotalCents(item.qty, item.price)));
     const costCents = sumCents(items.map((item) => lineTotalCents(item.qty, item.cost)));
-    const total = toPesos(totalCents);
     const ts = nowISO();
+    if (input.payment === "fiado" && !customer) {
+      // Cliente nuevo capturado desde la venta: queda en el módulo de fiado.
+      customer = {
+        id: uid(),
+        branch_id: branchId,
+        name: (input.newCustomer?.name ?? "").trim(),
+        phone: (input.newCustomer?.phone ?? "").trim(),
+        notes: (input.newCustomer?.notes ?? "").trim(),
+        balance: 0,
+        movements: [],
+        created_at: ts,
+        updated_at: ts
+      };
+    }
+    // Venta interna: se registra a costo y sin ganancia (no es ingreso).
+    const total = toPesos(internal ? costCents : totalCents);
     const sale: Sale = {
       id: uid(),
       branch_id: branchId,
       items,
       total,
       cost: toPesos(costCents),
-      profit: toPesos(totalCents - costCents),
+      profit: internal ? 0 : toPesos(totalCents - costCents),
       payment: input.payment,
-      customer_id: input.payment === "fiado" ? (input.customerId as string) : null,
+      customer_id: customer ? customer.id : null,
       created_at: ts,
       updated_at: ts
     };
@@ -151,12 +191,13 @@ export class SaleService {
         this.repos.stocks.upsert({ ...stockRow, stock: normalizeQty(stockRow.stock - item.qty), updated_at: ts });
       }
     }
-    if (sale.customer_id) {
-      const customer = this.repos.customers.byId(sale.customer_id) as NonNullable<ReturnType<Repositories["customers"]["byId"]>>;
+    if (customer) {
+      const detail = items.map((item) => `${fmtQty(item.qty)} ${item.name}`).join(", ");
+      const note = `Venta fiada: ${detail.length > 120 ? `${detail.slice(0, 117)}…` : detail}`;
       this.repos.customers.upsert({
         ...customer,
         balance: Math.round((customer.balance + total) * 100) / 100,
-        movements: [{ id: uid(), type: "cargo", amount: total, note: "Venta fiada", created_at: ts }, ...customer.movements],
+        movements: [{ id: uid(), type: "cargo", amount: total, note, sale_id: sale.id, created_at: ts }, ...customer.movements],
         updated_at: ts
       });
     }

@@ -1,5 +1,5 @@
 import { html, setHtml } from "../../core/html";
-import { dayRange, fmtDateTime, monthInputValue, todayInputValue } from "../../core/dates";
+import { dayRange, fmtDateTime, monthInputValue, nowISO, todayInputValue } from "../../core/dates";
 import { fmtMoneyPesos } from "../../core/money";
 import { VIEW_ALL } from "../../domain/app-state";
 import { confirmDialog } from "../components/modal";
@@ -71,14 +71,18 @@ export const reportesTab: TabModule = {
 
     const summaryRows = (report: ReturnType<typeof ctx.reports.periodReport>): ReturnType<typeof html> =>
       html`
-        <div><span>Ventas</span><strong>${fmtMoneyPesos(report.sales_total)}</strong></div>
+        <div class="row-strong"><span>Ventas</span><strong>${fmtMoneyPesos(report.sales_total)}</strong></div>
+        <div class="row-group"><span>Cigarros</span><strong>${fmtMoneyPesos(report.cigarros_total ?? 0)}</strong></div>
+        <div class="row-group"><span>Cerveza</span><strong>${fmtMoneyPesos(report.cerveza_total ?? 0)}</strong></div>
         <div><span>Costo vendido</span><strong>${fmtMoneyPesos(report.sales_cost)}</strong></div>
         <div><span>Ganancia bruta</span><strong>${fmtMoneyPesos(report.gross_profit)}</strong></div>
-        <div><span>Gastos</span><strong>${fmtMoneyPesos(report.expenses_total)}</strong></div>
+        <div><span>Costos fijos (proporcional)</span><strong>${fmtMoneyPesos(report.fixed_costs_total ?? 0)}</strong></div>
+        <div><span>Gastos extra</span><strong>${fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)}</strong></div>
         <div><span>Compras proveedores</span><strong>${fmtMoneyPesos(report.purchases_total)}</strong></div>
         <div><span>Mermas</span><strong>${fmtMoneyPesos(report.mermas_total)}</strong></div>
-        <div><span>Ganancia después de gastos</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
+        <div class="row-strong"><span>Ganancia después de gastos</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
         <div><span>Fiado vendido</span><strong>${fmtMoneyPesos(report.credit_total)}</strong></div>
+        <div><span>Consumo interno (a costo)</span><strong>${fmtMoneyPesos(report.internal_total ?? 0)}</strong></div>
       `;
 
     const render = (): void => {
@@ -167,7 +171,7 @@ export const reportesTab: TabModule = {
       });
       if (!confirmed) return;
       const report = ctx.reports.monthReport(currentScope(), month);
-      const now = new Date().toISOString();
+      const now = nowISO();
       ctx.repos.closings.upsert({
         id: existing?.id ?? `${month}:${currentScope()}`,
         branch_id: currentScope(),
@@ -193,7 +197,7 @@ export const reportesTab: TabModule = {
 
     initDates();
     ctx.store.watch(
-      (s) => [s.sales, s.expenses, s.purchases, s.month_closings, s.branches, s.viewBranchId] as const,
+      (s) => [s.sales, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId] as const,
       render
     );
     render();

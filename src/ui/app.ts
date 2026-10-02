@@ -2,6 +2,7 @@ import { html, safe, setHtml } from "../core/html";
 import { sumCents, toCents, toPesos, fmtMoneyPesos } from "../core/money";
 import { ALL_TABS, ROLE_LABELS, TAB_LABELS, type TabId } from "../core/types";
 import { normalizeManagerTabs, normalizeVendorTabs } from "../domain/normalize";
+import { isRevenueSale } from "../domain/sale-groups";
 import { openAssistantChat } from "./assistant-chat";
 import { openVoiceSettings } from "./voice-settings";
 import { iconFor, TAB_ICONS } from "./icons";
@@ -23,6 +24,8 @@ import { reportesTab } from "./tabs/reportes";
 import { ajustesTab } from "./tabs/ajustes";
 
 const TAB_MODULES = [inicioTab, ventaTab, entradasTab, productosTab, inventarioTab, mermasTab, fiadoTab, gastosTab, proveedoresTab, corteTab, reportesTab, ajustesTab];
+
+const MORE_ICON = safe('<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5.5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.5" cy="12" r="1.4"/></svg>');
 
 const SESSION_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.2" r="3.4"></circle><path d="M5.2 19c1.5-3.1 4-4.7 6.8-4.7s5.3 1.6 6.8 4.7"></path></svg>';
 
@@ -325,7 +328,7 @@ function wireTopbar(ctx: AppContext): void {
       const totalCents = sumCents(
         ctx.repos.sales
           .list()
-          .filter((sale) => sale.branch_id === branchId && sale.created_at >= start.toISOString() && sale.created_at < end.toISOString())
+          .filter((sale) => sale.branch_id === branchId && isRevenueSale(sale) && sale.created_at >= start.toISOString() && sale.created_at < end.toISOString())
           .map((sale) => toCents(sale.total))
       );
       const el = document.getElementById("todayTotal");
@@ -500,7 +503,7 @@ function renderTabsNav(ctx: AppContext): void {
   setHtml(
     nav,
     html`${primary.map((tab) => tabButton(tab))}
-    ${overflow.length ? html`<button class="tab nav-primary nav-more" type="button" data-more="1">Más</button>` : html``}`
+    ${overflow.length ? html`<button class="tab nav-primary nav-more ${overflow.includes(activeTab) ? "active" : ""}" type="button" data-more="1"><span class="tab-ico">${MORE_ICON}</span><span>Más</span></button>` : html``}`
   );
 }
 

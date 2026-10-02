@@ -4,8 +4,11 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import type { Supplier } from "../../core/types";
+import { assignMissingSupplierNumbers, nextSupplierNumber, productMatches, supplierCode, supplierLabel } from "../../domain/catalog";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
+import { mountPurchaseLines } from "../purchase-lines";
+import { openNewProductModal } from "./inventario";
 import type { TabModule } from "./tab-module";
 
 export const proveedoresTab: TabModule = {
@@ -20,14 +23,16 @@ export const proveedoresTab: TabModule = {
               <h2>Proveedores</h2>
               <button id="addSupplier" class="primary" type="button">${iconFor("plus")} Agregar</button>
             </div>
-            <p class="hint">Tu catálogo: Central de Abastos, distribuidoras, etc. Se guarda para todas las sucursales.</p>
+            <p class="hint">Tu catálogo: Central de Abastos, distribuidoras, etc. Cada proveedor recibe un número automático y puedes asociarle los productos que surte.</p>
             <div id="suppliersList" class="list"></div>
 
             <h2>Registrar compra</h2>
             <form id="purchaseForm" class="form">
-              <select id="purchaseSupplier" class="input" aria-label="Proveedor"></select>
-              <div class="section-title"><h3>Productos de la compra</h3><button id="addPurchaseLine" class="ghost" type="button">+ Agregar producto</button></div>
-              <div id="purchaseLines" class="form"></div>
+              <label class="form-field">Proveedor
+                <select id="purchaseSupplier" class="input"></select>
+              </label>
+              <div class="section-title"><h3>Productos de la compra</h3><button id="addPurchaseLine" class="ghost" type="button">${iconFor("plus")} Agregar producto</button></div>
+              <div id="purchaseLines" class="purchase-lines"></div>
               <button class="primary" type="submit">Registrar compra completa</button>
             </form>
           </article>
@@ -44,52 +49,79 @@ export const proveedoresTab: TabModule = {
     const suppliersList = root.querySelector<HTMLElement>("#suppliersList")!;
     const purchaseForm = root.querySelector<HTMLFormElement>("#purchaseForm")!;
     const purchaseSupplier = root.querySelector<HTMLSelectElement>("#purchaseSupplier")!;
-    const purchaseLines = root.querySelector<HTMLElement>("#purchaseLines")!;
-    const addPurchaseLine = root.querySelector<HTMLButtonElement>("#addPurchaseLine")!;
+    const purchaseLinesEl = root.querySelector<HTMLElement>("#purchaseLines")!;
     const list = root.querySelector<HTMLElement>("#purchasesList")!;
-    let cachedSuppliers: Supplier[] = [];
+
+    const lines = mountPurchaseLines(purchaseLinesEl, ctx, { requireTotal: true, supplierId: () => purchaseSupplier.value });
+    // Solo dueño/administrador editan el catálogo (así lo exige la base de datos).
+    const canManage = (): boolean => ctx.auth.isAdmin();
+
+    const sortedSuppliers = (): Supplier[] =>
+      ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
+
+    const productCount = (supplierId: string): number =>
+      ctx.repos.products.list().filter((product) => product.supplier_id === supplierId).length;
 
     const renderSuppliers = (): void => {
-      cachedSuppliers = ctx.repos.suppliers.list().sort((a, b) => a.name.localeCompare(b.name));
+      addSupplierButton.hidden = !canManage();
+      const suppliers = sortedSuppliers();
+      const selected = purchaseSupplier.value;
       setHtml(
         purchaseSupplier,
-        html`${cachedSuppliers.map((supplier) => html`<option value="${supplier.id}">${supplier.name}</option>`)}`
+        html`<option value="">Elige proveedor…</option>${suppliers.map(
+          (supplier) => html`<option value="${supplier.id}" ${supplier.id === selected ? "selected" : null}>${supplierLabel(supplier)}</option>`
+        )}`
       );
-      if (!cachedSuppliers.length) {
+      if (!suppliers.length) {
         setHtml(suppliersList, html`<p class="muted">Agrega tu primer proveedor: Central de Abastos, una distribuidora…</p>`);
         return;
       }
       setHtml(
         suppliersList,
-        html`${cachedSuppliers.map(
-          (supplier) => html`
-            <div class="list-item item-line">
-              <div>
-                <strong>${supplier.name}</strong>
-                <p class="muted">${supplier.phone || "Sin teléfono"}${supplier.notes ? ` · ${supplier.notes}` : ""}</p>
+        html`${suppliers.map((supplier) => {
+          const count = productCount(supplier.id);
+          return html`
+            <div class="list-item">
+              <div class="item-line">
+                <div class="supplier-head">
+                  ${supplierCode(supplier) ? html`<span class="supplier-num">${supplierCode(supplier)}</span>` : html``}
+                  <strong>${supplier.name}</strong>
+                </div>
+                <span class="tag">${count} ${count === 1 ? "producto" : "productos"}</span>
               </div>
+              <p class="muted">${supplier.type ? `${supplier.type} · ` : ""}${supplier.phone || "Sin teléfono"}${supplier.notes ? ` · ${supplier.notes}` : ""}</p>
               <div class="actions">
-                <button class="ghost" type="button" data-edit-supplier="${supplier.id}">Editar</button>
-                <button class="ghost danger" type="button" data-delete-supplier="${supplier.id}">Eliminar</button>
+                <button class="ghost" type="button" data-products-supplier="${supplier.id}">${iconFor("box")} Productos</button>
+                ${canManage()
+                  ? html`<button class="ghost" type="button" data-edit-supplier="${supplier.id}">Editar</button>
+                      <button class="ghost danger" type="button" data-delete-supplier="${supplier.id}">Eliminar</button>`
+                  : html``}
               </div>
             </div>
-          `
-        )}`
+          `;
+        })}`
       );
     };
 
     const openSupplierForm = (supplier?: Supplier): void => {
       openModal({
-        title: supplier ? "Editar proveedor" : "Nuevo proveedor",
+        title: supplier ? `Editar proveedor ${supplierCode(supplier)}` : "Nuevo proveedor",
         content: html`
+          ${supplier ? html`` : html`<p class="muted">Se le asignará el número ${supplierCode({ number: nextSupplierNumber(ctx.repos.suppliers.all()) })}.</p>`}
           <label class="form-field">Nombre
             <input id="sName" class="input" value="${supplier?.name ?? ""}" required>
+          </label>
+          <label class="form-field">Giro / tipo de productos
+            <input id="sType" class="input" value="${supplier?.type ?? ""}" placeholder="Refrescos, cerveza, cigarros, abarrotes…" list="supplierTypes">
+            <datalist id="supplierTypes">
+              ${["Abarrotes", "Refrescos", "Cerveza", "Cigarros", "Lácteos", "Botanas", "Pan", "Limpieza", "Frutas y verduras"].map((type) => html`<option value="${type}"></option>`)}
+            </datalist>
           </label>
           <label class="form-field">Teléfono
             <input id="sPhone" class="input" type="tel" value="${supplier?.phone ?? ""}">
           </label>
           <label class="form-field">Nota
-            <input id="sNotes" class="input" value="${supplier?.notes ?? ""}" placeholder="Qué surte, días de visita…">
+            <input id="sNotes" class="input" value="${supplier?.notes ?? ""}" placeholder="Días de visita, condiciones…">
           </label>
         `,
         actions: [
@@ -98,26 +130,102 @@ export const proveedoresTab: TabModule = {
             label: supplier ? "Guardar" : "Crear",
             kind: "primary",
             onClick: (close) => {
-              const name = (document.getElementById("sName") as HTMLInputElement).value.trim();
+              const value = (id: string): string => (document.getElementById(id) as HTMLInputElement).value.trim();
+              const name = value("sName");
               if (!name) {
                 ctx.toast("Escribe el nombre del proveedor");
                 return;
               }
               const ts = nowISO();
-              const phone = (document.getElementById("sPhone") as HTMLInputElement).value.trim();
-              const notes = (document.getElementById("sNotes") as HTMLInputElement).value.trim();
+              const fields = { name, type: value("sType"), phone: value("sPhone"), notes: value("sNotes") };
               if (supplier) {
-                ctx.repos.suppliers.upsert({ ...supplier, name, phone, notes, updated_at: ts });
+                ctx.repos.suppliers.upsert({ ...supplier, ...fields, updated_at: ts });
                 ctx.toast("Proveedor actualizado");
               } else {
-                ctx.repos.suppliers.upsert({ id: uid(), name, phone, notes, created_at: ts, updated_at: ts });
-                ctx.toast("Proveedor agregado");
+                const number = nextSupplierNumber(ctx.repos.suppliers.all());
+                ctx.repos.suppliers.upsert({ id: uid(), number, ...fields, created_at: ts, updated_at: ts });
+                ctx.toast(`Proveedor ${supplierCode({ number })} agregado`);
               }
               close();
-              renderSuppliers();
             }
           }
         ]
+      });
+    };
+
+    /** Productos que surte el proveedor: se asocian/desasocian con casillas. */
+    const openSupplierProducts = (supplier: Supplier): void => {
+      const editable = canManage();
+      const all = ctx.repos.products.list().filter((product) => product.active !== false).sort((a, b) => a.name.localeCompare(b.name));
+      const selected = new Set(all.filter((product) => product.supplier_id === supplier.id).map((product) => product.id));
+      const renderRows = (listEl: HTMLElement, query: string): void => {
+        const rows = all.filter((product) => productMatches(product, query) && (editable || selected.has(product.id)));
+        setHtml(
+          listEl,
+          rows.length
+            ? html`${rows.map((product) => {
+                const other = product.supplier_id && product.supplier_id !== supplier.id ? ctx.repos.suppliers.byId(product.supplier_id) : undefined;
+                return html`
+                  <label class="check-option check-row">
+                    <input type="checkbox" value="${product.id}" ${selected.has(product.id) ? "checked" : null} ${editable ? null : "disabled"}>
+                    <span>${product.name}<small class="muted">${product.category || "Sin categoría"}${other && !other.deleted ? ` · ahora con ${supplierLabel(other)}` : ""}</small></span>
+                  </label>
+                `;
+              })}`
+            : html`<p class="muted">${editable ? "No hay productos con esa búsqueda." : "Este proveedor aún no tiene productos asociados."}</p>`
+        );
+      };
+      openModal({
+        title: `Productos de ${supplierLabel(supplier)}`,
+        content: html`
+          <p class="muted">${editable ? "Marca los productos que surte este proveedor. En Venta y en Compras podrás filtrarlos por proveedor." : "Productos que surte este proveedor."}</p>
+          <input id="spSearch" class="input" placeholder="Buscar producto" autocomplete="off">
+          <div id="spList" class="check-list"></div>
+          ${editable ? html`<button id="spNew" class="ghost" type="button">${iconFor("plus")} Crear producto nuevo para este proveedor</button>` : html``}
+        `,
+        actions: editable
+          ? [
+              { label: "Cancelar", kind: "ghost", onClick: (close) => close() },
+              {
+                label: "Guardar",
+                kind: "primary",
+                onClick: (close) => {
+                  const ts = nowISO();
+                  let changed = 0;
+                  for (const product of all) {
+                    const current = ctx.repos.products.byId(product.id);
+                    if (!current || current.deleted) continue;
+                    const linked = current.supplier_id === supplier.id;
+                    if (selected.has(product.id) && !linked) {
+                      ctx.repos.products.upsert({ ...current, supplier_id: supplier.id, updated_at: ts });
+                      changed += 1;
+                    } else if (!selected.has(product.id) && linked) {
+                      ctx.repos.products.upsert({ ...current, supplier_id: undefined, updated_at: ts });
+                      changed += 1;
+                    }
+                  }
+                  close();
+                  ctx.toast(changed ? `${changed} productos actualizados` : "Sin cambios");
+                }
+              }
+            ]
+          : [{ label: "Cerrar", kind: "primary" }],
+        onOpen: (modalRoot, close) => {
+          const listEl = modalRoot.querySelector<HTMLElement>("#spList")!;
+          const searchEl = modalRoot.querySelector<HTMLInputElement>("#spSearch")!;
+          renderRows(listEl, "");
+          searchEl.addEventListener("input", () => renderRows(listEl, searchEl.value));
+          listEl.addEventListener("change", (event) => {
+            const box = event.target as HTMLInputElement;
+            if (box.type !== "checkbox") return;
+            if (box.checked) selected.add(box.value);
+            else selected.delete(box.value);
+          });
+          modalRoot.querySelector<HTMLButtonElement>("#spNew")?.addEventListener("click", () => {
+            close();
+            openNewProductModal(ctx, () => undefined, { supplierId: supplier.id });
+          });
+        }
       });
     };
 
@@ -125,65 +233,46 @@ export const proveedoresTab: TabModule = {
 
     suppliersList.addEventListener("click", async (event) => {
       const target = event.target as HTMLElement;
+      const productsButton = target.closest<HTMLElement>("[data-products-supplier]");
+      if (productsButton) {
+        const supplier = ctx.repos.suppliers.byId(productsButton.dataset.productsSupplier!);
+        if (supplier) openSupplierProducts(supplier);
+        return;
+      }
       const editButton = target.closest<HTMLElement>("[data-edit-supplier]");
       if (editButton) {
-        const supplier = cachedSuppliers.find((s) => s.id === editButton.dataset.editSupplier);
+        const supplier = ctx.repos.suppliers.byId(editButton.dataset.editSupplier!);
         if (supplier) openSupplierForm(supplier);
         return;
       }
       const deleteButton = target.closest<HTMLElement>("[data-delete-supplier]");
       if (deleteButton) {
-        const supplier = cachedSuppliers.find((s) => s.id === deleteButton.dataset.deleteSupplier);
+        const supplier = ctx.repos.suppliers.byId(deleteButton.dataset.deleteSupplier!);
         if (!supplier) return;
+        const count = productCount(supplier.id);
         const confirmed = await confirmDialog({
           title: "Eliminar proveedor",
-          message: `Se eliminará "${supplier.name}" del catálogo. Las compras pasadas no se afectan.`,
+          message: `Se eliminará "${supplier.name}" del catálogo.${count ? ` Sus ${count} productos quedarán sin proveedor.` : ""} Las compras pasadas no se afectan.`,
           confirmLabel: "Eliminar",
           danger: true
         });
         if (!confirmed) return;
+        const ts = nowISO();
+        ctx.repos.products
+          .list()
+          .filter((product) => product.supplier_id === supplier.id)
+          .forEach((product) => ctx.repos.products.upsert({ ...product, supplier_id: undefined, updated_at: ts }));
         ctx.repos.suppliers.softDelete(supplier.id);
         ctx.toast("Proveedor eliminado");
-        renderSuppliers();
       }
     });
 
-    let lineCount = 1;
-
-    const renderProducts = (): void => {
-      const products = ctx.repos.products.list().filter((p) => p.active !== false);
-      const options = products.map((p) => html`<option value="${p.id}">${p.name} (${p.um})</option>`);
-      setHtml(
-        purchaseLines,
-        html`${Array.from({ length: lineCount }, (_, index) => html`
-          <div class="row" data-purchase-line>
-            <select class="input" data-purchase-product aria-label="Producto ${index + 1}">${options}</select>
-            <input class="input" data-purchase-qty type="number" step="0.01" min="0.01" placeholder="Cantidad" required>
-            <input class="input" data-purchase-total type="number" step="0.01" min="0.01" placeholder="Total pagado" required>
-            ${lineCount > 1 ? html`<button class="ghost danger" data-remove-purchase-line type="button" aria-label="Quitar producto">Quitar</button>` : null}
-          </div>
-        `)}`
-      );
-    };
-
-    addPurchaseLine.addEventListener("click", () => {
-      lineCount += 1;
-      renderProducts();
-    });
-    purchaseLines.addEventListener("click", (event) => {
-      if ((event.target as HTMLElement).closest("[data-remove-purchase-line]")) {
-        lineCount = Math.max(1, lineCount - 1);
-        renderProducts();
-      }
-    });
-
-    const render = (): void => {
+    const renderPurchases = (): void => {
       const branchId = ctx.branches.operationalId();
-      renderSuppliers();
-      renderProducts();
       const purchases = ctx.repos.purchases
         .list()
         .filter((purchase) => purchase.branch_id === branchId)
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
         .slice(0, 30);
       setHtml(
         list,
@@ -195,7 +284,7 @@ export const proveedoresTab: TabModule = {
                     <strong>${purchase.supplier}</strong>
                     <strong>${fmtMoneyPesos(purchase.total)}</strong>
                   </div>
-                  <p class="muted">${purchase.product_name} | ${fmtQty(purchase.qty)} ${purchase.um ?? "Pza"} | ${fmtDateTime(purchase.created_at)}</p>
+                  <p class="muted">${purchase.product_name} | ${fmtQty(purchase.qty)} ${purchase.um ?? "Pza"}${purchase.packs ? ` (${fmtQty(purchase.packs)} ${purchase.packs === 1 ? "caja" : "cajas"} de ${fmtQty(purchase.pack_size ?? 0)})` : ""} | ${fmtDateTime(purchase.created_at)}</p>
                 </div>
               `
             )}`
@@ -203,34 +292,46 @@ export const proveedoresTab: TabModule = {
       );
     };
 
+    root.querySelector<HTMLButtonElement>("#addPurchaseLine")!.addEventListener("click", () => lines.addLine());
+    purchaseSupplier.addEventListener("change", () => lines.render());
+
     purchaseForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const supplier = ctx.repos.suppliers.byId(purchaseSupplier.value);
-      const items = [...purchaseLines.querySelectorAll<HTMLElement>("[data-purchase-line]")].map((line) => ({
-        productId: line.querySelector<HTMLSelectElement>("[data-purchase-product]")?.value ?? "",
-        qty: Number(line.querySelector<HTMLInputElement>("[data-purchase-qty]")?.value || 0),
-        totalPaid: Number(line.querySelector<HTMLInputElement>("[data-purchase-total]")?.value || 0)
-      }));
-      if (items.some((item) => !item.productId || !Number.isFinite(item.qty) || item.qty <= 0 || !Number.isFinite(item.totalPaid) || item.totalPaid <= 0)) {
-        ctx.toast("Revisa producto, cantidad y total de todas las líneas");
+      if (!supplier || supplier.deleted) {
+        ctx.toast("Elige el proveedor de la compra");
         return;
       }
-      const result = ctx.inventory.receiveStockMany(items, supplier?.name || "Entrada de inventario");
+      const read = lines.read();
+      if (!read.ok) {
+        ctx.toast(read.error);
+        return;
+      }
+      const result = ctx.inventory.receiveStockMany(read.items, supplier.name);
       if (!result.ok) {
         ctx.toast(result.error);
         return;
       }
-      purchaseForm.reset();
-      lineCount = 1;
-      renderSuppliers();
-      renderProducts();
+      lines.reset();
       ctx.toast(`Compra registrada: ${result.count} productos, ${fmtQty(result.qty)} unidades`);
     });
 
-    ctx.store.watch(
-      (s) => [s.purchases, s.products, s.suppliers, s.branches, s.currentBranchId] as const,
-      render
-    );
-    render();
+    ctx.store.watch((s) => s.suppliers, (suppliers) => {
+      // Proveedores dados de alta antes de la numeración: se numeran una vez.
+      if (canManage()) {
+        const numbered = assignMissingSupplierNumbers(suppliers);
+        if (numbered.length) {
+          ctx.repos.suppliers.upsertMany(numbered.map((s) => ({ ...s, updated_at: nowISO() })));
+          return;
+        }
+      }
+      renderSuppliers();
+      lines.render();
+    });
+    ctx.store.watch((s) => s.products, () => {
+      renderSuppliers();
+      lines.render();
+    });
+    ctx.store.watch((s) => [s.purchases, s.branches, s.currentBranchId] as const, renderPurchases);
   }
 };

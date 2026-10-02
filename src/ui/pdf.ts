@@ -15,15 +15,19 @@ export function openReportPdf(title: string, storeName: string, report: PeriodRe
   const slowRows = productRows(report.slow_products, "No hay productos registrados.");
   const rows: Array<[string, string]> = [
     ["Ventas", fmtMoneyPesos(report.sales_total)],
+    ["   Cigarros", fmtMoneyPesos(report.cigarros_total ?? 0)],
+    ["   Cerveza", fmtMoneyPesos(report.cerveza_total ?? 0)],
     ["Costo vendido", fmtMoneyPesos(report.sales_cost)],
     ["Ganancia bruta", fmtMoneyPesos(report.gross_profit)],
-    ["Gastos", fmtMoneyPesos(report.expenses_total)],
+    ["Costos fijos (proporcional)", fmtMoneyPesos(report.fixed_costs_total ?? 0)],
+    ["Gastos extra", fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)],
     ["Compras proveedores", fmtMoneyPesos(report.purchases_total)],
     ["Mermas", fmtMoneyPesos(report.mermas_total)],
     ["Ganancia después de gastos", fmtMoneyPesos(report.profit_after_expenses)],
     ["Ventas fiadas", fmtMoneyPesos(report.credit_total)],
+    ["Consumo interno (a costo)", fmtMoneyPesos(report.internal_total ?? 0)],
     ["Número de ventas", String(report.sales_count)],
-    ["Gastos registrados", String(report.expenses_count)],
+    ["Gastos extra registrados", String(report.expenses_count)],
     ["Compras registradas", String(report.purchases_count)]
   ];
   const body = `
@@ -89,10 +93,13 @@ function withUnit(qty: number, um: string): string {
 }
 
 function openPrintable(title: string, body: string): void {
-  const doc = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${DOC_STYLE}</style></head><body>${body}<script>window.print()<\/script></body></html>`;
+  const doc = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${DOC_STYLE}</style></head><body>${body}</body></html>`;
   const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank");
+  // La CSP (script-src 'self') bloquea un <script> dentro del documento: se
+  // imprime desde aquí cuando carga (blob del mismo origen).
+  win?.addEventListener("load", () => win.print());
   if (!win) {
     const link = document.createElement("a");
     link.href = url;

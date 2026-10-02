@@ -16,8 +16,19 @@ export interface ActiveCount {
 export type ApplyCountResult = { ok: true; count: InventoryCount } | { ok: false; error: string };
 export interface StockReceipt {
   productId: string;
+  /** Cantidad en la unidad base del producto (piezas, kg…). */
   qty: number;
   totalPaid: number;
+  /** Si se capturó en cajas: cuántas cajas y de cuántas piezas. */
+  packs?: number;
+  packSize?: number;
+}
+
+/** Convierte cajas/paquetes a piezas: 3 cajas de 12 + 2 sueltas = 38. */
+export function unitsFromPacks(packs: number, packSize: number | undefined, loose = 0): number {
+  const size = normalizeQty(packSize ?? 0);
+  const boxes = normalizeQty(packs);
+  return normalizeQty((size > 0 ? boxes * size : boxes) + normalizeQty(loose));
 }
 
 /**
@@ -80,6 +91,23 @@ export class InventoryService {
 
   cancel(): void {
     this.active = null;
+  }
+
+  /** Copia del conteo en curso (para guardarlo y no perderlo al recargar). */
+  snapshot(): ActiveCount | null {
+    return this.active ? { ...this.active, items: { ...this.active.items } } : null;
+  }
+
+  /** Recupera un conteo guardado (solo si sigue siendo válido). */
+  restore(saved: unknown): void {
+    if (!saved || typeof saved !== "object") return;
+    const candidate = saved as Partial<ActiveCount>;
+    if (typeof candidate.id !== "string" || typeof candidate.branch_id !== "string" || typeof candidate.started_at !== "string") return;
+    const items: Record<string, string> = {};
+    Object.entries(candidate.items ?? {}).forEach(([key, value]) => {
+      if (typeof value === "string") items[key] = value;
+    });
+    this.active = { id: candidate.id, branch_id: candidate.branch_id, started_at: candidate.started_at, items };
   }
 
   countedValue(productId: string): string | undefined {
@@ -150,9 +178,17 @@ export class InventoryService {
       const stockRow = this.repos.stocks
         .list()
         .find((row) => row.product_id === incidence.product_id && row.branch_id === active.branch_id);
-      if (stockRow) {
-        this.repos.stocks.upsert({ ...stockRow, stock: normalizeQty(incidence.physical_stock), updated_at: ts });
-      }
+      // Producto contado sin fila de existencia en la sucursal: se crea.
+      this.repos.stocks.upsert({
+        id: stockRow?.id ?? `${incidence.product_id}:${active.branch_id}`,
+        product_id: incidence.product_id,
+        branch_id: active.branch_id,
+        min_stock: stockRow?.min_stock ?? 0,
+        ...stockRow,
+        deleted: false,
+        stock: normalizeQty(incidence.physical_stock),
+        updated_at: ts
+      });
     }
     const count: InventoryCount = {
       id: active.id,
@@ -185,7 +221,13 @@ export class InventoryService {
   }
 
   /** Entrada de mercancía: suma stock y registra la compra para reportes. */
-  receiveStock(productId: string, qty: number, supplierName: string, totalPaid: number): { ok: true; qty: number } | { ok: false; error: string } {
+  receiveStock(
+    productId: string,
+    qty: number,
+    supplierName: string,
+    totalPaid: number,
+    pack?: { packs?: number; packSize?: number }
+  ): { ok: true; qty: number } | { ok: false; error: string } {
     const product = this.repos.products.byId(productId);
     if (!product) return { ok: false, error: "No se encontró el producto" };
     const quantity = normalizeQty(qty);
@@ -217,6 +259,7 @@ export class InventoryService {
       um: product.um,
       qty: quantity,
       total: Math.round(totalPaid * 100) / 100,
+      ...(pack?.packs && pack.packSize ? { packs: normalizeQty(pack.packs), pack_size: normalizeQty(pack.packSize) } : {}),
       created_at: ts,
       updated_at: ts
     };
@@ -235,7 +278,7 @@ export class InventoryService {
     let count = 0;
     let qty = 0;
     for (const item of items) {
-      const result = this.receiveStock(item.productId, item.qty, supplierName, item.totalPaid);
+      const result = this.receiveStock(item.productId, item.qty, supplierName, item.totalPaid, { packs: item.packs, packSize: item.packSize });
       if (!result.ok) return result;
       count += 1;
       qty += result.qty;

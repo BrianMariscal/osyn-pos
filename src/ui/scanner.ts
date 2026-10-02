@@ -28,12 +28,12 @@ export function scanBarcode(): Promise<string | null> {
     };
 
     openModal({
-      title: "Escanear código",
+      title: "Escanear código o QR",
       content: html`
         <div class="scanner-box">
           <video id="scannerVideo" playsinline muted></video>
         </div>
-        <p class="hint">Apunta al código de barras del producto.</p>
+        <p class="hint">Apunta al código de barras o al código QR del producto.</p>
       `,
       actions: [
         {
