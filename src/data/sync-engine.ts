@@ -109,6 +109,7 @@ export class SyncEngine {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running: Promise<SyncResult> | null = null;
   private queued = false;
+  private serverStockCheckedAt = 0;
 
   constructor(
     private store: Store<AppState>,
@@ -163,9 +164,16 @@ export class SyncEngine {
         this.applyPulled(table, result).forEach((id) => conflicts.push({ table, id }));
       });
       await this.pullSettings(token);
-      const pushable = isAdmin
-        ? tables
-        : tables.filter((table) => table !== "products" && table !== "branches" && table !== "month_closings");
+      const serverStock = await this.checkServerStock(token);
+      // Con stock en el servidor, el vendedor no sube existencias: las mueve
+      // Postgres con cada venta/compra/merma (y rechazaría las suyas).
+      const vendorBlocked = new Set<SyncTableKey>(["products", "branches", "month_closings"]);
+      if (serverStock) vendorBlocked.add("product_stocks");
+      if (!isAdmin && serverStock) {
+        const stale = this.tracker.takeIds("product_stocks");
+        if (stale?.length) this.tracker.clear("product_stocks", stale);
+      }
+      const pushable = isAdmin ? tables : tables.filter((table) => !vendorBlocked.has(table));
       for (const table of pushable) {
         await this.push(table, token);
       }
@@ -181,6 +189,32 @@ export class SyncEngine {
       });
       return { ok: false, error: message };
     }
+  }
+
+  /**
+   * ¿Ya corre la migración stock-servidor? Se pregunta una vez por sesión si
+   * ya está, o cada 5 minutos mientras no. Se guarda en el estado para que las
+   * ventas sin internet sigan el mismo modo al recargar.
+   */
+  private async checkServerStock(token: string): Promise<boolean> {
+    const known = Boolean(this.store.getState().sync.serverStock);
+    const now = Date.now();
+    if (known && this.serverStockCheckedAt) return true;
+    if (!known && now - this.serverStockCheckedAt < 5 * 60_000) return false;
+    this.serverStockCheckedAt = now;
+    let enabled = known;
+    try {
+      enabled = (await this.client.rpc("pos_server_stock", token)) === true;
+    } catch {
+      // La función no existe (migración pendiente) o falló la red: se conserva lo sabido.
+      enabled = known;
+    }
+    if (enabled !== known) {
+      this.store.update((state) => {
+        state.sync = { ...state.sync, serverStock: enabled };
+      });
+    }
+    return enabled;
   }
 
   private setSyncing(value: boolean): void {

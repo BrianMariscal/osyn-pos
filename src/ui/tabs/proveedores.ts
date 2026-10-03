@@ -11,6 +11,9 @@ import { mountPurchaseLines } from "../purchase-lines";
 import { openNewProductModal } from "./inventario";
 import type { TabModule } from "./tab-module";
 
+const CENTRAL_ID = "__central__";
+const CENTRAL_NAME = "Central de Abastos";
+
 export const proveedoresTab: TabModule = {
   id: "proveedores",
   render(root, ctx) {
@@ -28,9 +31,17 @@ export const proveedoresTab: TabModule = {
 
             <h2>Registrar compra</h2>
             <form id="purchaseForm" class="form">
-              <label class="form-field">Proveedor
-                <select id="purchaseSupplier" class="input"></select>
-              </label>
+              <div class="row">
+                <label class="form-field">Proveedor
+                  <select id="purchaseSupplier" class="input"></select>
+                </label>
+                <label class="form-field">¿Con qué se pagó?
+                  <select id="purchasePaidFrom" class="input">
+                    <option value="caja">Dinero de la caja (se resta en el corte)</option>
+                    <option value="aparte">Dinero aparte (no sale de la caja)</option>
+                  </select>
+                </label>
+              </div>
               <div class="section-title"><h3>Productos de la compra</h3><button id="addPurchaseLine" class="ghost" type="button">${iconFor("plus")} Agregar producto</button></div>
               <div id="purchaseLines" class="purchase-lines"></div>
               <button class="primary" type="submit">Registrar compra completa</button>
@@ -49,10 +60,16 @@ export const proveedoresTab: TabModule = {
     const suppliersList = root.querySelector<HTMLElement>("#suppliersList")!;
     const purchaseForm = root.querySelector<HTMLFormElement>("#purchaseForm")!;
     const purchaseSupplier = root.querySelector<HTMLSelectElement>("#purchaseSupplier")!;
+    const purchasePaidFrom = root.querySelector<HTMLSelectElement>("#purchasePaidFrom")!;
     const purchaseLinesEl = root.querySelector<HTMLElement>("#purchaseLines")!;
     const list = root.querySelector<HTMLElement>("#purchasesList")!;
 
-    const lines = mountPurchaseLines(purchaseLinesEl, ctx, { requireTotal: true, supplierId: () => purchaseSupplier.value });
+    // "Central de Abastos" no es un proveedor del catálogo: compra local en
+    // varios puestos, normalmente con dinero aparte. Ofrece todos los productos.
+    const lines = mountPurchaseLines(purchaseLinesEl, ctx, {
+      requireTotal: true,
+      supplierId: () => (purchaseSupplier.value === CENTRAL_ID ? "" : purchaseSupplier.value)
+    });
     // Solo dueño/administrador editan el catálogo (así lo exige la base de datos).
     const canManage = (): boolean => ctx.auth.isAdmin();
 
@@ -68,7 +85,8 @@ export const proveedoresTab: TabModule = {
       const selected = purchaseSupplier.value;
       setHtml(
         purchaseSupplier,
-        html`<option value="">Elige proveedor…</option>${suppliers.map(
+        html`<option value="">Elige proveedor…</option>
+          <option value="${CENTRAL_ID}" ${selected === CENTRAL_ID ? "selected" : null}>Central de Abastos (compra local)</option>${suppliers.map(
           (supplier) => html`<option value="${supplier.id}" ${supplier.id === selected ? "selected" : null}>${supplierLabel(supplier)}</option>`
         )}`
       );
@@ -284,6 +302,7 @@ export const proveedoresTab: TabModule = {
                     <strong>${purchase.supplier}</strong>
                     <strong>${fmtMoneyPesos(purchase.total)}</strong>
                   </div>
+                  ${purchase.paid_from === "aparte" ? html`<span class="tag">Pagada aparte</span>` : html``}
                   <p class="muted">${purchase.product_name} | ${fmtQty(purchase.qty)} ${purchase.um ?? "Pza"}${purchase.packs ? ` (${fmtQty(purchase.packs)} ${purchase.packs === 1 ? "caja" : "cajas"} de ${fmtQty(purchase.pack_size ?? 0)})` : ""} | ${fmtDateTime(purchase.created_at)}</p>
                 </div>
               `
@@ -293,12 +312,17 @@ export const proveedoresTab: TabModule = {
     };
 
     root.querySelector<HTMLButtonElement>("#addPurchaseLine")!.addEventListener("click", () => lines.addLine());
-    purchaseSupplier.addEventListener("change", () => lines.render());
+    purchaseSupplier.addEventListener("change", () => {
+      // La Central de Abastos casi siempre se paga con dinero aparte.
+      purchasePaidFrom.value = purchaseSupplier.value === CENTRAL_ID ? "aparte" : "caja";
+      lines.render();
+    });
 
     purchaseForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      const supplier = ctx.repos.suppliers.byId(purchaseSupplier.value);
-      if (!supplier || supplier.deleted) {
+      const central = purchaseSupplier.value === CENTRAL_ID;
+      const supplier = central ? undefined : ctx.repos.suppliers.byId(purchaseSupplier.value);
+      if (!central && (!supplier || supplier.deleted)) {
         ctx.toast("Elige el proveedor de la compra");
         return;
       }
@@ -307,7 +331,8 @@ export const proveedoresTab: TabModule = {
         ctx.toast(read.error);
         return;
       }
-      const result = ctx.inventory.receiveStockMany(read.items, supplier.name);
+      const paidFrom = purchasePaidFrom.value === "aparte" ? "aparte" : "caja";
+      const result = ctx.inventory.receiveStockMany(read.items, supplier?.name ?? CENTRAL_NAME, paidFrom);
       if (!result.ok) {
         ctx.toast(result.error);
         return;

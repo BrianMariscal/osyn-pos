@@ -1,7 +1,7 @@
 import { html, setHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
 import { fmtQty } from "../../core/qty";
-import { PAYMENT_LABELS, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
+import { PAYMENT_LABELS, type CartUnit, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
 import { matchOrdersToProducts } from "../../domain/voice/product-matcher";
 import { parseVoiceSale } from "../../domain/voice/voice-parser";
 import { lowStockProducts, productMatches, resolveScannedCode, suggestOffers, supplierCode, supplierLabel, topSellers } from "../../domain/catalog";
@@ -294,24 +294,37 @@ export const ventaTab: TabModule = {
         html`${cart.map((line) => {
           const product = ctx.repos.products.byId(line.productId);
           if (!product) return html``;
+          const lineUnit: CartUnit = line.unit === "caja" ? "caja" : "pza";
+          const isBox = lineUnit === "caja";
           const unit = ctx.sales.unitPrice(line);
-          const onOffer = unit !== product.price;
+          const onOffer = !isBox && unit !== product.price;
           const lineTotal = lineTotalCents(line.qty, unit);
-          const step = qtyStep(product.um);
+          const step = isBox ? 1 : qtyStep(product.um);
+          const byPack = ctx.sales.sellsByPack(product.id);
           return html`
-            <div class="list-item cart-item">
+            <div class="list-item cart-item" data-line="${line.productId}" data-unit="${lineUnit}">
               <div class="cart-item-info">
                 <strong>${product.name}</strong>
-                <p class="muted">${onOffer ? html`<s>${fmtMoneyPesos(product.price)}</s> <span class="offer-tag">Oferta ${fmtMoneyPesos(unit)}</span>` : fmtMoneyPesos(product.price)} por ${product.um}</p>
+                <p class="muted">${isBox
+                  ? html`${fmtMoneyPesos(unit)} por caja de ${product.pack_size ?? 1}`
+                  : onOffer
+                    ? html`<s>${fmtMoneyPesos(product.price)}</s> <span class="offer-tag">Oferta ${fmtMoneyPesos(unit)}</span> por ${product.um}`
+                    : html`${fmtMoneyPesos(product.price)} por ${product.um}`}</p>
+                ${byPack
+                  ? html`<div class="unit-toggle" role="group" aria-label="Vender por">
+                      <button type="button" class="${isBox ? "" : "active"}" data-set-unit="pza" aria-pressed="${isBox ? "false" : "true"}">Pieza ${fmtMoneyPesos(product.price)}</button>
+                      <button type="button" class="${isBox ? "active" : ""}" data-set-unit="caja" aria-pressed="${isBox ? "true" : "false"}">Caja ${fmtMoneyPesos(product.pack_price ?? 0)}</button>
+                    </div>`
+                  : html``}
               </div>
               <div class="qty-stepper" data-step="${step}">
-                <button type="button" data-qty-dec="${line.productId}" aria-label="Menos cantidad">−</button>
-                <input class="input" type="number" min="0" max="${ctx.sales.stockOf(line.productId)}" step="${step}" value="${line.qty}" data-qty="${line.productId}" inputmode="decimal" aria-label="Cantidad de ${product.name}">
-                <button type="button" data-qty-inc="${line.productId}" aria-label="Más cantidad">+</button>
+                <button type="button" data-qty-dec aria-label="Menos cantidad">−</button>
+                <input class="input" type="number" min="0" max="${ctx.sales.availableFor(line.productId, lineUnit)}" step="${step}" value="${line.qty}" data-qty inputmode="decimal" aria-label="Cantidad de ${product.name}${isBox ? " en cajas" : ""}">
+                <button type="button" data-qty-inc aria-label="Más cantidad">+</button>
               </div>
               <div class="cart-item-total">
                 <strong>${fmtMoney(lineTotal)}</strong>
-                <button class="ghost danger" type="button" data-remove="${line.productId}">Quitar</button>
+                <button class="ghost danger" type="button" data-remove>Quitar</button>
               </div>
             </div>
           `;
@@ -432,29 +445,44 @@ export const ventaTab: TabModule = {
       renderGrid();
     });
 
+    /** Renglón del carrito (producto + unidad) al que pertenece un elemento. */
+    const lineOf = (el: HTMLElement): { productId: string; unit: CartUnit } | null => {
+      const row = el.closest<HTMLElement>("[data-line]");
+      if (!row) return null;
+      return { productId: row.dataset.line!, unit: row.dataset.unit === "caja" ? "caja" : "pza" };
+    };
+
     items.addEventListener("change", (event) => {
       const input = (event.target as HTMLElement).closest<HTMLInputElement>("[data-qty]");
-      if (!input) return;
-      const result = ctx.sales.setCartQty(input.dataset.qty!, input.value);
+      const line = input && lineOf(input);
+      if (!input || !line) return;
+      const result = ctx.sales.setCartQty(line.productId, input.value, line.unit);
       if (!result.ok) ctx.toast(result.error);
     });
 
     items.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
-      const remove = target.closest<HTMLElement>("[data-remove]");
-      if (remove) {
-        ctx.sales.removeFromCart(remove.dataset.remove!);
+      const line = lineOf(target);
+      if (!line) return;
+      if (target.closest("[data-remove]")) {
+        ctx.sales.removeFromCart(line.productId, line.unit);
+        return;
+      }
+      const setUnit = target.closest<HTMLElement>("[data-set-unit]");
+      if (setUnit) {
+        const to: CartUnit = setUnit.dataset.setUnit === "caja" ? "caja" : "pza";
+        const result = ctx.sales.setLineUnit(line.productId, line.unit, to);
+        if (!result.ok) ctx.toast(result.error);
         return;
       }
       const inc = target.closest<HTMLElement>("[data-qty-inc]");
       const dec = target.closest<HTMLElement>("[data-qty-dec]");
       if (!inc && !dec) return;
-      const productId = inc ? inc.dataset.qtyInc! : dec!.dataset.qtyDec!;
-      const product = ctx.repos.products.byId(productId);
+      const product = ctx.repos.products.byId(line.productId);
       if (!product) return;
-      const step = qtyStep(product.um);
-      const current = ctx.sales.cart().find((line) => line.productId === productId)?.qty ?? 0;
-      const result = ctx.sales.setCartQty(productId, inc ? current + step : current - step);
+      const step = line.unit === "caja" ? 1 : qtyStep(product.um);
+      const current = ctx.sales.cart().find((l) => l.productId === line.productId && (l.unit === "caja" ? "caja" : "pza") === line.unit)?.qty ?? 0;
+      const result = ctx.sales.setCartQty(line.productId, inc ? current + step : current - step, line.unit);
       if (!result.ok) ctx.toast(result.error);
     });
 
@@ -540,7 +568,9 @@ export const ventaTab: TabModule = {
             ${sale.items.map(
               (item) => html`
                 <div class="item-line">
-                  <span>${fmtQty(item.qty)} ${item.um} · ${item.name}${item.regular_price ? html` <span class="offer-tag">Oferta</span>` : html``}</span>
+                  <span>${item.pack_size
+                    ? `${fmtQty(item.qty)} ${item.qty === 1 ? "caja" : "cajas"} (${fmtQty(item.qty * item.pack_size)} ${item.um})`
+                    : `${fmtQty(item.qty)} ${item.um}`} · ${item.name}${item.regular_price ? html` <span class="offer-tag">Oferta</span>` : html``}</span>
                   <strong>${fmtMoney(lineTotalCents(item.qty, item.price))}</strong>
                 </div>
               `

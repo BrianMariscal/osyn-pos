@@ -108,7 +108,8 @@ export class ReportService {
           total: 0,
           um: item.um
         };
-        current.qty = normalizeQty(current.qty + normalizeQty(item.qty));
+        // Cajas cuentan como sus piezas.
+        current.qty = normalizeQty(current.qty + normalizeQty(item.qty) * (item.pack_size || 1));
         current.total = toPesos(sumCents([toCents(current.total), Math.round(normalizeQty(item.qty) * toCents(item.price))]));
         byProduct.set(item.productId, current);
       });

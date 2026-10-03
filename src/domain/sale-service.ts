@@ -1,9 +1,10 @@
 import { nowISO } from "../core/dates";
 import { uid } from "../core/id";
-import { lineTotalCents, sumCents, toPesos } from "../core/money";
+import { lineTotalCents, sumCents, toCents, toPesos } from "../core/money";
 import { normalizeQty } from "../core/qty";
 import { fmtQty } from "../core/qty";
-import type { CartLine, Customer, PaymentMethod, ProductStock, Sale, SaleItem } from "../core/types";
+import type { CartLine, CartUnit, Customer, PaymentMethod, ProductStock, Sale, SaleItem } from "../core/types";
+import { moveStock } from "./stock-moves";
 import { detectSaleGroup } from "./sale-groups";
 import type { Repositories } from "../data/repositories";
 import type { BranchService } from "./branch-service";
@@ -53,70 +54,115 @@ export class SaleService {
     return row ? normalizeQty(row.min_stock) : 0;
   }
 
-  /** Precio que se cobra por una línea: el de oferta (si no baja del costo) o el normal. */
+  /** ¿El producto se vende también por caja? (piezas por caja y precio de caja). */
+  sellsByPack(productId: string): boolean {
+    const product = this.repos.products.byId(productId);
+    return Boolean(product && (product.pack_size ?? 0) > 1 && (product.pack_price ?? 0) > 0);
+  }
+
+  /** Piezas que ocupa una unidad del renglón (1 o las piezas de la caja). */
+  piecesPerUnit(productId: string, unit: CartUnit = "pza"): number {
+    if (unit !== "caja") return 1;
+    return Math.max(1, Math.round(this.repos.products.byId(productId)?.pack_size ?? 1));
+  }
+
+  /** Precio que se cobra por una línea: caja, oferta (si no baja del costo) o normal. */
   unitPrice(line: CartLine): number {
     const product = this.repos.products.byId(line.productId);
     if (!product) return 0;
+    if (line.unit === "caja") return product.pack_price ?? 0;
     const promo = line.promoPrice;
     return promo !== undefined && promo > 0 && promo >= product.cost && promo < product.price ? promo : product.price;
   }
 
-  addToCart(productId: string, qty = 1, promoPrice?: number): SimpleResult {
+  /** Cuántas unidades (piezas o cajas) caben en la existencia, sin contar ese renglón. */
+  availableFor(productId: string, unit: CartUnit = "pza"): number {
+    const others = this.store
+      .getState()
+      .cart.filter((l) => l.productId === productId && unitOf(l) !== unit)
+      .reduce((sum, l) => sum + normalizeQty(l.qty) * this.piecesPerUnit(productId, unitOf(l)), 0);
+    const free = Math.max(0, this.stockOf(productId) - others);
+    return unit === "caja" ? Math.floor(free / this.piecesPerUnit(productId, "caja")) : normalizeQty(free);
+  }
+
+  addToCart(productId: string, qty = 1, promoPrice?: number, unit: CartUnit = "pza"): SimpleResult {
     const product = this.repos.products.byId(productId);
     if (!product || product.active === false) return { ok: false, error: "Producto no disponible" };
-    const available = this.stockOf(productId);
+    if (unit === "caja" && !this.sellsByPack(productId)) return { ok: false, error: "Este producto no se vende por caja" };
+    const available = this.availableFor(productId, unit);
     const lines = this.store.getState().cart;
-    const line = lines.find((l) => l.productId === productId);
+    const line = lines.find((l) => isLine(l, productId, unit));
     const currentQty = line?.qty ?? 0;
     let newQty = normalizeQty(currentQty + normalizeQty(qty));
+    if (unit === "caja") newQty = Math.round(newQty);
     if (newQty <= 0) return { ok: false, error: "Cantidad inválida" };
     if (newQty > available) {
       if (available <= currentQty) {
         const branchName = this.branches.name(this.branches.operationalId());
+        if (unit === "caja") return { ok: false, error: "No alcanza la existencia para una caja completa" };
         return { ok: false, error: available <= 0 ? `Sin existencia en ${branchName}` : "No hay más existencia" };
       }
       newQty = available;
     }
-    // Una oferta tocada se conserva para todo el renglón.
-    const promo = promoPrice ?? line?.promoPrice;
-    const withPromo = (l: CartLine): CartLine => (promo !== undefined ? { ...l, qty: newQty, promoPrice: promo } : { ...l, qty: newQty });
-    const next = line
-      ? lines.map((l) => (l.productId === productId ? withPromo(l) : l))
-      : [...lines, withPromo({ productId, qty: newQty })];
+    // Una oferta tocada se conserva para todo el renglón (solo piezas).
+    const promo = unit === "caja" ? undefined : promoPrice ?? line?.promoPrice;
+    const built: CartLine = { productId, qty: newQty };
+    if (promo !== undefined) built.promoPrice = promo;
+    if (unit === "caja") built.unit = "caja";
+    const next = line ? lines.map((l) => (isLine(l, productId, unit) ? built : l)) : [...lines, built];
     this.store.update((state) => {
       state.cart = next;
     });
     return { ok: true };
   }
 
-  setCartQty(productId: string, qty: number | string): SimpleResult {
+  setCartQty(productId: string, qty: number | string, unit: CartUnit = "pza"): SimpleResult {
     const lines = this.store.getState().cart;
-    if (!lines.some((l) => l.productId === productId)) return { ok: false, error: "No está en el carrito" };
+    if (!lines.some((l) => isLine(l, productId, unit))) return { ok: false, error: "No está en el carrito" };
     const product = this.repos.products.byId(productId);
-    // Piezas: solo enteros (fin de decimales raros como 1.03 en productos de pieza)
-    const value = product?.um === "Pza" ? Math.round(normalizeQty(qty)) : normalizeQty(qty);
+    // Piezas y cajas: solo enteros (fin de decimales raros como 1.03 en productos de pieza)
+    const value = product?.um === "Pza" || unit === "caja" ? Math.round(normalizeQty(qty)) : normalizeQty(qty);
     if (value <= 0) {
-      this.removeFromCart(productId);
+      this.removeFromCart(productId, unit);
       return { ok: true };
     }
-    const available = this.stockOf(productId);
+    const available = this.availableFor(productId, unit);
     if (value > available) {
-      const capped = lines.map((l) => (l.productId === productId ? { ...l, qty: available } : l));
+      const capped = available > 0
+        ? lines.map((l) => (isLine(l, productId, unit) ? { ...l, qty: available } : l))
+        : lines.filter((l) => !isLine(l, productId, unit));
       this.store.update((state) => {
         state.cart = capped;
       });
       return { ok: false, error: "No hay más existencia" };
     }
-    const next = lines.map((l) => (l.productId === productId ? { ...l, qty: value } : l));
+    const next = lines.map((l) => (isLine(l, productId, unit) ? { ...l, qty: value } : l));
     this.store.update((state) => {
       state.cart = next;
     });
     return { ok: true };
   }
 
-  removeFromCart(productId: string): void {
+  /** Cambia un renglón entre pieza y caja (se suma si ya había uno en la otra unidad). */
+  setLineUnit(productId: string, from: CartUnit, to: CartUnit): SimpleResult {
+    if (from === to) return { ok: true };
+    const line = this.store.getState().cart.find((l) => isLine(l, productId, from));
+    if (!line) return { ok: false, error: "No está en el carrito" };
+    if (to === "caja" && !this.sellsByPack(productId)) return { ok: false, error: "Este producto no se vende por caja" };
+    this.removeFromCart(productId, from);
+    const result = this.addToCart(productId, to === "caja" ? 1 : this.piecesPerUnit(productId, from) * line.qty, undefined, to);
+    if (!result.ok) {
+      // Sin existencia para la otra unidad: se deja como estaba.
+      this.store.update((state) => {
+        state.cart = [...state.cart, line];
+      });
+    }
+    return result;
+  }
+
+  removeFromCart(productId: string, unit?: CartUnit): void {
     this.store.update((state) => {
-      state.cart = state.cart.filter((line) => line.productId !== productId);
+      state.cart = state.cart.filter((line) => line.productId !== productId || (unit !== undefined && unitOf(line) !== unit));
     });
   }
 
@@ -138,19 +184,27 @@ export class SaleService {
     const cart = this.store.getState().cart;
     if (!cart.length) return { ok: false, error: "El carrito está vacío" };
     const items: SaleItem[] = [];
+    const piecesByProduct = new Map<string, number>();
     for (const line of cart) {
       const product = this.repos.products.byId(line.productId);
       if (!product || product.deleted) return { ok: false, error: "Un producto del carrito ya no existe" };
+      const unit = unitOf(line);
+      if (unit === "caja" && !this.sellsByPack(product.id)) return { ok: false, error: `${product.name} ya no se vende por caja` };
       const qty = normalizeQty(line.qty);
-      const available = this.stockOf(line.productId);
-      if (qty <= 0 || qty > available) return { ok: false, error: "Revisa cantidades y existencia" };
+      const perUnit = this.piecesPerUnit(product.id, unit);
+      const pieces = normalizeQty((piecesByProduct.get(product.id) ?? 0) + qty * perUnit);
+      piecesByProduct.set(product.id, pieces);
+      if (qty <= 0 || pieces > this.stockOf(line.productId)) return { ok: false, error: "Revisa cantidades y existencia" };
+      const price = this.unitPrice(line);
       items.push({
         productId: product.id,
         name: product.name,
         qty,
-        price: this.unitPrice(line),
-        ...(this.unitPrice(line) !== product.price ? { regular_price: product.price } : {}),
-        cost: product.cost,
+        price,
+        ...(unit === "pza" && price !== product.price ? { regular_price: product.price } : {}),
+        ...(unit === "caja" ? { pack_size: perUnit } : {}),
+        // Costo del renglón por unidad vendida: una caja cuesta sus piezas.
+        cost: toPesos(Math.round(toCents(product.cost) * perUnit)),
         um: product.um,
         group: detectSaleGroup(product)
       });
@@ -183,6 +237,7 @@ export class SaleService {
         updated_at: ts
       };
     }
+    const serverStock = Boolean(this.store.getState().sync.serverStock);
     // Venta interna: se registra a costo y sin ganancia (no es ingreso).
     const total = toPesos(internal ? costCents : totalCents);
     const sale: Sale = {
@@ -194,14 +249,12 @@ export class SaleService {
       profit: internal ? 0 : toPesos(totalCents - costCents),
       payment: input.payment,
       customer_id: customer ? customer.id : null,
+      ...(serverStock ? { stock_by_server: true } : {}),
       created_at: ts,
       updated_at: ts
     };
-    for (const item of items) {
-      const stockRow = this.stockRow(item.productId);
-      if (stockRow) {
-        this.repos.stocks.upsert({ ...stockRow, stock: normalizeQty(stockRow.stock - item.qty), updated_at: ts });
-      }
+    for (const [productId, pieces] of piecesByProduct) {
+      moveStock(this.repos, serverStock, productId, branchId, -pieces, ts);
     }
     if (customer) {
       const detail = items.map((item) => `${fmtQty(item.qty)} ${item.name}`).join(", ");
@@ -224,4 +277,12 @@ export class SaleService {
     const branchId = this.branches.operationalId();
     return this.repos.stocks.all().find((row) => !row.deleted && row.product_id === productId && row.branch_id === branchId);
   }
+}
+
+function unitOf(line: CartLine): CartUnit {
+  return line.unit === "caja" ? "caja" : "pza";
+}
+
+function isLine(line: CartLine, productId: string, unit: CartUnit): boolean {
+  return line.productId === productId && unitOf(line) === unit;
 }

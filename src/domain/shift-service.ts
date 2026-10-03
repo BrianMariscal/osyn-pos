@@ -60,7 +60,9 @@ export class ShiftService {
     const totalCents = (rows: Array<{ total: number }>): number => sumCents(rows.map((row) => toCents(row.total)));
     const ventas = totalCents(sales);
     const gastos = sumCents(expenses.map((expense) => toCents(expense.amount)));
-    const proveedores = totalCents(purchases);
+    // Solo las compras pagadas con dinero de la caja salen del efectivo.
+    const proveedores = totalCents(purchases.filter((p) => p.paid_from !== "aparte"));
+    const proveedoresAparte = totalCents(purchases.filter((p) => p.paid_from === "aparte"));
     const mermasCents = sumCents(mermas.map((merma) => toCents(merma.cost_impact)));
     const efectivo = totalCents(sales.filter((s) => s.payment === "efectivo"));
     const gananciaCents = sumCents(sales.map((s) => toCents(s.profit))) - gastos;
@@ -76,6 +78,7 @@ export class ShiftService {
       interno: toPesos(sumCents(internal.map((s) => toCents(s.cost)))),
       gastos: toPesos(gastos),
       proveedores: toPesos(proveedores),
+      proveedoresAparte: toPesos(proveedoresAparte),
       mermas: toPesos(mermasCents),
       ganancia: toPesos(gananciaCents),
       efectivoEsperado: toPesos(efectivo - gastos - proveedores)

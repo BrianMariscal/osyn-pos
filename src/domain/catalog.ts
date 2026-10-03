@@ -193,7 +193,7 @@ export function topSellers(
   const qty = new Map<string, number>();
   for (const sale of sales) {
     if (sale.deleted || sale.payment === "interno" || Date.parse(sale.created_at) < since) continue;
-    for (const item of sale.items ?? []) qty.set(item.productId, (qty.get(item.productId) ?? 0) + Number(item.qty || 0));
+    for (const item of sale.items ?? []) qty.set(item.productId, (qty.get(item.productId) ?? 0) + Number(item.qty || 0) * (item.pack_size || 1));
   }
   const byId = new Map(products.filter((p) => p.active !== false && !p.deleted).map((p) => [p.id, p]));
   return [...qty.entries()]

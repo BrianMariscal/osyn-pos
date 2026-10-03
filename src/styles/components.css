@@ -1387,3 +1387,26 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
   }
   .list-item.item-line > .actions > * { width: 100%; }
 }
+
+/* Venta: elegir pieza suelta o caja completa en el renglón del carrito */
+.unit-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin-top: var(--sp-2);
+  padding: 2px;
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card-2);
+}
+.unit-toggle button {
+  min-height: 32px;
+  padding: 0.25rem 0.6rem;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.unit-toggle button.active { background: var(--primary); color: var(--on-primary); }

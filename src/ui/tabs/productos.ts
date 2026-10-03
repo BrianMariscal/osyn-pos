@@ -52,14 +52,18 @@ export const productosTab: TabModule = {
                   <input id="productPrice" class="input" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00" required>
                 </label>
               </div>
+              <label class="form-field">Proveedor
+                <select id="productSupplier" class="input"></select>
+              </label>
               <div class="row">
-                <label class="form-field">Proveedor
-                  <select id="productSupplier" class="input"></select>
-                </label>
                 <label class="form-field">Piezas por caja / paquete
-                  <input id="productPack" class="input" type="number" step="1" min="0" inputmode="numeric" placeholder="Ej. 12 (opcional)">
+                  <input id="productPack" class="input" type="number" step="1" min="0" inputmode="numeric" placeholder="Ej. 20 (opcional)">
+                </label>
+                <label class="form-field">Precio por caja
+                  <input id="productPackPrice" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Ej. 100 (opcional)">
                 </label>
               </div>
+              <p class="hint">Con piezas por caja y precio por caja, en Venta podrás cobrar la caja completa o piezas sueltas.</p>
               <label class="form-field">Grupo en el corte
                 <select id="productGroup" class="input">
                   <option value="">Automático (según categoría)</option>
@@ -109,6 +113,7 @@ export const productosTab: TabModule = {
     const priceInput = root.querySelector<HTMLInputElement>("#productPrice")!;
     const supplierInput = root.querySelector<HTMLSelectElement>("#productSupplier")!;
     const packInput = root.querySelector<HTMLInputElement>("#productPack")!;
+    const packPriceInput = root.querySelector<HTMLInputElement>("#productPackPrice")!;
     const groupInput = root.querySelector<HTMLSelectElement>("#productGroup")!;
     const stockInput = root.querySelector<HTMLInputElement>("#productStock")!;
     const minInput = root.querySelector<HTMLInputElement>("#productMin")!;
@@ -208,7 +213,7 @@ export const productosTab: TabModule = {
               </p>
               <div class="tag-row">
                 ${supplier ? html`<span class="tag">${supplierCode(supplier)} ${supplier.name}</span>` : html``}
-                ${product.pack_size ? html`<span class="tag">Caja de ${product.pack_size}</span>` : html``}
+                ${product.pack_size ? html`<span class="tag">Caja de ${product.pack_size}${product.pack_price ? ` · ${fmtMoneyPesos(product.pack_price)}` : ""}</span>` : html``}
                 ${group !== "general" ? html`<span class="tag tag-accent">${SALE_GROUP_LABELS[group]}</span>` : html``}
                 ${product.barcode ? html`<span class="tag">${iconFor("barcode")} ${product.barcode}</span>` : html``}
                 ${product.active === false ? html`<span class="tag tag-off">Oculto</span>` : html``}
@@ -242,6 +247,11 @@ export const productosTab: TabModule = {
         return;
       }
       const packSize = Math.round(normalizeQty(packInput.value));
+      const packPrice = Math.round(Math.max(0, Number(packPriceInput.value || 0)) * 100) / 100;
+      if (packPrice > 0 && packSize <= 1) {
+        ctx.toast("Para vender por caja indica cuántas piezas trae la caja");
+        return;
+      }
       const product: Product = {
         // Conserva campos que este formulario no edita
         ...(existing && !existing.deleted ? existing : {}),
@@ -254,6 +264,7 @@ export const productosTab: TabModule = {
         barcode: barcode || undefined,
         supplier_id: supplierInput.value || undefined,
         pack_size: packSize > 1 ? packSize : undefined,
+        pack_price: packSize > 1 && packPrice > 0 ? packPrice : undefined,
         sale_group: (groupInput.value as SaleGroup) || undefined,
         active: existing?.active !== false,
         deleted: false,
@@ -265,12 +276,20 @@ export const productosTab: TabModule = {
       // Al editar, la existencia solo se reescribe si el usuario la cambió:
       // así no se pierden las ventas hechas mientras el formulario estaba abierto.
       const stockChanged = stockAtEdit === null || stockInput.value !== stockAtEdit;
+      const minValue = normalizeQty(minInput.value);
+      // Sin cambios en existencia ni mínimo no se reescribe la fila: subirla
+      // pisaría ventas recientes que el servidor aún no ha descontado.
+      if (current && !stockChanged && normalizeQty(current.min_stock) === minValue) {
+        resetForm();
+        ctx.toast(existing ? "Producto actualizado" : "Producto guardado");
+        return;
+      }
       ctx.repos.stocks.upsert({
         id: current?.id ?? `${id}:${ctx.branches.operationalId()}`,
         product_id: id,
         branch_id: ctx.branches.operationalId(),
         stock: stockChanged || !current ? normalizeQty(stockInput.value) : current.stock,
-        min_stock: normalizeQty(minInput.value),
+        min_stock: minValue,
         updated_at: ts
       });
       resetForm();
@@ -294,6 +313,7 @@ export const productosTab: TabModule = {
         renderSupplierOptions();
         supplierInput.value = product.supplier_id && ctx.repos.suppliers.byId(product.supplier_id) ? product.supplier_id : "";
         packInput.value = product.pack_size ? String(product.pack_size) : "";
+        packPriceInput.value = product.pack_price ? String(product.pack_price) : "";
         groupInput.value = product.sale_group ?? "";
         const stock = stockRowFor(product.id);
         stockInput.value = String(stock?.stock ?? 0);

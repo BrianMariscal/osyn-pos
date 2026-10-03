@@ -2,7 +2,8 @@ import { nowISO } from "../core/dates";
 import { uid } from "../core/id";
 import { toCents, toPesos } from "../core/money";
 import { fmtQty, normalizeQty } from "../core/qty";
-import { MERMA_REASONS, DEFAULT_BRANCH_ID, type CountIncidence, type CountSummary, type InventoryCount, type Merma, type MermaReason, type Purchase } from "../core/types";
+import { MERMA_REASONS, DEFAULT_BRANCH_ID, type CountIncidence, type CountSummary, type InventoryCount, type Merma, type MermaReason, type Purchase, type PurchasePayment } from "../core/types";
+import { moveStock } from "./stock-moves";
 import type { Repositories } from "../data/repositories";
 import type { BranchService } from "./branch-service";
 
@@ -42,7 +43,9 @@ export class InventoryService {
 
   constructor(
     private repos: Repositories,
-    private branches: BranchService
+    private branches: BranchService,
+    /** ¿El servidor ya mueve el stock por compras/mermas? (ver stock-moves). */
+    private serverStock: () => boolean = () => false
   ) {}
 
   isActive(): boolean {
@@ -226,7 +229,8 @@ export class InventoryService {
     qty: number,
     supplierName: string,
     totalPaid: number,
-    pack?: { packs?: number; packSize?: number }
+    pack?: { packs?: number; packSize?: number },
+    paidFrom: PurchasePayment = "caja"
   ): { ok: true; qty: number } | { ok: false; error: string } {
     const product = this.repos.products.byId(productId);
     if (!product) return { ok: false, error: "No se encontró el producto" };
@@ -235,17 +239,10 @@ export class InventoryService {
     if (!Number.isFinite(totalPaid) || totalPaid < 0) return { ok: false, error: "Total pagado inválido" };
     const branchId = this.branches.operationalId();
     const ts = nowISO();
-    const stockId = `${productId}:${branchId}`;
-    const stockRow = this.repos.stocks.list().find((row) => row.id === stockId);
+    const stockRow = this.repos.stocks.list().find((row) => row.product_id === productId && row.branch_id === branchId);
     const previousStock = normalizeQty(stockRow?.stock ?? 0);
-    this.repos.stocks.upsert({
-      id: stockId,
-      product_id: productId,
-      branch_id: branchId,
-      stock: normalizeQty(previousStock + quantity),
-      min_stock: stockRow?.min_stock ?? 0,
-      updated_at: ts
-    });
+    const serverStock = this.serverStock();
+    moveStock(this.repos, serverStock, productId, branchId, quantity, ts);
     if (totalPaid > 0 && previousStock + quantity > 0) {
       const averageCost = (previousStock * product.cost + totalPaid) / (previousStock + quantity);
       this.repos.products.upsert({ ...product, cost: toPesos(Math.round(toCents(averageCost))), updated_at: ts });
@@ -260,6 +257,8 @@ export class InventoryService {
       qty: quantity,
       total: Math.round(totalPaid * 100) / 100,
       ...(pack?.packs && pack.packSize ? { packs: normalizeQty(pack.packs), pack_size: normalizeQty(pack.packSize) } : {}),
+      ...(paidFrom === "aparte" ? { paid_from: "aparte" as const } : {}),
+      ...(serverStock ? { stock_by_server: true } : {}),
       created_at: ts,
       updated_at: ts
     };
@@ -268,7 +267,11 @@ export class InventoryService {
   }
 
   /** Recibe varias líneas de una misma entrega y registra cada compra. */
-  receiveStockMany(items: StockReceipt[], supplierName: string): { ok: true; count: number; qty: number } | { ok: false; error: string } {
+  receiveStockMany(
+    items: StockReceipt[],
+    supplierName: string,
+    paidFrom: PurchasePayment = "caja"
+  ): { ok: true; count: number; qty: number } | { ok: false; error: string } {
     if (!items.length) return { ok: false, error: "Agrega al menos un producto" };
     for (const item of items) {
       if (!this.repos.products.byId(item.productId)) return { ok: false, error: "No se encontró uno de los productos" };
@@ -278,7 +281,7 @@ export class InventoryService {
     let count = 0;
     let qty = 0;
     for (const item of items) {
-      const result = this.receiveStock(item.productId, item.qty, supplierName, item.totalPaid, { packs: item.packs, packSize: item.packSize });
+      const result = this.receiveStock(item.productId, item.qty, supplierName, item.totalPaid, { packs: item.packs, packSize: item.packSize }, paidFrom);
       if (!result.ok) return result;
       count += 1;
       qty += result.qty;
@@ -298,9 +301,8 @@ export class InventoryService {
     const available = normalizeQty(stockRow?.stock ?? 0);
     if (quantity > available) return { ok: false, error: `Solo hay ${fmtQty(available)} ${product.um} en existencia` };
     const ts = nowISO();
-    if (stockRow) {
-      this.repos.stocks.upsert({ ...stockRow, stock: normalizeQty(available - quantity), updated_at: ts });
-    }
+    const serverStock = this.serverStock();
+    moveStock(this.repos, serverStock, productId, branchId, -quantity, ts);
     const merma: Merma = {
       id: uid(),
       branch_id: branchId,
@@ -311,6 +313,7 @@ export class InventoryService {
       reason,
       note,
       cost_impact: toPesos(Math.round(quantity * toCents(product.cost))),
+      ...(serverStock ? { stock_by_server: true } : {}),
       created_at: ts,
       updated_at: ts
     };

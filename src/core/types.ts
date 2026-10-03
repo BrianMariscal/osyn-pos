@@ -53,6 +53,8 @@ export interface Product {
   supplier_id?: string;
   /** Piezas por caja/paquete: las compras capturadas en cajas se convierten a piezas. */
   pack_size?: number;
+  /** Precio de venta de la caja completa (cigarros: cajetilla). Sin valor = no se vende por caja. */
+  pack_price?: number;
   /** Grupo para el corte (cigarros/cerveza). Sin valor = se detecta por categoría/nombre. */
   sale_group?: SaleGroup;
   /** Existencia heredada: se migra a product_stocks al primer arranque. */
@@ -76,9 +78,14 @@ export interface ProductStock {
   deleted?: boolean;
 }
 
+/** Unidad de venta de un renglón: pieza suelta o caja completa (pack_size piezas). */
+export type CartUnit = "pza" | "caja";
+
 export interface CartLine {
   productId: string;
   qty: number;
+  /** Sin valor = pieza. En "caja", qty son cajas. */
+  unit?: CartUnit;
   /** Precio de oferta sugerida por el sistema (sustituye al precio normal). */
   promoPrice?: number;
 }
@@ -94,6 +101,8 @@ export interface SaleItem {
   group?: SaleGroup;
   /** Precio normal cuando se vendió en oferta (price = precio de oferta). */
   regular_price?: number;
+  /** Renglón vendido por caja: qty son cajas de pack_size piezas y price es el de la caja. */
+  pack_size?: number;
 }
 
 export interface Sale {
@@ -105,6 +114,8 @@ export interface Sale {
   profit: number;
   payment: PaymentMethod;
   customer_id: string | null;
+  /** El servidor descuenta el stock de esta venta (la app ya no lo sube). */
+  stock_by_server?: boolean;
   created_at: string;
   updated_at: string;
   deleted?: boolean;
@@ -168,10 +179,15 @@ export interface Purchase {
   /** Cajas capturadas y piezas por caja (si la compra se capturó en cajas). */
   packs?: number;
   pack_size?: number;
+  /** "aparte": pagada con dinero fuera de la caja (Central de Abastos); no se resta en el corte. */
+  paid_from?: PurchasePayment;
+  stock_by_server?: boolean;
   created_at: string;
   updated_at: string;
   deleted?: boolean;
 }
+
+export type PurchasePayment = "caja" | "aparte";
 
 /** Catálogo global de proveedores (Central de Abastos, distribuidoras, etc.). */
 export interface Supplier {
@@ -202,6 +218,7 @@ export interface Merma {
   reason: MermaReason;
   note: string;
   cost_impact: number;
+  stock_by_server?: boolean;
   created_at: string;
   updated_at: string;
   deleted?: boolean;
@@ -221,6 +238,8 @@ export interface ShiftSummary {
   gastos: number;
   proveedores: number;
   mermas: number;
+  /** Compras pagadas con dinero aparte (no salen de la caja). Opcional en cortes viejos. */
+  proveedoresAparte?: number;
   ganancia: number;
   efectivoEsperado: number;
 }
@@ -369,6 +388,8 @@ export interface SyncState {
   lastPulledAt: Partial<Record<SyncTableKey, string>>;
   /** Mayor synced_at (reloj del servidor) leído por tabla. */
   syncCursors: Partial<Record<SyncTableKey, string>>;
+  /** El servidor ya lleva el stock (migración stock-servidor aplicada). */
+  serverStock?: boolean;
   lastSyncAt: string | null;
   error: string | null;
   pending: number;
