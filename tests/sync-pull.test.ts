@@ -4,6 +4,7 @@ import { createInitialState, type AppState } from "../src/domain/app-state";
 import { ChangeTracker } from "../src/data/change-tracker";
 import { Repositories } from "../src/data/repositories";
 import { SyncEngine } from "../src/data/sync-engine";
+import { SettingsService } from "../src/domain/settings-service";
 import type { AuthService } from "../src/domain/auth-service";
 import type { SupabaseClient } from "../src/data/supabase-client";
 
@@ -77,14 +78,14 @@ function makeServer({ migrated = true } = {}) {
 
 type Server = ReturnType<typeof makeServer>;
 
-function makeDevice(server: Server) {
+function makeDevice(server: Server, role: "dueno" | "empleado" = "dueno") {
   const store = new Store<AppState>(createInitialState());
   const tracker = new ChangeTracker();
   const repos = new Repositories(store, tracker);
   const auth = {
-    session: { access_token: "t", refresh_token: "r", expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: "u", email: "a@b.c" }, role: "dueno", name: "d", branch_id: null },
-    isAdmin: () => true,
-    isOwner: () => true,
+    session: { access_token: "t", refresh_token: "r", expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: "u", email: "a@b.c" }, role, name: "d", branch_id: null },
+    isAdmin: () => role === "dueno",
+    isOwner: () => role === "dueno",
     refreshIfNeeded: async () => undefined
   } as unknown as AuthService;
   const client = {
@@ -92,7 +93,7 @@ function makeDevice(server: Server) {
     rest: (path: string, token: string, init?: RequestInit) => server.rest(path, token, init ?? {}),
     rpc: () => server.rpc()
   } as unknown as SupabaseClient;
-  return { store, tracker, repos, sync: new SyncEngine(store, client, auth, tracker, repos) };
+  return { store, tracker, repos, settings: new SettingsService(store, tracker), sync: new SyncEngine(store, client, auth, tracker, repos) };
 }
 
 function expense(id: string, updatedAt: string): Row {
@@ -144,5 +145,21 @@ describe("pull incremental por synced_at", () => {
     expect(pull.ok).toBe(true);
     expect(b.store.getState().expenses.map((row) => row.id)).toEqual(["e1"]);
     expect(b.store.getState().sync.syncCursors.expenses).toBeUndefined();
+  });
+
+  it("el logo del dueño llega a otro dispositivo y se mantiene en syncs siguientes", async () => {
+    const server = makeServer();
+    const owner = makeDevice(server);
+    const employee = makeDevice(server, "empleado");
+    const logo = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+    owner.settings.save({ logo });
+    expect((await owner.sync.syncNow()).ok).toBe(true);
+    await employee.sync.syncNow();
+    await employee.sync.syncNow();
+    await owner.sync.syncNow();
+
+    expect(employee.store.getState().settings.logo).toBe(logo);
+    expect(owner.store.getState().settings.logo).toBe(logo);
   });
 });
