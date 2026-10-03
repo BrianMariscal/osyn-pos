@@ -71,7 +71,7 @@ export function createInitialState(settingsOverride?: Partial<Settings>): AppSta
     cart: [],
     currentBranchId: "",
     viewBranchId: VIEW_ALL,
-    sync: { lastPulledAt: {}, lastSyncAt: null, error: null, pending: 0, syncing: false }
+    sync: { lastPulledAt: {}, syncCursors: {}, lastSyncAt: null, error: null, pending: 0, syncing: false }
   };
 }
 

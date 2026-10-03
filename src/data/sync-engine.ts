@@ -56,8 +56,21 @@ function fromSupabaseRow(row: Record<string, unknown>): Record<string, unknown> 
   const merged: Record<string, unknown> =
     data && typeof data === "object" ? { ...(data as Record<string, unknown>), ...row } : { ...row };
   delete merged.data;
+  delete merged.synced_at;
   return merged;
 }
+
+/** PostgREST devuelve como máximo 1000 filas por petición (max-rows). */
+const PULL_PAGE_SIZE = 1000;
+/**
+ * synced_at se fija al escribir la fila, pero es visible hasta el commit; se
+ * relee un margen hacia atrás para no saltar escrituras que confirmaron tarde.
+ * Releer es seguro: el merge es idempotente.
+ */
+const SYNC_CURSOR_OVERLAP_MS = 60_000;
+
+/** null = la tabla aún no tiene synced_at (migración pendiente). */
+type PullPage = { rows: Array<Record<string, unknown>>; cursor?: string; capturedAt?: string } | null;
 
 function employeeTables(vendorTabs: readonly string[]): SyncTableKey[] {
   const tables = new Set<SyncTableKey>(["products", "product_stocks", "branches"]);
@@ -87,7 +100,7 @@ export interface SyncResult {
 
 /**
  * Sync incremental contra Supabase:
- * - Pull: solo filas con updated_at > última lectura por tabla.
+ * - Pull: solo filas con synced_at (reloj del servidor) desde la última lectura.
  * - Push: solo filas marcadas dirty por los repositorios.
  * - Borrados: propagados con tombstones (deleted: true).
  * - Conflicto: last-write-wins por updated_at a nivel de fila.
@@ -147,7 +160,7 @@ export class SyncEngine {
       fetched.forEach((result, index) => {
         if (!result) return;
         const table = tables[index]!;
-        this.applyPulled(table, result.rows, result.capturedAt).forEach((id) => conflicts.push({ table, id }));
+        this.applyPulled(table, result).forEach((id) => conflicts.push({ table, id }));
       });
       await this.pullSettings(token);
       const pushable = isAdmin
@@ -176,7 +189,67 @@ export class SyncEngine {
     });
   }
 
-  private async fetchTable(table: SyncTableKey, token: string): Promise<{ rows: Array<Record<string, unknown>>; capturedAt: string } | null> {
+  /** synced_at si la tabla ya lo tiene; si no (migración pendiente), updated_at. */
+  private async fetchTable(table: SyncTableKey, token: string): Promise<PullPage> {
+    return (await this.fetchBySyncedAt(table, token)) ?? (await this.fetchByUpdatedAt(table, token));
+  }
+
+  private applyPulled(table: SyncTableKey, page: NonNullable<PullPage>): string[] {
+    let mapped = page.rows.map(fromSupabaseRow);
+    if (table === "products") {
+      mapped = this.applySettingsRow(mapped);
+    }
+    const conflicts = this.repos.repoFor(table).mergeFromCloud(mapped as unknown as BaseRow[]);
+    this.store.update((state) => {
+      state.sync = {
+        ...state.sync,
+        lastPulledAt: page.capturedAt ? { ...state.sync.lastPulledAt, [table]: page.capturedAt } : state.sync.lastPulledAt,
+        syncCursors: page.cursor ? { ...state.sync.syncCursors, [table]: page.cursor } : state.sync.syncCursors
+      };
+    });
+    return conflicts;
+  }
+
+  /**
+   * Lectura incremental por synced_at, que pone el servidor al recibir cada
+   * fila. A diferencia de updated_at (reloj del dispositivo, momento de la
+   * edición), no pierde filas subidas tarde ni con relojes desfasados.
+   * Sin cursor previo se lee la tabla completa, lo que también recupera las
+   * filas que la lectura por updated_at se saltó antes.
+   */
+  private async fetchBySyncedAt(table: SyncTableKey, token: string): Promise<PullPage> {
+    const cursor = this.store.getState().sync.syncCursors[table];
+    const since = cursor ? new Date(Date.parse(cursor) - SYNC_CURSOR_OVERLAP_MS).toISOString() : null;
+    const rows: Array<Record<string, unknown>> = [];
+    let maxSyncedAt = cursor;
+    for (let offset = 0; ; offset += PULL_PAGE_SIZE) {
+      const params = new URLSearchParams({
+        select: "*",
+        order: "synced_at.asc,id.asc",
+        limit: String(PULL_PAGE_SIZE),
+        offset: String(offset)
+      });
+      if (since) params.set("synced_at", `gte.${since}`);
+      const res = await this.client.rest(`${table}?${params.toString()}`, token);
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        const body = await res.text();
+        if (res.status === 400 && body.includes("synced_at")) return null;
+        throw new Error(`Error leyendo ${table}: ${body}`);
+      }
+      const batch = (await res.json()) as Array<Record<string, unknown>>;
+      for (const row of batch) {
+        const syncedAt = typeof row.synced_at === "string" ? row.synced_at : "";
+        if (syncedAt && (!maxSyncedAt || Date.parse(syncedAt) > Date.parse(maxSyncedAt))) maxSyncedAt = syncedAt;
+        rows.push(row);
+      }
+      if (batch.length < PULL_PAGE_SIZE) break;
+    }
+    return { rows, cursor: maxSyncedAt };
+  }
+
+  /** Lectura anterior por updated_at, mientras falte la migración synced_at. */
+  private async fetchByUpdatedAt(table: SyncTableKey, token: string): Promise<PullPage> {
     const since = this.store.getState().sync.lastPulledAt[table];
     const capturedAt = nowISO();
     const params = new URLSearchParams({ select: "*" });
@@ -196,18 +269,6 @@ export class SyncEngine {
     }
     if (!res.ok) throw new Error(`Error leyendo ${table}: ${await res.text()}`);
     return { rows: (await res.json()) as Array<Record<string, unknown>>, capturedAt };
-  }
-
-  private applyPulled(table: SyncTableKey, rows: Array<Record<string, unknown>>, capturedAt: string): string[] {
-    let mapped = rows.map(fromSupabaseRow);
-    if (table === "products") {
-      mapped = this.applySettingsRow(mapped);
-    }
-    const conflicts = this.repos.repoFor(table).mergeFromCloud(mapped as unknown as BaseRow[]);
-    this.store.update((state) => {
-      state.sync = { ...state.sync, lastPulledAt: { ...state.sync.lastPulledAt, [table]: capturedAt } };
-    });
-    return conflicts;
   }
 
   /**

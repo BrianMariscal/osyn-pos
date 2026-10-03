@@ -284,12 +284,13 @@ const appStateSchema = z.object({
   sync: z
     .object({
       lastPulledAt: z.record(z.string()).catch({}),
+      syncCursors: z.record(z.string()).catch({}),
       lastSyncAt: iso.nullable().catch(null),
       error: z.string().nullable().catch(null),
       pending: z.coerce.number().catch(0),
       syncing: z.coerce.boolean().catch(false)
     })
-    .catch({ lastPulledAt: {}, lastSyncAt: null, error: null, pending: 0, syncing: false })
+    .catch({ lastPulledAt: {}, syncCursors: {}, lastSyncAt: null, error: null, pending: 0, syncing: false })
 });
 
 /**

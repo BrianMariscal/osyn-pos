@@ -367,6 +367,8 @@ export type SyncTableKey =
 
 export interface SyncState {
   lastPulledAt: Partial<Record<SyncTableKey, string>>;
+  /** Mayor synced_at (reloj del servidor) leído por tabla. */
+  syncCursors: Partial<Record<SyncTableKey, string>>;
   lastSyncAt: string | null;
   error: string | null;
   pending: number;
