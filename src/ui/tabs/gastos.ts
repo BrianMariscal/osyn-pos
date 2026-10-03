@@ -1,8 +1,8 @@
 import { html, setHtml } from "../../core/html";
 import { fmtDate, fmtDateTime } from "../../core/dates";
 import { fmtMoney, fmtMoneyPesos } from "../../core/money";
-import { EXPENSE_CATEGORIES, type Expense } from "../../core/types";
-import { daysInMonth } from "../../domain/expense-service";
+import { EXPENSE_CATEGORIES, type Expense, type ExpensePeriod } from "../../core/types";
+import { daysInMonth, expensePeriod } from "../../domain/expense-service";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import type { TabModule } from "./tab-module";
@@ -18,15 +18,21 @@ export const gastosTab: TabModule = {
       html`
         <div class="split">
           <article class="card">
-            <h2>Costos fijos mensuales</h2>
-            <p class="hint">Registra lo que pagas cada mes (renta, luz, sueldos…). El sistema calcula cuánto necesitas generar al día para cubrirlo y lo muestra en Inicio.</p>
+            <h2>Costos fijos (semanales y mensuales)</h2>
+            <p class="hint">Registra lo que pagas cada semana (sueldos, gas…) o cada mes (renta, luz…). El sistema calcula cuánto necesitas generar al día para cubrirlo y lo muestra en Inicio.</p>
             <div id="fixedTarget" class="target-box"></div>
-            <form id="fixedForm" class="form inline-form">
+            <form id="fixedForm" class="form fixed-form">
               <label class="form-field">Concepto
                 <input id="fixedConcept" class="input" placeholder="Ej. Renta del local" required>
               </label>
-              <label class="form-field">Monto mensual
+              <label class="form-field">Monto
                 <input id="fixedAmount" class="input" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00" required>
+              </label>
+              <label class="form-field">Frecuencia
+                <select id="fixedPeriod" class="input">
+                  <option value="mensual">Mensual</option>
+                  <option value="semanal">Semanal</option>
+                </select>
               </label>
               <label class="form-field">Categoría
                 <select id="fixedCategory" class="input">
@@ -61,6 +67,7 @@ export const gastosTab: TabModule = {
     const fixedConcept = root.querySelector<HTMLInputElement>("#fixedConcept")!;
     const fixedAmount = root.querySelector<HTMLInputElement>("#fixedAmount")!;
     const fixedCategory = root.querySelector<HTMLSelectElement>("#fixedCategory")!;
+    const fixedPeriod = root.querySelector<HTMLSelectElement>("#fixedPeriod")!;
     const fixedList = root.querySelector<HTMLElement>("#fixedList")!;
     const fixedTarget = root.querySelector<HTMLElement>("#fixedTarget")!;
     const form = root.querySelector<HTMLFormElement>("#expenseForm")!;
@@ -73,10 +80,10 @@ export const gastosTab: TabModule = {
       <div class="list-item item-line">
         <div>
           <strong>${expense.concept}</strong>
-          <p class="muted">${expense.category} | ${fixed ? `Desde ${fmtDate(expense.created_at)}` : fmtDateTime(expense.created_at)}</p>
+          <p class="muted">${fixed ? `${expensePeriod(expense) === "semanal" ? "Semanal" : "Mensual"} · ` : ""}${expense.category} | ${fixed ? `Desde ${fmtDate(expense.created_at)}` : fmtDateTime(expense.created_at)}</p>
         </div>
         <div class="row-end">
-          <strong>${fmtMoneyPesos(expense.amount)}${fixed ? html`<small class="muted"> /mes</small>` : html``}</strong>
+          <strong>${fmtMoneyPesos(expense.amount)}${fixed ? html`<small class="muted"> /${expensePeriod(expense) === "semanal" ? "semana" : "mes"}</small>` : html``}</strong>
           <div class="icon-actions">
             <button class="icon-btn" type="button" data-edit-expense="${expense.id}" aria-label="Editar ${expense.concept}" title="Editar">${iconFor("edit")}</button>
             <button class="icon-btn danger" type="button" data-delete-expense="${expense.id}" aria-label="Eliminar ${expense.concept}" title="Eliminar">${iconFor("trash")}</button>
@@ -89,13 +96,19 @@ export const gastosTab: TabModule = {
       const fixed = ctx.expenses.fixedCosts();
       const monthly = ctx.expenses.monthlyFixedCents();
       const daily = ctx.expenses.dailyTargetCents();
+      const parts = ctx.expenses.fixedBreakdown();
+      const days = daysInMonth(new Date());
+      const breakdown = [
+        parts.monthly > 0 ? `${fmtMoney(parts.monthly)} mensual ÷ ${days} días` : "",
+        parts.weekly > 0 ? `${fmtMoney(parts.weekly)} semanal ÷ 7 días` : ""
+      ].filter(Boolean).join(" + ");
       setHtml(
         fixedTarget,
         monthly > 0
           ? html`
-              <div><span class="micro">Total al mes</span><strong>${fmtMoney(monthly)}</strong></div>
+              <div><span class="micro">Equivale al mes</span><strong>${fmtMoney(monthly)}</strong></div>
               <div><span class="micro">Necesitas al día</span><strong>${fmtMoney(daily)}</strong></div>
-              <p class="hint">${fmtMoney(monthly)} ÷ ${daysInMonth(new Date())} días de este mes, en ganancia (venta menos costo).</p>
+              <p class="hint">${breakdown}, en ganancia (venta menos costo).</p>
             `
           : html`<p class="hint">Aún no hay costos fijos. Agrega el primero para ver tu meta diaria.</p>`
       );
@@ -116,7 +129,7 @@ export const gastosTab: TabModule = {
 
     fixedForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      const result = ctx.expenses.add("fijo", fixedConcept.value, Number(fixedAmount.value || 0), fixedCategory.value);
+      const result = ctx.expenses.add("fijo", fixedConcept.value, Number(fixedAmount.value || 0), fixedCategory.value, fixedPeriod.value as ExpensePeriod);
       if (!result.ok) {
         ctx.toast(result.error);
         return;
@@ -149,7 +162,7 @@ export const gastosTab: TabModule = {
             <input id="eConcept" class="input" value="${expense.concept}">
           </label>
           <div class="row">
-            <label class="form-field">${fixed ? "Monto mensual" : "Monto"}
+            <label class="form-field">Monto
               <input id="eAmount" class="input" type="number" step="0.01" min="0.01" inputmode="decimal" value="${expense.amount}">
             </label>
             <label class="form-field">Categoría
@@ -158,6 +171,14 @@ export const gastosTab: TabModule = {
               </select>
             </label>
           </div>
+          ${fixed
+            ? html`<label class="form-field">Frecuencia
+                <select id="ePeriod" class="input">
+                  <option value="mensual" ${expensePeriod(expense) === "mensual" ? "selected" : null}>Mensual</option>
+                  <option value="semanal" ${expensePeriod(expense) === "semanal" ? "selected" : null}>Semanal</option>
+                </select>
+              </label>`
+            : html``}
         `,
         actions: [
           { label: "Cancelar", kind: "ghost", onClick: (close) => close() },
@@ -168,7 +189,8 @@ export const gastosTab: TabModule = {
               const result = ctx.expenses.update(expense.id, {
                 concept: (document.getElementById("eConcept") as HTMLInputElement).value,
                 amount: Number((document.getElementById("eAmount") as HTMLInputElement).value || 0),
-                category: (document.getElementById("eCategory") as HTMLSelectElement).value
+                category: (document.getElementById("eCategory") as HTMLSelectElement).value,
+                period: fixed ? ((document.getElementById("ePeriod") as HTMLSelectElement).value as ExpensePeriod) : undefined
               });
               if (!result.ok) {
                 ctx.toast(result.error);
@@ -198,7 +220,7 @@ export const gastosTab: TabModule = {
       const confirmed = await confirmDialog({
         title: fixed ? "Eliminar costo fijo" : "Eliminar gasto",
         message: fixed
-          ? `Se eliminará "${expense.concept}" (${fmtMoneyPesos(expense.amount)} al mes) y dejará de contar en la meta diaria.`
+          ? `Se eliminará "${expense.concept}" (${fmtMoneyPesos(expense.amount)} ${expensePeriod(expense) === "semanal" ? "a la semana" : "al mes"}) y dejará de contar en la meta diaria.`
           : `Se eliminará "${expense.concept}" por ${fmtMoneyPesos(expense.amount)}. El corte y los reportes se recalculan.`,
         confirmLabel: "Eliminar",
         danger: true

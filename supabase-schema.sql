@@ -516,3 +516,29 @@ create index if not exists idx_counts_branch on inventory_counts (branch_id);
 -- from auth.users
 -- where email = 'vendedor@tutienda.com'
 -- on conflict (user_id) do update set role = 'empleado', branch_id = 'sucursal-1', updated_at = now();
+
+-- ---------------------------------------------------------------------------
+-- Tiempo real (mismo contenido que supabase-migracion-realtime.sql)
+-- ---------------------------------------------------------------------------
+
+do $$
+declare
+  t text;
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+  foreach t in array array[
+    'branches', 'suppliers', 'products', 'product_stocks', 'customers', 'sales',
+    'expenses', 'purchases', 'mermas', 'shifts', 'month_closings', 'inventory_counts'
+  ]
+  loop
+    if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = t)
+       and not exists (
+         select 1 from pg_publication_tables
+         where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+       ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;

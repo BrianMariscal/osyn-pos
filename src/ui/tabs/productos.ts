@@ -12,6 +12,7 @@ import { scanBarcode } from "../scanner";
 import { parseCsvLine, parseSpreadsheetRows } from "./csv";
 import { downloadText } from "./download";
 import type { AppContext } from "../context";
+import { categoryFieldMarkup, mountCategoryField } from "../category-field";
 import type { TabModule } from "./tab-module";
 
 export const productosTab: TabModule = {
@@ -36,10 +37,7 @@ export const productosTab: TabModule = {
                 <input id="productName" class="input" placeholder="Ej. Coca Cola 600 ml" required>
               </label>
               <div class="row">
-                <label class="form-field">Categoría
-                  <input id="productCategory" class="input" value="Abarrotes" list="productCategories">
-                  <datalist id="productCategories"></datalist>
-                </label>
+                ${categoryFieldMarkup("productCategory")}
                 <label class="form-field">Unidad
                   <select id="productUnit" class="input">
                     ${UNITS.map((unit) => html`<option value="${unit}">${unit}</option>`)}
@@ -90,7 +88,7 @@ export const productosTab: TabModule = {
           </article>
           <article class="card">
             <h2>Productos registrados</h2>
-            <div class="search-row">
+            <div class="search-stack">
               <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre, código o proveedor (#3)" autocomplete="off">
               <select id="productsSupplierFilter" class="input" aria-label="Filtrar por proveedor"></select>
             </div>
@@ -105,8 +103,7 @@ export const productosTab: TabModule = {
     const formTitle = root.querySelector<HTMLElement>("#productFormTitle")!;
     const idInput = root.querySelector<HTMLInputElement>("#productId")!;
     const nameInput = root.querySelector<HTMLInputElement>("#productName")!;
-    const categoryInput = root.querySelector<HTMLInputElement>("#productCategory")!;
-    const categoriesList = root.querySelector<HTMLDataListElement>("#productCategories")!;
+    const category = mountCategoryField(root, "productCategory", ctx);
     const unitInput = root.querySelector<HTMLSelectElement>("#productUnit")!;
     const costInput = root.querySelector<HTMLInputElement>("#productCost")!;
     const priceInput = root.querySelector<HTMLInputElement>("#productPrice")!;
@@ -155,6 +152,7 @@ export const productosTab: TabModule = {
 
     const resetForm = (): void => {
       form.reset();
+      category.set("Abarrotes");
       idInput.value = "";
       stockAtEdit = null;
       cancelEdit.hidden = true;
@@ -162,6 +160,12 @@ export const productosTab: TabModule = {
       stockInput.disabled = false;
       formTitle.textContent = "Alta de producto";
     };
+
+    // Al elegir proveedor se sugiere su giro como categoría (si no se ha elegido otra).
+    supplierInput.addEventListener("change", () => {
+      const supplier = ctx.repos.suppliers.byId(supplierInput.value);
+      if (supplier?.type && category.isDefault()) category.set(supplier.type);
+    });
 
     root.querySelector<HTMLButtonElement>("#barcodeScan")!.addEventListener("click", async () => {
       try {
@@ -176,10 +180,7 @@ export const productosTab: TabModule = {
       const branchName = ctx.branches.name(ctx.branches.operationalId());
       hint.textContent = `La existencia y el mínimo se guardan para: ${branchName}`;
       const all = ctx.repos.products.list();
-      setHtml(
-        categoriesList,
-        html`${[...new Set(all.map((p) => p.category).filter(Boolean))].sort().map((category) => html`<option value="${category}"></option>`)}`
-      );
+      category.refresh();
       const suppliers = new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
       const supplierFilter = listSupplier.value;
       const products = all
@@ -246,7 +247,7 @@ export const productosTab: TabModule = {
         ...(existing && !existing.deleted ? existing : {}),
         id,
         name,
-        category: categoryInput.value.trim(),
+        category: category.get(),
         um: (unitInput.value as Unit) ?? "Pza",
         cost: Math.max(0, Number(costInput.value || 0)),
         price,
@@ -286,7 +287,7 @@ export const productosTab: TabModule = {
         if (!product) return;
         idInput.value = product.id;
         nameInput.value = product.name;
-        categoryInput.value = product.category ?? "";
+        category.set(product.category ?? "");
         unitInput.value = product.um;
         costInput.value = String(product.cost ?? 0);
         priceInput.value = String(product.price ?? 0);

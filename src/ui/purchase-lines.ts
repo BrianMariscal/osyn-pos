@@ -10,6 +10,7 @@ import { fmtMoney, toCents } from "../core/money";
 import { fmtQty, normalizeQty } from "../core/qty";
 import type { Product } from "../core/types";
 import { unitsFromPacks, type StockReceipt } from "../domain/inventory-service";
+import { productsForSupplier } from "../domain/catalog";
 import type { AppContext } from "./context";
 
 type LineMode = "pza" | "caja";
@@ -72,8 +73,6 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
 
   const lineMarkup = (line: LineState, index: number, list: Product[]) => {
     const supplierId = options.supplierId?.() ?? "";
-    const own = supplierId ? list.filter((p) => p.supplier_id === supplierId) : [];
-    const others = supplierId ? list.filter((p) => p.supplier_id !== supplierId) : list;
     const option = (p: Product) =>
       html`<option value="${p.id}" ${p.id === line.productId ? "selected" : null}>${p.name} (${p.um})</option>`;
     const product = ctx.repos.products.byId(line.productId);
@@ -81,10 +80,9 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     return html`
       <div class="purchase-line" data-line="${index}">
         <select class="input" data-f="productId" aria-label="Producto ${index + 1}">
-          <option value="">Elige producto…</option>
-          ${own.length
-            ? html`<optgroup label="De este proveedor">${own.map(option)}</optgroup><optgroup label="Otros productos">${others.map(option)}</optgroup>`
-            : html`${others.map(option)}`}
+          ${list.length
+            ? html`<option value="">Elige producto…</option>${list.map(option)}`
+            : html`<option value="" disabled selected>${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}</option>`}
         </select>
         <div class="purchase-qty">
           <input class="input" data-f="qty" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
@@ -103,12 +101,20 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
   };
 
   const render = (): void => {
-    const list = products();
-    // Productos que ya no existen se limpian de las líneas.
-    lines = lines.map((line) => (line.productId && !ctx.repos.products.byId(line.productId) ? { ...line, productId: "" } : line));
+    // Con proveedor elegido solo se compran SUS productos.
+    const supplierId = options.supplierId?.() ?? "";
+    const list = productsForSupplier(products(), supplierId);
+    const allowed = new Set(list.map((product) => product.id));
+    // Productos que ya no existen o no son del proveedor se limpian de las líneas.
+    lines = lines.map((line) => (line.productId && !allowed.has(line.productId) ? { ...line, productId: "", mode: "pza" } : line));
     const focused = document.activeElement as HTMLElement | null;
     const focusKey = focused && container.contains(focused) ? `${focused.closest<HTMLElement>("[data-line]")?.dataset.line}|${focused.dataset.f}` : "";
-    setHtml(container, html`${lines.map((line, index) => lineMarkup(line, index, list))}`);
+    setHtml(
+      container,
+      html`${supplierId && !list.length
+        ? html`<p class="hint notice">Este proveedor aún no tiene productos asociados. Asócialos en Proveedores › Productos.</p>`
+        : html``}${lines.map((line, index) => lineMarkup(line, index, list))}`
+    );
     if (focusKey) {
       const [lineIndex, field] = focusKey.split("|");
       container.querySelector<HTMLElement>(`[data-line="${lineIndex}"] [data-f="${field}"]`)?.focus();

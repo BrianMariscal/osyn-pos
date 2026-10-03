@@ -25,6 +25,9 @@ h3 { font-size: var(--fs-md); font-weight: 700; }
 
 button { font: inherit; }
 
+/* El atributo hidden siempre gana (las clases de botón con display:flex lo anulaban) */
+[hidden] { display: none !important; }
+
 /* Dinero y cifras: siempre en columna */
 .num {
   font-variant-numeric: tabular-nums;

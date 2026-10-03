@@ -165,6 +165,22 @@ describe("sync de ajustes (WhatsApp del dueño → empleado/admin)", () => {
     expect(admin.store.getState().settings.whatsappNumber).toBe("521559999999");
   });
 
+  it("un ajuste sin subir no se pierde si la nube trae la misma marca de tiempo", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-03T12:00:00.000Z"), toFake: ["Date"] });
+    try {
+      const server = makeServer();
+      const owner = makeDevice("dueno", server);
+      owner.settings.save({ whatsappNumber: "521550000001" });
+      expect((await owner.sync.syncNow()).ok).toBe(true);
+      // Mismo milisegundo: la fila de la nube empata con el cambio local pendiente
+      owner.settings.save({ whatsappNumber: "521559999999" });
+      expect((await owner.sync.syncNow()).ok).toBe(true);
+      expect(owner.store.getState().settings.whatsappNumber).toBe("521559999999");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("el RPC pos_settings (jsonb crudo) sirve como respaldo si RLS oculta la fila en products", async () => {
     const server = makeServer();
     const owner = makeDevice("dueno", server);

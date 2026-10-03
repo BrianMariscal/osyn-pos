@@ -3,6 +3,8 @@ import { sumCents, toCents, toPesos, fmtMoneyPesos } from "../core/money";
 import { ALL_TABS, ROLE_LABELS, TAB_LABELS, type TabId } from "../core/types";
 import { normalizeManagerTabs, normalizeVendorTabs } from "../domain/normalize";
 import { isRevenueSale } from "../domain/sale-groups";
+import { RealtimeSync } from "../data/realtime";
+import { syncTablesFor } from "../data/sync-engine";
 import { openAssistantChat } from "./assistant-chat";
 import { openVoiceSettings } from "./voice-settings";
 import { iconFor, TAB_ICONS } from "./icons";
@@ -413,13 +415,44 @@ function wireSyncListeners(ctx: AppContext): void {
     if (ctx.auth.isAuthenticated) ctx.sync.schedule(100);
   });
 
-  // La app sincroniza cambios de otros dispositivos (ajustes, roles, logo,
-  // catálogo) aunque el usuario no toque nada, mientras esté visible.
-  window.setInterval(() => {
-    if (!document.hidden && ctx.auth.isAuthenticated && navigator.onLine) {
-      void ctx.sync.syncNow({ quiet: true });
+  // Tiempo real: cualquier cambio en otro dispositivo dispara la sync al
+  // instante. Si Realtime no está disponible, queda la revisión periódica.
+  const realtime = new RealtimeSync({
+    supabaseUrl: ctx.config.supabaseUrl,
+    apiKey: ctx.config.supabaseKey,
+    token: () => ctx.auth.session?.access_token ?? null,
+    tables: () => syncTablesFor(ctx.auth.isAdmin(), ctx.store.getState().settings.vendorTabs),
+    onChange: () => {
+      if (ctx.auth.isAuthenticated) ctx.sync.schedule(300);
     }
-  }, 20000);
+  });
+  const realtimeOn = (): void => {
+    if (ctx.client.configured && ctx.auth.isAuthenticated && !document.hidden) realtime.start();
+  };
+  realtimeOn();
+  ctx.auth.onSessionChange(() => {
+    if (ctx.auth.isAuthenticated) {
+      realtime.refreshToken();
+      realtimeOn();
+    } else {
+      realtime.stop();
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) realtime.stop();
+    else realtimeOn();
+  });
+  window.addEventListener("online", realtimeOn);
+
+  // Respaldo: cada 8 s sin tiempo real; cada 60 s si el tiempo real está activo.
+  let lastPoll = 0;
+  window.setInterval(() => {
+    if (document.hidden || !ctx.auth.isAuthenticated || !navigator.onLine) return;
+    realtime.refreshToken();
+    if (realtime.isLive && Date.now() - lastPoll < 60_000) return;
+    lastPoll = Date.now();
+    void ctx.sync.syncNow({ quiet: true });
+  }, 8000);
 }
 
 function openMoreSheet(ctx: AppContext): void {

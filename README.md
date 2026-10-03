@@ -72,6 +72,10 @@ supabase-*.sql  schema, migraciones multi-sucursal y endurecimiento de seguridad
    La `service_role` es secreta: solo en el servidor, nunca en git.
 4. Sin `--anon`, pega la `Project URL` y la `anon key` en `public/config.js`.
 
+ 5. Para que los cambios se vean **al instante** en todos los dispositivos,
+    ejecuta `supabase-migracion-realtime.sql` en el SQL Editor (una sola vez).
+    Sin este paso la app sincroniza igual, revisando cada pocos segundos.
+
  > ¿Base ya existente con datos? Aplica `supabase-migracion-multisucursal.sql`
  > para pasar a esquema multi-sucursal sin perder información (respáldala antes).
  > Después aplica `supabase-migracion-endurecimiento.sql` para restringir el
@@ -80,7 +84,12 @@ supabase-*.sql  schema, migraciones multi-sucursal y endurecimiento de seguridad
 ## Sincronización y offline
 
 - Todo se guarda primero en IndexedDB y después se sube/baja por tabla con
-  cambios incrementales.
+  cambios incrementales (las tablas se descargan en paralelo).
+- Tiempo real: con `supabase-migracion-realtime.sql` aplicado, cada cambio en
+  otro dispositivo dispara la sync en ~1 s (WebSocket de Supabase Realtime).
+  Sin él, se revisa cada 8 s mientras la app está visible.
+- El pull relee los últimos 10 minutos para tolerar relojes desfasados entre
+  dispositivos (el merge es idempotente).
 - Los borrados se propagan con tombstones y el conflicto se resuelve
   last-write-wins por `updated_at`.
 - Los contadores mutables (`stock`, saldo de fiado) se protegen: si hay un
