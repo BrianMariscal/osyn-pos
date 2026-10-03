@@ -17,73 +17,92 @@ export const ajustesTab: TabModule = {
       html`
         <div class="split">
           <article class="card">
-            <h2>Tienda</h2>
-            <p class="hint" id="storeOwnerHint" hidden>Solo el dueño puede modificar el nombre, el logo y el WhatsApp de la tienda.</p>
-            <form id="settingsForm" class="form">
-              <label class="form-field">Nombre
-                <input id="storeName" class="input" placeholder="Mi tienda">
-              </label>
-              <label class="form-field">Logo
-                <input id="logoFile" type="file" accept="image/*">
-              </label>
-              <button id="removeLogo" class="ghost danger" type="button">Quitar logo</button>
-              <label class="form-field">WhatsApp para cortes (con lada)
-                <input id="whatsappNumber" class="input" placeholder="5215512345678">
-              </label>
-              <div class="row">
-                <label class="form-field">WhatsApp adicional 2
-                  <input id="whatsapp2" class="input" placeholder="Opcional">
-                </label>
-                <label class="form-field">WhatsApp adicional 3
-                  <input id="whatsapp3" class="input" placeholder="Opcional">
-                </label>
+            <section class="card-section">
+              <div class="section-head">
+                <h2>Tienda</h2>
+                <p class="hint" id="storeOwnerHint" hidden>Solo el dueño puede modificar el nombre, el logo y el WhatsApp de la tienda.</p>
               </div>
-              <img id="logoPreview" class="login-logo hidden" alt="Logo actual">
-              <button id="saveStore" class="primary" type="submit">Guardar</button>
-            </form>
+              <form id="settingsForm" class="form">
+                <label class="form-field">Nombre
+                  <input id="storeName" class="input" placeholder="Mi tienda">
+                </label>
+                <div class="form-field">Logo
+                  <div class="logo-field">
+                    <img id="logoPreview" class="logo-thumb hidden" alt="Logo actual">
+                    <input id="logoFile" class="file-input" type="file" accept="image/*" aria-label="Elegir logo">
+                    <button id="removeLogo" class="ghost danger" type="button">Quitar logo</button>
+                  </div>
+                </div>
+                <label class="form-field">WhatsApp para cortes (con lada)
+                  <input id="whatsappNumber" class="input" placeholder="5215512345678">
+                </label>
+                <div class="row">
+                  <label class="form-field">WhatsApp adicional 2
+                    <input id="whatsapp2" class="input" placeholder="Opcional">
+                  </label>
+                  <label class="form-field">WhatsApp adicional 3
+                    <input id="whatsapp3" class="input" placeholder="Opcional">
+                  </label>
+                </div>
+                <button id="saveStore" class="primary" type="submit">Guardar</button>
+              </form>
+            </section>
 
-            <div id="panelsWrap">
-              <h2>Pantallas del vendedor</h2>
-              <p class="hint">Elige qué ve el usuario vendedor.</p>
-              <div id="vendorTabsSettings" class="checkbox-grid"></div>
+            <section id="panelsWrap" class="card-section">
+              <div class="section-block">
+                <div class="section-head">
+                  <h2>Pantallas del vendedor</h2>
+                  <p class="hint">Elige qué ve el usuario vendedor.</p>
+                </div>
+                <div id="vendorTabsSettings" class="checkbox-grid"></div>
+              </div>
 
-              <div id="adminTabsWrap">
-                <h2>Pantallas del administrador</h2>
-                <p class="hint">Elige qué ve el administrador. El dueño siempre ve todo.</p>
+              <div id="adminTabsWrap" class="section-block">
+                <div class="section-head">
+                  <h2>Pantallas del administrador</h2>
+                  <p class="hint">Elige qué ve el administrador. El dueño siempre ve todo.</p>
+                </div>
                 <div id="adminTabsSettings" class="checkbox-grid"></div>
               </div>
-            </div>
-            <p class="hint" style="margin-top: var(--sp-3);">La voz del asistente se activa desde el menú de tu usuario (arriba a la derecha).</p>
-            <div id="voiceSettingsHost" style="margin-top: var(--sp-3);"></div>
-            <button id="savePanels" class="primary" type="submit" form="settingsForm" style="margin-top: var(--sp-3);">Guardar</button>
+            </section>
+
+            <section class="card-section">
+              <p class="hint">La voz del asistente se activa desde el menú de tu usuario (arriba a la derecha).</p>
+              <div id="voiceSettingsHost"></div>
+              <button id="savePanels" class="primary" type="submit" form="settingsForm">Guardar</button>
+            </section>
           </article>
 
           <article class="card">
-            <div id="usersSection">
+            <section id="usersSection" class="card-section">
               <div class="section-title">
                 <h2>Usuarios</h2>
                 <button id="addUser" class="primary" type="button">Agregar</button>
               </div>
               <div id="usersList" class="list"></div>
-            </div>
+            </section>
 
-            <div id="branchesSection">
+            <section id="branchesSection" class="card-section">
               <div class="section-title">
                 <h2>Sucursales</h2>
                 <button id="addBranch" class="primary" type="button">Agregar</button>
               </div>
               <p class="hint" id="branchesHint"></p>
               <div id="branchesList" class="list"></div>
-            </div>
+            </section>
 
-            <h2>Respaldo</h2>
-            <p class="hint" id="syncInfo"></p>
-            <div class="actions wrap-actions">
-              <button id="syncNow" class="ghost" type="button">Sincronizar ahora</button>
-              <button id="copySetupLink" class="ghost" type="button">Enlazar otro dispositivo</button>
-              <button id="exportData" class="ghost" type="button">Exportar respaldo</button>
-              <label class="import-label">Importar respaldo<input id="importData" type="file" accept="application/json"></label>
-            </div>
+            <section class="card-section">
+              <div class="section-head">
+                <h2>Respaldo</h2>
+                <p class="hint" id="syncInfo"></p>
+              </div>
+              <div class="backup-actions">
+                <button id="syncNow" class="ghost" type="button">Sincronizar ahora</button>
+                <button id="copySetupLink" class="ghost" type="button">Enlazar otro dispositivo</button>
+                <button id="exportData" class="ghost" type="button">Exportar respaldo</button>
+                <label class="import-label">Importar respaldo<input id="importData" type="file" accept="application/json"></label>
+              </div>
+            </section>
           </article>
         </div>
       `
@@ -125,6 +144,7 @@ export const ajustesTab: TabModule = {
       });
       logoFile.disabled = !owner;
       removeLogo.disabled = !owner;
+      removeLogo.hidden = !settings.logo;
       storeName.value = settings.storeName || "";
       whatsapp.value = settings.whatsappNumber || "";
       whatsapp2.value = settings.whatsapp2 ?? "";

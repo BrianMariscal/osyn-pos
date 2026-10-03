@@ -920,7 +920,7 @@ body { animation: app-in var(--t-slow) var(--ease); }
   .card { box-shadow: none; }
   .top-tools { gap: var(--sp-2); }
   .total-pill { padding: 0.3rem 0.55rem; }
-  .product-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: var(--sp-2); }
+  .product-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--sp-2); }
   .modal { border-radius: var(--r); max-height: 92dvh; }
   .modal-backdrop { padding: var(--sp-2); }
   .checkbox-grid { grid-template-columns: 1fr; }
@@ -1289,4 +1289,101 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
 .purchase-line select[data-f="productId"] { grid-column: 1 / -1; }
 @media (max-width: 860px) {
   .purchase-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   Orden y espaciado: secciones de tarjeta, filas de lista y grupos de botones
+   ========================================================================== */
+
+/* Secciones dentro de una tarjeta: aire y una línea suave entre bloques */
+.card-section { display: grid; gap: var(--sp-3); }
+.card-section + .card-section {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-5);
+  border-top: var(--line-w) solid var(--line);
+}
+.card-section h2 { font-size: var(--fs-md); margin: 0; }
+.card-section > .section-title,
+.card-section > .list,
+.card-section > .actions { margin: 0; }
+.section-block { display: grid; gap: var(--sp-3); }
+.section-block + .section-block { margin-top: var(--sp-4); }
+/* Título con su descripción debajo, sin hueco entre ambos */
+.section-head { display: grid; gap: var(--sp-1); }
+.card > h2 + .hint { margin-top: calc(-1 * var(--sp-2)); margin-bottom: var(--sp-3); }
+
+/* Logo: vista previa, selector de archivo y quitar en una sola línea */
+.logo-field { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-1); }
+.logo-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card-2);
+  flex-shrink: 0;
+}
+.logo-field .file-input { flex: 1 1 180px; min-width: 0; }
+.logo-field .ghost { min-height: 40px; }
+.file-input {
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--muted);
+}
+.file-input::file-selector-button {
+  margin-right: var(--sp-3);
+  min-height: 40px;
+  padding: 0.5rem 0.9rem;
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.file-input::file-selector-button:hover { border-color: var(--line-strong); background: var(--card-2); }
+.file-input:disabled::file-selector-button { opacity: 0.5; cursor: not-allowed; }
+
+/* Acciones dentro de una fila de lista (debajo del contenido): cuadrícula pareja */
+.list-item > .actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.list-item > .actions > * { width: 100%; min-height: 40px; padding: 0.5rem 0.6rem; white-space: nowrap; }
+
+/* Fila con texto a la izquierda y botones a la derecha (usuarios, sucursales…) */
+.list-item.item-line { align-items: center; }
+.list-item.item-line > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.list-item.item-line > :first-child .muted { margin-top: 2px; }
+.list-item.item-line > .actions {
+  display: flex;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin: 0;
+}
+.list-item.item-line > .actions > *,
+.list-item.item-line > button { width: auto; min-height: 40px; flex-shrink: 0; }
+
+/* Botones de respaldo: dos columnas iguales; importar se ve como botón */
+.backup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+.backup-actions > * { width: 100%; text-align: center; }
+.import-label {
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+@media (max-width: 520px) {
+  /* En celular los botones de la fila bajan y ocupan todo el ancho */
+  .list-item.item-line:has(> .actions) { flex-wrap: wrap; }
+  .list-item.item-line > .actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .list-item.item-line > .actions > * { width: 100%; }
 }
