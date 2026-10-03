@@ -79,6 +79,8 @@ export interface ProductStock {
 export interface CartLine {
   productId: string;
   qty: number;
+  /** Precio de oferta sugerida por el sistema (sustituye al precio normal). */
+  promoPrice?: number;
 }
 
 export interface SaleItem {
@@ -90,6 +92,8 @@ export interface SaleItem {
   um: Unit;
   /** Grupo del producto al momento de la venta (para separar cigarros/cerveza). */
   group?: SaleGroup;
+  /** Precio normal cuando se vendió en oferta (price = precio de oferta). */
+  regular_price?: number;
 }
 
 export interface Sale {
@@ -135,6 +139,8 @@ export interface Customer {
  * "extra" (o sin valor, datos anteriores): gasto pagado de la caja en el momento.
  */
 export type ExpenseKind = "fijo" | "extra";
+/** Frecuencia de un costo fijo. Sin valor = mensual (datos anteriores). */
+export type ExpensePeriod = "semanal" | "mensual";
 
 export interface Expense {
   id: string;
@@ -144,6 +150,7 @@ export interface Expense {
   amount: number;
   category: string;
   kind?: ExpenseKind;
+  period?: ExpensePeriod;
   created_at: string;
   updated_at: string;
   deleted?: boolean;

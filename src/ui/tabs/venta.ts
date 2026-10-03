@@ -4,7 +4,8 @@ import { fmtQty } from "../../core/qty";
 import { PAYMENT_LABELS, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
 import { matchOrdersToProducts } from "../../domain/voice/product-matcher";
 import { parseVoiceSale } from "../../domain/voice/voice-parser";
-import { productMatches, resolveScannedCode, supplierCode, supplierLabel } from "../../domain/catalog";
+import { lowStockProducts, productMatches, resolveScannedCode, suggestOffers, supplierCode, supplierLabel, topSellers } from "../../domain/catalog";
+import { mountCarousels } from "../carousel";
 import { parseSaleWithAi, type AiSaleItem } from "../../ai/assistant-client";
 import { scanBarcode } from "../scanner";
 import { openModal } from "../components/modal";
@@ -40,6 +41,11 @@ export const ventaTab: TabModule = {
             <div class="voice-sale-box">
               <button id="voiceSaleButton" class="primary" type="button">${iconFor("mic")} Hablar venta</button>
               <p id="voiceSaleText" class="hint">Di: "dos cocas, una leche y tres panes".</p>
+            </div>
+            <div id="saleHighlights" class="highlights"></div>
+            <div id="catalogBar" class="catalog-bar hidden">
+              <span class="hint" id="catalogInfo"></span>
+              <button id="closeCatalog" class="ghost" type="button">Ocultar catálogo</button>
             </div>
             <div id="productGrid" class="product-grid"></div>
           </article>
@@ -87,6 +93,12 @@ export const ventaTab: TabModule = {
     const search = root.querySelector<HTMLInputElement>("#productSearch")!;
     const supplierFilter = root.querySelector<HTMLSelectElement>("#supplierFilter")!;
     const grid = root.querySelector<HTMLElement>("#productGrid")!;
+    const highlights = root.querySelector<HTMLElement>("#saleHighlights")!;
+    const catalogBar = root.querySelector<HTMLElement>("#catalogBar")!;
+    const catalogInfo = root.querySelector<HTMLElement>("#catalogInfo")!;
+    /** Catálogo completo abierto a mano (sin buscar ni filtrar). */
+    let showAll = false;
+    const carousels = mountCarousels(highlights, () => root.classList.contains("active"));
     const items = root.querySelector<HTMLElement>("#cartItems")!;
     const totalEl = root.querySelector<HTMLElement>("#cartTotal")!;
     const totalLabelEl = root.querySelector<HTMLElement>("#cartTotalLabel")!;
@@ -138,8 +150,23 @@ export const ventaTab: TabModule = {
       if (selected && supplierFilter.value !== selected) supplierFilter.value = "";
     };
 
+    /**
+     * La cuadrícula solo aparece al buscar, filtrar por proveedor o abrir el
+     * catálogo; por defecto se ven los recuadros con movimiento.
+     */
+    const catalogMode = (): boolean => showAll || Boolean(search.value.trim()) || Boolean(supplierFilter.value);
+
     const renderGrid = (): void => {
+      const browsing = catalogMode();
+      highlights.classList.toggle("hidden", browsing);
+      grid.classList.toggle("hidden", !browsing);
+      catalogBar.classList.toggle("hidden", !browsing);
+      if (!browsing) {
+        setHtml(grid, html``);
+        return;
+      }
       const products = filteredProducts();
+      catalogInfo.textContent = `${products.length} ${products.length === 1 ? "producto" : "productos"}`;
       if (!products.length) {
         const empty = !ctx.repos.products.list().length;
         setHtml(grid, html`<p class="muted grid-empty">${empty ? "Agrega productos para vender." : "Ningún producto coincide con la búsqueda."}</p>`);
@@ -166,6 +193,63 @@ export const ventaTab: TabModule = {
           </button>`;
         })}`
       );
+    };
+
+    /** Recuadros: más vendidos, por agotarse y ofertas que arroja el sistema. */
+    const renderHighlights = (): void => {
+      const products = ctx.repos.products.list();
+      const branchId = ctx.branches.operationalId();
+      const sales = ctx.repos.sales.list().filter((sale) => sale.branch_id === branchId);
+      const stockOf = (id: string): number => ctx.sales.stockOf(id);
+      const top = topSellers(products, sales);
+      const low = lowStockProducts(products, stockOf, (id) => ctx.sales.minStockOf(id));
+      const offers = suggestOffers(products, sales, stockOf);
+      carousels.render([
+        {
+          id: "top",
+          title: "Más vendidos",
+          subtitle: "Últimos 30 días",
+          empty: "Aún no hay ventas en los últimos 30 días.",
+          items: top.map(({ product, qty }, index) => ({
+            productId: product.id,
+            name: product.name,
+            price: fmtMoneyPesos(product.price),
+            badge: `#${index + 1}`,
+            detail: `${fmtQty(qty)} ${product.um} vendidos`,
+            disabled: stockOf(product.id) <= 0
+          }))
+        },
+        {
+          id: "low",
+          title: "Por agotarse",
+          subtitle: "Existencia en o bajo el mínimo",
+          empty: "Todo tiene buena existencia.",
+          items: low.map(({ product, stock, min }) => ({
+            productId: product.id,
+            name: product.name,
+            price: fmtMoneyPesos(product.price),
+            badge: stock <= 0 ? "Agotado" : "Quedan pocos",
+            detail: `Quedan ${fmtQty(stock)} ${product.um} · mín ${fmtQty(min)}`,
+            disabled: stock <= 0
+          }))
+        },
+        {
+          id: "offers",
+          title: "Ofertas sugeridas",
+          subtitle: "Sin venta en 30 días o más: tócala para venderla con descuento",
+          empty: "Sin ofertas: todo se ha vendido en el último mes.",
+          items: offers.map(({ product, idleDays, discountPct, offerPrice }) => ({
+            productId: product.id,
+            name: product.name,
+            price: fmtMoneyPesos(offerPrice),
+            was: fmtMoneyPesos(product.price),
+            promoPrice: offerPrice,
+            badge: `−${discountPct}%`,
+            detail: `${idleDays} días sin venta`,
+            disabled: false
+          }))
+        }
+      ]);
     };
 
     const renderPaymentState = (): void => {
@@ -195,7 +279,7 @@ export const ventaTab: TabModule = {
       const totalCents = sumCents(
         cart.map((line) => {
           const product = ctx.repos.products.byId(line.productId);
-          return product ? lineTotalCents(line.qty, product.price) : 0;
+          return product ? lineTotalCents(line.qty, ctx.sales.unitPrice(line)) : 0;
         })
       );
       const totalText = fmtMoney(totalCents);
@@ -210,13 +294,15 @@ export const ventaTab: TabModule = {
         html`${cart.map((line) => {
           const product = ctx.repos.products.byId(line.productId);
           if (!product) return html``;
-          const lineTotal = lineTotalCents(line.qty, product.price);
+          const unit = ctx.sales.unitPrice(line);
+          const onOffer = unit !== product.price;
+          const lineTotal = lineTotalCents(line.qty, unit);
           const step = qtyStep(product.um);
           return html`
             <div class="list-item cart-item">
               <div class="cart-item-info">
                 <strong>${product.name}</strong>
-                <p class="muted">${fmtMoneyPesos(product.price)} por ${product.um}</p>
+                <p class="muted">${onOffer ? html`<s>${fmtMoneyPesos(product.price)}</s> <span class="offer-tag">Oferta ${fmtMoneyPesos(unit)}</span>` : fmtMoneyPesos(product.price)} por ${product.um}</p>
               </div>
               <div class="qty-stepper" data-step="${step}">
                 <button type="button" data-qty-dec="${line.productId}" aria-label="Menos cantidad">−</button>
@@ -320,6 +406,32 @@ export const ventaTab: TabModule = {
       if (!result.ok) ctx.toast(result.error);
     });
 
+    highlights.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-show-catalog]")) {
+        showAll = true;
+        renderGrid();
+        return;
+      }
+      const button = target.closest<HTMLElement>("[data-add]");
+      if (!button) return;
+      const promo = button.dataset.promo ? Number(button.dataset.promo) : undefined;
+      const product = ctx.repos.products.byId(button.dataset.add!);
+      const result = ctx.sales.addToCart(button.dataset.add!, 1, promo);
+      if (!result.ok) ctx.toast(result.error);
+      else if (product) {
+        vibrate(40);
+        ctx.toast(promo ? `${product.name} en oferta: ${fmtMoneyPesos(promo)}` : `${product.name} agregado`);
+      }
+    });
+
+    root.querySelector<HTMLButtonElement>("#closeCatalog")!.addEventListener("click", () => {
+      showAll = false;
+      search.value = "";
+      supplierFilter.value = "";
+      renderGrid();
+    });
+
     items.addEventListener("change", (event) => {
       const input = (event.target as HTMLElement).closest<HTMLInputElement>("[data-qty]");
       if (!input) return;
@@ -359,6 +471,7 @@ export const ventaTab: TabModule = {
         renderCart();
       }
     );
+    ctx.store.watch((s) => [s.products, s.product_stocks, s.sales, s.branches, s.currentBranchId] as const, renderHighlights);
 
     payment.addEventListener("change", renderPaymentState);
     customer.addEventListener("change", () => {
@@ -427,7 +540,7 @@ export const ventaTab: TabModule = {
             ${sale.items.map(
               (item) => html`
                 <div class="item-line">
-                  <span>${fmtQty(item.qty)} ${item.um} · ${item.name}</span>
+                  <span>${fmtQty(item.qty)} ${item.um} · ${item.name}${item.regular_price ? html` <span class="offer-tag">Oferta</span>` : html``}</span>
                   <strong>${fmtMoney(lineTotalCents(item.qty, item.price))}</strong>
                 </div>
               `

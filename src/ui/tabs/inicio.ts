@@ -243,12 +243,20 @@ export const inicioTab: TabModule = {
      * Meta diaria: costos fijos del mes ÷ días del mes. Se cubre con GANANCIA
      * (venta − costo); con el margen del mes se estima cuánto vender.
      */
+    const targetBreakdown = (scope: string): string => {
+      const parts = ctx.expenses.fixedBreakdown(scope);
+      return [
+        parts.monthly > 0 ? `Mensuales ${fmtMoney(parts.monthly)} ÷ ${daysInMonth(new Date())} días` : "",
+        parts.weekly > 0 ? `Semanales ${fmtMoney(parts.weekly)} ÷ 7 días` : ""
+      ].filter(Boolean).join(" + ");
+    };
+
     const renderTarget = (scope: string, grossToday: number, salesToday: number, salesMonth: number, grossMonth: number): void => {
       const monthly = ctx.expenses.monthlyFixedCents(scope);
       if (monthly <= 0) {
         setHtml(
           targetEl,
-          html`<p class="hint">Registra tus costos fijos mensuales (renta, luz, sueldos) en Gastos y aquí verás cuánto necesitas generar cada día.</p>
+          html`<p class="hint">Registra tus costos fijos semanales y mensuales (renta, luz, sueldos) en Gastos y aquí verás cuánto necesitas generar cada día.</p>
             <button class="ghost block" type="button" data-go="gastos">Registrar costos fijos</button>`
         );
         return;
@@ -274,7 +282,7 @@ export const inicioTab: TabModule = {
             ${missing > 0 ? `Faltan ${fmtMoney(missing)} de ganancia para cubrir los costos fijos de hoy.` : "¡Meta del día cubierta!"}
             ${salesNeeded > 0 ? ` Con tu margen actual (${Math.round(marginBase * 100)}%) equivale a vender ≈ ${fmtMoney(salesNeeded)} al día.` : ""}
           </p>
-          <p class="micro">Costos fijos: ${fmtMoney(monthly)} al mes ÷ ${daysInMonth(new Date())} días</p>
+          <p class="micro">${targetBreakdown(scope)}</p>
         `
       );
     };

@@ -67,6 +67,19 @@ function employeeTables(vendorTabs: readonly string[]): SyncTableKey[] {
   return SYNC_TABLES.filter((table) => tables.has(table));
 }
 
+/** Margen hacia atrás del pull incremental (tolera relojes desfasados entre dispositivos). */
+export const PULL_OVERLAP_MS = 10 * 60_000;
+
+export function pullSince(lastPulledAt: string): string {
+  const time = Date.parse(lastPulledAt);
+  return Number.isFinite(time) ? new Date(time - PULL_OVERLAP_MS).toISOString() : lastPulledAt;
+}
+
+/** Tablas que sincroniza un usuario (todas para gerencia; según sus pantallas para vendedor). */
+export function syncTablesFor(isAdmin: boolean, vendorTabs: readonly string[]): SyncTableKey[] {
+  return isAdmin ? [...SYNC_TABLES] : employeeTables(vendorTabs);
+}
+
 export interface SyncResult {
   ok: boolean;
   error?: string;
@@ -92,7 +105,7 @@ export class SyncEngine {
     private repos: Repositories
   ) {}
 
-  schedule(delay = 2000): void {
+  schedule(delay = 400): void {
     if (!navigator.onLine || !this.client.configured || !this.auth.session) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
@@ -125,14 +138,17 @@ export class SyncEngine {
     if (!session) return { ok: false, error: "Sesión expirada" };
     const token = session.access_token;
     const isAdmin = this.auth.isAdmin();
-    const tables = isAdmin ? [...SYNC_TABLES] : employeeTables(this.store.getState().settings.vendorTabs);
+    const tables = syncTablesFor(isAdmin, this.store.getState().settings.vendorTabs);
     this.setSyncing(true);
     try {
       const conflicts: Array<{ table: SyncTableKey; id: string }> = [];
-      for (const table of tables) {
-        const tableConflicts = await this.pull(table, token);
-        tableConflicts.forEach((id) => conflicts.push({ table, id }));
-      }
+      // Descarga en paralelo (antes una tabla tras otra) y mezcla en orden.
+      const fetched = await Promise.all(tables.map((table) => this.fetchTable(table, token)));
+      fetched.forEach((result, index) => {
+        if (!result) return;
+        const table = tables[index]!;
+        this.applyPulled(table, result.rows, result.capturedAt).forEach((id) => conflicts.push({ table, id }));
+      });
       await this.pullSettings(token);
       const pushable = isAdmin
         ? tables
@@ -160,34 +176,36 @@ export class SyncEngine {
     });
   }
 
-  private async pull(table: SyncTableKey, token: string): Promise<string[]> {
+  private async fetchTable(table: SyncTableKey, token: string): Promise<{ rows: Array<Record<string, unknown>>; capturedAt: string } | null> {
     const since = this.store.getState().sync.lastPulledAt[table];
     const capturedAt = nowISO();
     const params = new URLSearchParams({ select: "*" });
     if (since) {
-      // gte (no gt): lastPulledAt se captura al INICIAR el pull y los
-      // timestamps tienen precisión de milisegundos. Con gt estricto, una fila
-      // guardada en el mismo milisegundo (o con relojes desfasados entre
-      // dispositivos, o un push retrasado por offline) quedaba excluida para
-      // siempre. Releer el borde es seguro: el merge es idempotente
-      // (last-write-wins por updated_at, en empate gana lo local).
-      params.set("updated_at", `gte.${since}`);
+      // Margen de PULL_OVERLAP_MS: updated_at lo escribe el reloj del
+      // dispositivo que hizo el cambio. Si ese reloj va atrasado respecto al
+      // de este dispositivo, sin margen el cambio quedaba fuera para siempre
+      // (o hasta que alguien volviera a tocar la fila). Releer el borde es
+      // seguro: el merge es idempotente (last-write-wins por updated_at).
+      params.set("updated_at", `gte.${pullSince(since)}`);
       params.set("order", "updated_at.asc");
     }
     const res = await this.client.rest(`${table}?${params.toString()}`, token);
     if (res.status === 404) {
       // Tabla sin migrar todavía en Supabase: se salta sin romper la sync
-      return [];
+      return null;
     }
     if (!res.ok) throw new Error(`Error leyendo ${table}: ${await res.text()}`);
-    const rows = (await res.json()) as Array<Record<string, unknown>>;
+    return { rows: (await res.json()) as Array<Record<string, unknown>>, capturedAt };
+  }
+
+  private applyPulled(table: SyncTableKey, rows: Array<Record<string, unknown>>, capturedAt: string): string[] {
     let mapped = rows.map(fromSupabaseRow);
     if (table === "products") {
       mapped = this.applySettingsRow(mapped);
     }
     const conflicts = this.repos.repoFor(table).mergeFromCloud(mapped as unknown as BaseRow[]);
     this.store.update((state) => {
-      state.sync.lastPulledAt = { ...state.sync.lastPulledAt, [table]: capturedAt };
+      state.sync = { ...state.sync, lastPulledAt: { ...state.sync.lastPulledAt, [table]: capturedAt } };
     });
     return conflicts;
   }
@@ -226,6 +244,17 @@ export class SyncEngine {
     }
   }
 
+  /**
+   * ¿Los ajustes de la nube reemplazan a los locales? En empate de tiempo solo
+   * si no hay un cambio local pendiente de subir (si no, se perdía el ajuste
+   * recién guardado al releer la fila sin haberla subido aún).
+   */
+  private cloudSettingsWin(cloudTime: number, localTime: number): boolean {
+    if (!this.store.getState().settings.updated_at) return true;
+    if (cloudTime > localTime) return true;
+    return cloudTime === localTime && !this.tracker.isDirty("products", SETTINGS_ROW_ID);
+  }
+
   /** La fila __pos_settings__ no entra a products: alimenta state.settings. */
   private applySettingsRow(rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
     const settingsRow = rows.find((row) => row.id === SETTINGS_ROW_ID);
@@ -235,7 +264,7 @@ export class SyncEngine {
         const local = this.store.getState().settings;
         const cloudTime = Date.parse(String(cloudSettings.updated_at || settingsRow.updated_at || "")) || 0;
         const localTime = Date.parse(String(local.updated_at || "")) || 0;
-        if (!local.updated_at || cloudTime >= localTime) {
+        if (this.cloudSettingsWin(cloudTime, localTime)) {
           this.store.update((state) => {
             state.settings = { ...state.settings, ...cloudSettings, updated_at: String(cloudSettings.updated_at || settingsRow.updated_at || nowISO()) };
           });
@@ -255,7 +284,7 @@ export class SyncEngine {
       const local = this.store.getState().settings;
       const cloudTime = Date.parse(String(settings.updated_at || "")) || 0;
       const localTime = Date.parse(String(local.updated_at || "")) || 0;
-      if (!local.updated_at || cloudTime >= localTime) {
+      if (this.cloudSettingsWin(cloudTime, localTime)) {
         this.store.update((state) => {
           state.settings = { ...state.settings, ...settings, updated_at: String(settings.updated_at || nowISO()) };
         });

@@ -148,7 +148,8 @@ const saleItemSchema = z.object({
   price: num,
   cost: num,
   um: unitSchema,
-  group: saleGroupSchema
+  group: saleGroupSchema,
+  regular_price: optionalPositive
 });
 
 const saleSchema = z.object({
@@ -172,6 +173,7 @@ const expenseSchema = z.object({
   amount: num,
   category: z.string().catch("Varios"),
   kind: z.enum(["fijo", "extra"]).optional().catch(undefined),
+  period: z.enum(["semanal", "mensual"]).optional().catch(undefined),
   created_at: iso,
   updated_at: iso,
   deleted: bool.optional()
@@ -275,7 +277,7 @@ const appStateSchema = z.object({
   month_closings: z.array(monthClosingSchema).catch([]),
   inventory_counts: z.array(inventoryCountSchema).catch([]),
   cart: z
-    .array(z.object({ productId: z.string().min(1), qty: num }))
+    .array(z.object({ productId: z.string().min(1), qty: num, promoPrice: optionalPositive }))
     .catch([]),
   currentBranchId: z.string().catch(""),
   viewBranchId: z.string().catch(VIEW_ALL),

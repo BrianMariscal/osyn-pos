@@ -53,7 +53,15 @@ export class SaleService {
     return row ? normalizeQty(row.min_stock) : 0;
   }
 
-  addToCart(productId: string, qty = 1): SimpleResult {
+  /** Precio que se cobra por una línea: el de oferta (si no baja del costo) o el normal. */
+  unitPrice(line: CartLine): number {
+    const product = this.repos.products.byId(line.productId);
+    if (!product) return 0;
+    const promo = line.promoPrice;
+    return promo !== undefined && promo > 0 && promo >= product.cost && promo < product.price ? promo : product.price;
+  }
+
+  addToCart(productId: string, qty = 1, promoPrice?: number): SimpleResult {
     const product = this.repos.products.byId(productId);
     if (!product || product.active === false) return { ok: false, error: "Producto no disponible" };
     const available = this.stockOf(productId);
@@ -69,9 +77,12 @@ export class SaleService {
       }
       newQty = available;
     }
+    // Una oferta tocada se conserva para todo el renglón.
+    const promo = promoPrice ?? line?.promoPrice;
+    const withPromo = (l: CartLine): CartLine => (promo !== undefined ? { ...l, qty: newQty, promoPrice: promo } : { ...l, qty: newQty });
     const next = line
-      ? lines.map((l) => (l.productId === productId ? { ...l, qty: newQty } : l))
-      : [...lines, { productId, qty: newQty } as CartLine];
+      ? lines.map((l) => (l.productId === productId ? withPromo(l) : l))
+      : [...lines, withPromo({ productId, qty: newQty })];
     this.store.update((state) => {
       state.cart = next;
     });
@@ -137,7 +148,8 @@ export class SaleService {
         productId: product.id,
         name: product.name,
         qty,
-        price: product.price,
+        price: this.unitPrice(line),
+        ...(this.unitPrice(line) !== product.price ? { regular_price: product.price } : {}),
         cost: product.cost,
         um: product.um,
         group: detectSaleGroup(product)

@@ -10,6 +10,7 @@ import { openCountPdf } from "../pdf";
 import { scanBarcode } from "../scanner";
 import { downloadCsv } from "./download";
 import { supplierLabel } from "../../domain/catalog";
+import { categoryFieldMarkup, mountCategoryField, type CategoryField } from "../category-field";
 import type { AppContext } from "../context";
 import type { TabModule } from "./tab-module";
 
@@ -347,6 +348,7 @@ export interface NewProductPreset {
 
 /** Modal de alta rápida de producto (Inventario, Proveedores y código no registrado en Venta). */
 export function openNewProductModal(ctx: AppContext, onDone: (product: Product) => void, preset: NewProductPreset = {}): void {
+  let category: CategoryField | null = null;
   const suppliers = ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
   openModal({
     title: "Nuevo producto",
@@ -356,9 +358,7 @@ export function openNewProductModal(ctx: AppContext, onDone: (product: Product) 
         <input id="pName" class="input" required>
       </label>
       <div class="row">
-        <label class="form-field">Categoría
-          <input id="pCategory" class="input" value="Abarrotes">
-        </label>
+        ${categoryFieldMarkup("pCategory")}
         <label class="form-field">Unidad
           <select id="pUnit" class="input">
             ${UNITS.map((unit) => html`<option value="${unit}">${unit}</option>`)}
@@ -422,7 +422,7 @@ export function openNewProductModal(ctx: AppContext, onDone: (product: Product) 
           const product: Product = {
             id: uid(),
             name,
-            category: value("pCategory"),
+            category: category?.get() ?? "",
             um: (document.getElementById("pUnit") as HTMLSelectElement).value as Unit,
             cost: Math.max(0, Number(value("pCost") || 0)),
             price,
@@ -450,6 +450,13 @@ export function openNewProductModal(ctx: AppContext, onDone: (product: Product) 
       }
     ],
     onOpen: (modalRoot) => {
+      const presetSupplier = preset.supplierId ? ctx.repos.suppliers.byId(preset.supplierId) : undefined;
+      category = mountCategoryField(modalRoot, "pCategory", ctx);
+      if (presetSupplier?.type) category.set(presetSupplier.type);
+      modalRoot.querySelector<HTMLSelectElement>("#pSupplier")?.addEventListener("change", (event) => {
+        const supplier = ctx.repos.suppliers.byId((event.target as HTMLSelectElement).value);
+        if (supplier?.type && category?.isDefault()) category.set(supplier.type);
+      });
       modalRoot.querySelector<HTMLButtonElement>("#pScan")?.addEventListener("click", async () => {
         try {
           const code = await scanBarcode();
