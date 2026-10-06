@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Abarrotes POS — Schema completo MULTI-SUCURSAL (instalaciones nuevas)
 -- Ejecutar en Supabase > SQL Editor.
--- Para una base YA EXISTENTE con datos, usa supabase-migracion-multisucursal.sql
+-- Para una base YA EXISTENTE con datos, usa supabase/migracion-multisucursal.sql
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -532,7 +532,7 @@ create index if not exists idx_counts_branch on inventory_counts (branch_id);
 -- on conflict (user_id) do update set role = 'empleado', branch_id = 'sucursal-1', updated_at = now();
 
 -- ---------------------------------------------------------------------------
--- Tiempo real (mismo contenido que supabase-migracion-realtime.sql)
+-- Tiempo real (mismo contenido que supabase/migracion-realtime.sql)
 -- ---------------------------------------------------------------------------
 
 do $$

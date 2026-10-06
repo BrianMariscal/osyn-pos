@@ -24,8 +24,8 @@ la misma base de Supabase.** Los catálogos y proveedores son globales.
 Cada tienda tiene su propia instancia aislada:
 
 - Su propio proyecto de Supabase (schema único, sin sucursales extra).
-- Su propio despliegue/URL en Vercel con `config.js` apuntando a su proyecto.
-- Instalación: crear proyecto → ejecutar `supabase-schema.sql` → correr
+- Su propio despliegue/URL en Cloudflare Pages con `config.js` apuntando a su proyecto.
+- Instalación: crear proyecto → ejecutar `supabase/schema.sql` → correr
   `scripts/setup-usuarios.mjs` para crear admin/vendedor iniciales.
 
 **Ventajas**
@@ -36,9 +36,9 @@ Cada tienda tiene su propia instancia aislada:
 
 **Desventajas**
 
-- Mantener N proyectos Supabase/Vercel (una por cliente).
+- Mantener N proyectos Supabase/Cloudflare (una por cliente).
 - No hay panel central para ver clientes ni métricas.
-- Cada actualización de la app se publica una vez en el código (Vercel) y no
+- Cada actualización de la app se publica una vez en el código (Cloudflare Pages) y no
   por cliente; los cambios de esquema hay que aplicarlos por cliente.
 
 ### 2. SaaS multi-negocio (cuando haya varios clientes)
@@ -78,11 +78,11 @@ la inversión; en ese momento se migra con un script por cliente.
 
 ## Checklist antes de vender (por cliente)
 
-1. Crear proyecto Supabase y aplicar `supabase-schema.sql` (bases nuevas crean
+1. Crear proyecto Supabase y aplicar `supabase/schema.sql` (bases nuevas crean
    UNA sucursal por defecto: "Sucursal 1").
 2. Crear el admin inicial con `scripts/setup-usuarios.mjs` (nunca en el navegador
    del cliente).
-3. Copiar la app en Vercel (o repositorio por cliente) con el `config.js`
+3. Copiar la app en Cloudflare Pages (o repositorio por cliente) con el `config.js`
    apuntando a ese proyecto; guardar las variables `SUPABASE_URL`,
    `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` de ese cliente en el entorno.
 4. Verificar RLS: usuarios autenticados solo tocan su sucursal; escritura de

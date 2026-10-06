@@ -5,7 +5,7 @@
  *     perfiles de otros admins ni del dueño, ni cambiar su propio perfil.
  * La clave service_role vive SOLO en el servidor.
  *
- * Env var requerida en Vercel: SUPABASE_SERVICE_ROLE_KEY
+ * Variable requerida en Cloudflare Pages: SUPABASE_SERVICE_ROLE_KEY
  */
 import authenticate from "./_auth.js";
 import rateLimit from "./_ratelimit.js";
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     res.status(auth.status).json(auth.body);
     return;
   }
-  if (!rateLimit(req, 30)) {
+  if (!await rateLimit(req, 30)) {
     res.status(429).json({ error: "Demasiadas solicitudes" });
     return;
   }
@@ -117,8 +117,8 @@ async function createUser(res, base, serviceHeaders, isOwner, callerBranch, body
     res.status(400).json({ error: "Correo invalido" });
     return;
   }
-  if (!password || String(password).length < 6) {
-    res.status(400).json({ error: "La contrasena necesita al menos 6 caracteres" });
+  if (!password || String(password).length < 8) {
+    res.status(400).json({ error: "La contrasena necesita al menos 8 caracteres" });
     return;
   }
   const normalizedRole = normalizeRole(role, isOwner);
@@ -161,8 +161,8 @@ async function updateUser(res, base, serviceHeaders, isOwner, callerBranch, auth
       return;
     }
   }
-  if (password && String(password).length < 6) {
-    res.status(400).json({ error: "La contrasena necesita al menos 6 caracteres" });
+  if (password && String(password).length < 8) {
+    res.status(400).json({ error: "La contrasena necesita al menos 8 caracteres" });
     return;
   }
   if (password) {

@@ -2,7 +2,7 @@
  * Verifica el JWT de Supabase del request contra /auth/v1/user.
  * Sin sesión válida los endpoints de IA devuelven 401.
  *
- * Variables de entorno requeridas en Vercel:
+ * Variables de entorno requeridas (Cloudflare Pages → Variables and Secrets):
  *   SUPABASE_URL        (https://xxx.supabase.co)
  *   SUPABASE_ANON_KEY   (anon / publishable key)
  *   NVIDIA_API_KEY | OPENAI_API_KEY

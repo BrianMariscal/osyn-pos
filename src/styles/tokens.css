@@ -9,7 +9,7 @@
   --primary-hover: #234a86;
   --primary-soft: #e2eaf6;
   --on-primary: #ffffff;
-  --accent: #b26b12;
+  --accent: #9a5b0e;
   --danger: #c0473c;
   --success: #2e8a57;
 
@@ -17,7 +17,7 @@
   --c-blue: #2c5aa0;
   --c-teal: #1d7a6e;
   --c-green: #2e8a57;
-  --c-amber: #b26b12;
+  --c-amber: #9a5b0e;
   --c-coral: #c0473c;
   --c-violet: #5f4fb0;
 
@@ -33,9 +33,19 @@
   --overlay: rgba(16, 24, 34, 0.5);
 
   /* Tipografía */
+  /* Colores fijos: papel (ticket, etiqueta QR), WhatsApp y visor de cámara */
+  --paper: #ffffff;
+  --paper-ink: #17202a;
+  --paper-muted: #546374;
+  --paper-line: #9aa5b1;
+  --paper-ok: #2e8a57;
+  --whatsapp: #1f8f5a;
+  --whatsapp-hover: #187449;
+  --camera-bg: #0a0f13;
+
   --font: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", sans-serif;
-  --fs-2xs: 0.6875rem;
-  --fs-xs: 0.78125rem;
+  --fs-2xs: 0.75rem;
+  --fs-xs: 0.8125rem;
   --fs-sm: 0.84375rem;
   --fs-md: 0.9375rem;
   --fs-lg: 1.125rem;

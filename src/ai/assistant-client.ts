@@ -48,29 +48,6 @@ function authHeaders(ctx: AppContext): Record<string, string> {
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
-/** Interpreta una frase de venta con IA del servidor (requiere sesión). */
-export async function parseSaleWithAi(ctx: AppContext, text: string): Promise<AiSaleItem[]> {
-  const products = ctx.repos.products
-    .list()
-    .filter((product) => product.active !== false)
-    .slice(0, 500)
-    .map((product) => ({
-      id: product.id,
-      name: product.name,
-      category: product.category,
-      um: product.um,
-      stock: ctx.sales.stockOf(product.id)
-    }));
-  const res = await fetch("/api/parse-sale", {
-    method: "POST",
-    headers: authHeaders(ctx),
-    body: JSON.stringify({ text, products })
-  });
-  if (!res.ok) throw new Error("IA no disponible");
-  const data = (await res.json()) as { items?: AiSaleItem[] };
-  return Array.isArray(data.items) ? data.items : [];
-}
-
 export function assistantContext(ctx: AppContext): Record<string, unknown> {
   const branchId = ctx.branches.operationalId();
   return {

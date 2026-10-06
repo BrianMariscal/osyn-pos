@@ -1,0 +1,6 @@
+# Cloudflare Pages (plan gratuito, uso comercial permitido).
+# Desplegar: npm run deploy:cf   ·   Funciones de /api en functions/api/[[path]].js
+name = "osynpos"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]

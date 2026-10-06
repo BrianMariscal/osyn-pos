@@ -70,6 +70,3 @@ export function rowTime(row: { created_at?: string; closed_at?: string; updated_
   return Number.isNaN(t) ? 0 : t;
 }
 
-export function newerThan(a: { updated_at?: string; created_at?: string }, b: { updated_at?: string; created_at?: string }): boolean {
-  return rowTime(a) > rowTime(b);
-}

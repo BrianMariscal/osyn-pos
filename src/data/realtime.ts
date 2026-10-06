@@ -4,7 +4,7 @@
  * No aplica los datos que llegan: cada aviso de cambio solo dispara la sync
  * incremental normal, así se respetan el merge, los tombstones y el rebase de
  * contadores. Si Realtime no está habilitado en la base (falta ejecutar
- * supabase-migracion-realtime.sql) o no hay red, la app sigue con la revisión
+ * supabase/migracion-realtime.sql) o no hay red, la app sigue con la revisión
  * periódica de respaldo.
  */
 import type { SyncTableKey } from "../core/types";
