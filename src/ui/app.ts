@@ -41,6 +41,21 @@ const MORE_GROUPS: Array<{ label: string; tabs: readonly TabId[] }> = [
   { label: "Control", tabs: ["reportes", "ajustes"] }
 ];
 
+/** Color de cada sección en la navegación. */
+const TAB_TONES: Partial<Record<TabId, string>> = {
+  inicio: "--c-blue",
+  venta: "--c-green",
+  fiado: "--c-amber",
+  corte: "--c-violet",
+  entradas: "--c-teal",
+  productos: "--c-blue",
+  inventario: "--c-teal",
+  mermas: "--c-coral",
+  gastos: "--c-coral",
+  proveedores: "--c-violet",
+  reportes: "--c-blue"
+};
+
 let activeTab: TabId = "inicio";
 
 function allowedTabs(ctx: AppContext): TabId[] {
@@ -111,14 +126,12 @@ export function buildApp(ctx: AppContext): void {
           <div class="top-tools">
             <select id="branchSelect" class="input branch-select" aria-label="Sucursal"></select>
             <span id="branchBadge" class="tag hidden"></span>
-            <span id="connectionTag" class="tag" title="Sincronizando…"><span class="dot"></span><span id="connectionBadgeText" class="tag-label-sync"></span></span>
-            <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Cambiar tema">☾</button>
             <span class="total-pill" title="Ventas de hoy en esta sucursal">
               <span class="micro">Hoy</span>
               <strong id="todayTotal">$0.00</strong>
             </span>
-            <button id="sessionButton" class="session-chip hidden" type="button" aria-label="Cuenta">
-              <span class="avatar-icon">${safe(SESSION_ICON)}</span>
+            <button id="sessionButton" class="session-chip hidden" type="button" aria-label="Cuenta, sincronización y apariencia">
+              <span class="avatar-icon">${safe(SESSION_ICON)}<span id="syncDot" class="sync-dot" data-state="idle"></span></span>
               <span id="sessionName" class="hidden"></span>
             </button>
           </div>
@@ -243,12 +256,8 @@ function wireThemeToggle(ctx: AppContext): void {
   document.addEventListener("click", (event) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>("[data-theme-toggle]");
     if (!button) return;
-    const current = ctx.store.getState().settings.theme ?? "auto";
-    const resolved =
-      current === "auto"
-        ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-        : current;
-    ctx.settings.save({ theme: resolved === "dark" ? "light" : "dark" });
+    const dark = document.documentElement.dataset.theme === "dark";
+    setThemeChoice(ctx, dark ? "light" : "dark");
   });
 }
 
@@ -332,35 +341,18 @@ function wireTopbar(ctx: AppContext): void {
     renderTabsNav(ctx);
   });
 
-  ctx.store.watch((s) => s.sync, (sync) => {
-    const badge = document.getElementById("connectionBadgeText");
-    const tag = document.getElementById("connectionTag");
-    if (!badge || !tag) return;
-    tag.classList.remove("tag-error", "tag-off");
-    if (!ctx.auth.isAuthenticated) {
-      badge.textContent = "Sin sesión";
-      tag.classList.add("tag-off");
-      tag.title = "";
-    } else if (sync.error) {
-      badge.textContent = "Error de sync";
-      tag.classList.add("tag-error");
-      tag.title = sync.error;
-    } else if (!navigator.onLine) {
-      badge.textContent = `${sync.pending} pendientes`;
-      tag.classList.add("tag-off");
-      tag.title = "Sin internet";
-    } else if (sync.pending) {
-      badge.textContent = `${sync.pending} pendientes`;
-      tag.title = "Cambios por sincronizar";
-    } else if (sync.lastSyncAt) {
-      // Solo el punto verde; el detalle va en el tooltip
-      badge.textContent = "";
-      tag.title = `Sincronizado ${new Date(sync.lastSyncAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}`;
-    } else {
-      badge.textContent = "";
-      tag.title = "Sincronizando…";
-    }
-  });
+  const renderSyncDot = (): void => {
+    const status = syncStatus(ctx);
+    const dot = document.getElementById("syncDot");
+    const button = document.getElementById("sessionButton");
+    if (dot) dot.dataset.state = status.state;
+    if (button) button.title = `${status.label}${status.detail ? ` · ${status.detail}` : ""}`;
+  };
+  ctx.store.watch((s) => s.sync, renderSyncDot);
+  window.addEventListener("online", renderSyncDot);
+  window.addEventListener("offline", renderSyncDot);
+  // Tema automático: sigue al sistema si cambia mientras la app está abierta
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => applyTheme(ctx));
 
   ctx.store.watch(
     (s) => [s.sales, s.branches, s.currentBranchId] as const,
@@ -408,22 +400,139 @@ function wireTopbar(ctx: AppContext): void {
   );
 }
 
+type SyncState = "ok" | "pending" | "offline" | "error" | "idle";
+
+/** Estado de sincronización legible (punto del avatar y menú de cuenta). */
+function syncStatus(ctx: AppContext): { state: SyncState; label: string; detail: string } {
+  const sync = ctx.store.getState().sync;
+  const time = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : "";
+  const pending = sync.pending === 1 ? "1 cambio pendiente" : `${sync.pending} cambios pendientes`;
+  if (!ctx.auth.isAuthenticated) return { state: "idle", label: "Sin sesión", detail: "" };
+  if (!navigator.onLine) return { state: "offline", label: "Sin internet", detail: sync.pending ? `${pending}; se suben al volver la conexión` : "Puedes seguir vendiendo" };
+  if (sync.error) return { state: "error", label: "No se pudo sincronizar", detail: friendlySyncError(sync.error) };
+  if (sync.pending) return { state: "pending", label: "Sincronizando…", detail: pending };
+  if (sync.lastSyncAt) return { state: "ok", label: "Todo sincronizado", detail: `Última vez ${time(sync.lastSyncAt)}` };
+  return { state: "idle", label: "Conectando…", detail: "" };
+}
+
+type ThemeChoice = "light" | "dark" | "auto";
+const THEME_KEY = "pos-theme";
+
+/** El tema es preferencia de cada dispositivo (antes viajaba en los ajustes y cambiaba el de todos). */
+function themeChoice(ctx: AppContext): ThemeChoice {
+  try {
+    const local = localStorage.getItem(THEME_KEY);
+    if (local === "light" || local === "dark" || local === "auto") return local;
+  } catch {
+    /* almacenamiento no disponible */
+  }
+  return ctx.store.getState().settings.theme ?? "auto";
+}
+
+function setThemeChoice(ctx: AppContext, choice: ThemeChoice): void {
+  try {
+    localStorage.setItem(THEME_KEY, choice);
+  } catch {
+    /* almacenamiento no disponible */
+  }
+  applyTheme(ctx);
+}
+
+const svg = (body: string) =>
+  safe(`<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`);
+const THEME_OPTIONS = [
+  { id: "light", label: "Claro", icon: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/>') },
+  { id: "dark", label: "Oscuro", icon: svg('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>') },
+  { id: "auto", label: "Auto", icon: svg('<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/>') }
+] as const satisfies ReadonlyArray<{ id: ThemeChoice; label: string; icon: ReturnType<typeof safe> }>;
+
+/** Mensajes de error de red legibles. */
+function friendlySyncError(error: string): string {
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(error)) return "No hay conexión con el servidor. Se reintentará solo.";
+  if (/jwt|401|token/i.test(error)) return "La sesión expiró. Cierra sesión y vuelve a entrar.";
+  return error;
+}
+
 function wireSessionMenu(ctx: AppContext): void {
   document.getElementById("assistantFab")?.addEventListener("click", () => openAssistantChat(ctx));
   document.getElementById("sessionButton")?.addEventListener("click", () => {
     const session = ctx.auth.session;
     if (!session) return;
+    let stopWatch: (() => void) | null = null;
     openModal({
       title: ctx.auth.displayName() || "Cuenta",
       content: html`
         <p class="muted">${session.user?.email ?? ""} · ${ROLE_LABELS[session.role] ?? ""}</p>
-        <div class="more-list">
-          <button class="ghost more-item" type="button" data-menu="voice">Voz del asistente: ${isVoiceEnabled() ? "activada" : "desactivada"}</button>
-          <button class="ghost more-item" type="button" data-menu="voiceconfig">Elegir voz…</button>
-          <button class="ghost more-item danger-item" type="button" data-menu="logout">Cerrar sesión</button>
-        </div>
+        <section class="menu-section">
+          <p class="micro">Sincronización</p>
+          <div class="sync-card" id="menuSync"></div>
+        </section>
+        <section class="menu-section">
+          <p class="micro">Apariencia</p>
+          <div class="segmented" role="radiogroup" aria-label="Tema" id="menuTheme">
+            ${THEME_OPTIONS.map(
+              (option) => html`<button type="button" role="radio" data-theme-choice="${option.id}">${option.icon}<span>${option.label}</span></button>`
+            )}
+          </div>
+        </section>
+        <section class="menu-section">
+          <p class="micro">Asistente</p>
+          <div class="more-list">
+            <button class="ghost more-item" type="button" data-menu="voice">Voz del asistente: ${isVoiceEnabled() ? "activada" : "desactivada"}</button>
+            <button class="ghost more-item" type="button" data-menu="voiceconfig">Elegir voz…</button>
+          </div>
+        </section>
+        <button class="ghost more-item danger-item" type="button" data-menu="logout">Cerrar sesión</button>
       `,
       onOpen: (root, close) => {
+        const syncEl = root.querySelector<HTMLElement>("#menuSync")!;
+        const themeEl = root.querySelector<HTMLElement>("#menuTheme")!;
+        let syncing = false;
+        const renderSync = (): void => {
+          const status = syncStatus(ctx);
+          setHtml(
+            syncEl,
+            html`<span class="sync-dot sync-dot-lg" data-state="${syncing ? "pending" : status.state}"></span>
+              <div class="sync-text"><strong>${syncing ? "Sincronizando…" : status.label}</strong>${status.detail ? html`<span class="muted">${status.detail}</span>` : html``}</div>
+              <button class="ghost sync-now" type="button" data-sync-now ${syncing || !navigator.onLine ? "disabled" : null}>Sincronizar</button>`
+          );
+        };
+        const renderTheme = (): void => {
+          const current = themeChoice(ctx);
+          themeEl.querySelectorAll<HTMLElement>("[data-theme-choice]").forEach((button) => {
+            const active = button.dataset.themeChoice === current;
+            button.classList.toggle("active", active);
+            button.setAttribute("aria-checked", String(active));
+          });
+        };
+        stopWatch = ctx.store.watch((s) => s.sync, renderSync);
+        renderTheme();
+        // Al cerrar (X, fondo o Escape) se deja de escuchar el estado de sync
+        const observer = new MutationObserver(() => {
+          if (!root.isConnected) {
+            stopWatch?.();
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true });
+
+        syncEl.addEventListener("click", (event) => {
+          if (!(event.target as HTMLElement).closest("[data-sync-now]") || syncing) return;
+          syncing = true;
+          renderSync();
+          void ctx.sync.syncNow().then((result) => {
+            syncing = false;
+            renderSync();
+            ctx.toast(result.ok ? "Sincronizado" : friendlySyncError(result.error ?? "No se pudo sincronizar"));
+          });
+        });
+        themeEl.addEventListener("click", (event) => {
+          const button = (event.target as HTMLElement).closest<HTMLElement>("[data-theme-choice]");
+          if (!button) return;
+          setThemeChoice(ctx, button.dataset.themeChoice as ThemeChoice);
+          renderTheme();
+        });
         root.querySelectorAll<HTMLElement>("[data-menu]").forEach((button) => {
           button.addEventListener("click", () => {
             const action = button.dataset.menu;
@@ -575,7 +684,7 @@ function renderTabsNav(ctx: AppContext): void {
   const { primary, overflow } = splitNav(ctx, allowed);
   nav.classList.toggle("tabs-vendor", !ctx.auth.isAdmin());
   const tabButton = (tab: TabId) =>
-    html`<button class="tab nav-primary ${tab === activeTab ? "active" : ""}" type="button" data-tab="${tab}" style="--tab-color: var(--primary)"><span class="tab-ico">${iconFor(TAB_ICONS[tab]!)}</span><span>${tabLabel(ctx, tab)}</span></button>`;
+    html`<button class="tab nav-primary ${tab === activeTab ? "active" : ""}" type="button" data-tab="${tab}" style="--tab-color: var(${TAB_TONES[tab] ?? "--primary"})"><span class="tab-ico">${iconFor(TAB_ICONS[tab]!)}</span><span>${tabLabel(ctx, tab)}</span></button>`;
   setHtml(
     nav,
     html`${primary.map((tab) => tabButton(tab))}
@@ -610,11 +719,11 @@ function renderAuthState(ctx: AppContext): void {
 }
 
 export function applyTheme(ctx: AppContext): void {
-  const preference = ctx.store.getState().settings.theme ?? "auto";
+  const preference = themeChoice(ctx);
   const dark = preference === "dark" || (preference === "auto" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) meta.content = dark ? "#101820" : "#eef3f8";
+  if (meta) meta.content = dark ? "#161b22" : "#ffffff";
   document.querySelectorAll<HTMLElement>("[data-theme-toggle]").forEach((button) => {
     button.textContent = dark ? "☀" : "☾";
   });

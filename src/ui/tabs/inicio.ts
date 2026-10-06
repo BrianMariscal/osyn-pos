@@ -1,14 +1,43 @@
-import { html, setHtml } from "../../core/html";
+import { html, setHtml, type SafeHtml } from "../../core/html";
 import { dayRange, monthInputValue, todayInputValue, toInputDateValue } from "../../core/dates";
 import { fmtMoney, fmtMoneyPesos, sumCents, toCents, toPesos } from "../../core/money";
-import { PAYMENT_LABELS } from "../../core/types";
+import { PAYMENT_LABELS, type PaymentMethod, type PeriodReport } from "../../core/types";
 import { daysInMonth } from "../../domain/expense-service";
 import { isRevenueSale } from "../../domain/sale-groups";
 import { fmtQty } from "../../core/qty";
 import { VIEW_ALL } from "../../domain/app-state";
+import { iconFor } from "../icons";
+import { lazyRender } from "../lazy-render";
 import type { TabModule } from "./tab-module";
 
 type RankPeriod = "day" | "week" | "month";
+type Tone = "blue" | "teal" | "green" | "amber" | "coral" | "violet";
+
+/** $1,234 → "$1.2k" para etiquetas de la gráfica. */
+function fmtCompact(pesos: number): string {
+  if (Math.abs(pesos) >= 1000) return `$${(pesos / 1000).toFixed(pesos >= 10000 ? 0 : 1)}k`;
+  return `$${Math.round(pesos)}`;
+}
+
+function kpi(tone: Tone, icon: SafeHtml, label: string, value: string, foot: SafeHtml | string = ""): SafeHtml {
+  return html`
+    <div class="kpi" data-tone="${tone}">
+      <div class="kpi-top"><span class="kpi-ico">${icon}</span><span class="kpi-label">${label}</span></div>
+      <strong class="kpi-value">${value}</strong>
+      ${foot ? html`<span class="kpi-foot">${foot}</span>` : html``}
+    </div>
+  `;
+}
+
+/** Comparación contra ayer: ▲ 12 % / ▼ 5 % / "Ayer $0.00". */
+function deltaVsYesterday(today: number, yesterday: number): SafeHtml {
+  if (yesterday <= 0) return html`<span class="delta">Ayer ${fmtMoneyPesos(yesterday)}</span>`;
+  const pct = Math.round(((today - yesterday) / yesterday) * 100);
+  const dir = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+  return html`<span class="delta delta-${dir}">${pct > 0 ? "▲" : pct < 0 ? "▼" : "="} ${Math.abs(pct)}%</span> vs ayer`;
+}
+
+const PAYMENT_TONES: Record<string, Tone> = { efectivo: "green", transferencia: "blue", tarjeta: "violet", fiado: "amber", interno: "teal" };
 
 export const inicioTab: TabModule = {
   id: "inicio",
@@ -16,227 +45,259 @@ export const inicioTab: TabModule = {
     setHtml(
       root,
       html`
-        <div class="greeting" id="greeting"></div>
-        <div class="dashboard-grid">
-          <article class="card" id="dCardMain">
-            <div class="scope-chips" id="scopeChips"></div>
-            <div id="dashboardSummary" class="stack-metrics"></div>
-          </article>
+        <header class="dash-head">
+          <div id="greeting"></div>
+          <div id="scopeChips"></div>
+        </header>
+        <div class="kpi-grid" id="kpis"></div>
+        <div class="dash-row dash-row-2">
+          <article class="card chart-card" id="dCardChart"></article>
           <article class="card" id="dCardTarget">
             <h2>Meta del día</h2>
             <div id="dailyTarget"></div>
           </article>
-          <article class="card" id="dCardMonth">
-            <h2>Este mes</h2>
-            <p class="hint" id="monthScope"></p>
-            <div class="summary" id="monthSummary"></div>
-          </article>
-          <article class="card" id="dCardLow">
-            <h2>Por agotarse</h2>
-            <div id="dashboardLowStock" class="list"></div>
-          </article>
+        </div>
+        <div class="dash-row dash-row-3" id="dRow3">
+          <article class="card" id="dCardMonth"></article>
           <article class="card" id="dCardRank">
-            <h2>Lo más vendido… y lo que no sale</h2>
-            <div class="chips" id="rankPeriod">
-              <button class="chip chip-active" type="button" data-rank="day">Hoy</button>
-              <button class="chip" type="button" data-rank="week">Semana</button>
-              <button class="chip" type="button" data-rank="month">Mes</button>
+            <div class="card-head card-head-stack">
+              <h2>Lo más vendido</h2>
+              <div class="chips" id="rankPeriod">
+                <button class="chip chip-active" type="button" data-rank="day">Hoy</button>
+                <button class="chip" type="button" data-rank="week">Semana</button>
+                <button class="chip" type="button" data-rank="month">Mes</button>
+              </div>
             </div>
             <div id="rankBody"></div>
           </article>
+          <article class="card" id="dCardLow"></article>
         </div>
       `
     );
 
     const scopeChips = root.querySelector<HTMLElement>("#scopeChips")!;
     const greetingEl = root.querySelector<HTMLElement>("#greeting")!;
-    const summaryEl = root.querySelector<HTMLElement>("#dashboardSummary")!;
-    const monthScopeEl = root.querySelector<HTMLElement>("#monthScope")!;
-    const monthSummaryEl = root.querySelector<HTMLElement>("#monthSummary")!;
-    const lowStockEl = root.querySelector<HTMLElement>("#dashboardLowStock")!;
+    const kpisEl = root.querySelector<HTMLElement>("#kpis")!;
+    const chartCard = root.querySelector<HTMLElement>("#dCardChart")!;
+    const targetCard = root.querySelector<HTMLElement>("#dCardTarget")!;
+    const targetEl = root.querySelector<HTMLElement>("#dailyTarget")!;
+    const row3 = root.querySelector<HTMLElement>("#dRow3")!;
+    const monthCard = root.querySelector<HTMLElement>("#dCardMonth")!;
+    const lowCard = root.querySelector<HTMLElement>("#dCardLow")!;
     const rankBodyEl = root.querySelector<HTMLElement>("#rankBody")!;
     const rankPeriodEl = root.querySelector<HTMLElement>("#rankPeriod")!;
-    const dCardMonth = root.querySelector<HTMLElement>("#dCardMonth")!;
-    const dCardTarget = root.querySelector<HTMLElement>("#dCardTarget")!;
-    const targetEl = root.querySelector<HTMLElement>("#dailyTarget")!;
-    const dCardLow = root.querySelector<HTMLElement>("#dCardLow")!;
-    const dCardRank = root.querySelector<HTMLElement>("#dCardRank")!;
 
     let rankPeriod: RankPeriod = "day";
-    let renderRankBody: (scope: string) => void = () => undefined;
+
+    const dayReport = (scope: string, offsetDays: number): PeriodReport => {
+      const day = new Date();
+      day.setDate(day.getDate() - offsetDays);
+      const range = dayRange(toInputDateValue(day));
+      return ctx.reports.periodReport(scope, range.start, range.end);
+    };
+
+    const renderGreeting = (isManager: boolean, isOwner: boolean): void => {
+      const hour = new Date().getHours();
+      const saludo = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+      const firstName = ctx.auth.displayName();
+      const date = new Date().toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
+      const sub = isOwner ? "Resumen de tu negocio" : isManager ? "Operación de la sucursal" : "Tus ventas de hoy";
+      setHtml(
+        greetingEl,
+        html`<h2>${saludo}${firstName ? `, ${firstName}` : ""}</h2><p class="hint dash-date">${date} · ${sub}</p>`
+      );
+    };
+
+    const renderVendor = (scope: string, today: PeriodReport, yesterday: PeriodReport): void => {
+      const range = dayRange(todayInputValue());
+      const byPayment = new Map<string, number>();
+      for (const sale of ctx.repos.sales.list()) {
+        if (sale.branch_id !== scope || sale.created_at < range.start || sale.created_at >= range.end || !isRevenueSale(sale)) continue;
+        byPayment.set(sale.payment, (byPayment.get(sale.payment) ?? 0) + toCents(sale.total));
+      }
+      const totalCents = toCents(today.sales_total);
+      const avg = today.sales_count ? today.sales_total / today.sales_count : 0;
+      setHtml(
+        kpisEl,
+        html`
+          ${kpi("blue", iconFor("cart"), "Ventas de hoy", fmtMoneyPesos(today.sales_total), deltaVsYesterday(today.sales_total, yesterday.sales_total))}
+          ${kpi("violet", iconFor("receipt"), "Ventas realizadas", String(today.sales_count))}
+          ${kpi("teal", iconFor("wallet"), "Ticket promedio", fmtMoneyPesos(avg))}
+        `
+      );
+      const rows = [...byPayment.entries()].sort((a, b) => b[1] - a[1]);
+      setHtml(
+        chartCard,
+        html`
+          <div class="card-head"><h2>Cobros de hoy</h2></div>
+          ${rows.length
+            ? html`<div class="bar-list">${rows.map(([payment, cents]) =>
+                barRow(PAYMENT_TONES[payment] ?? "blue", PAYMENT_LABELS[payment as PaymentMethod] ?? payment, fmtMoney(cents), totalCents ? cents / totalCents : 0)
+              )}</div>`
+            : html`<p class="empty-note">Aún no hay ventas registradas hoy.</p>`}
+          <button class="primary block section-gap" type="button" data-go="venta">${iconFor("cart")} Nueva venta</button>
+        `
+      );
+    };
+
+    const barRow = (tone: Tone, label: string, value: string, ratio: number, sub = ""): SafeHtml => html`
+      <div class="bar-row" data-tone="${tone}">
+        <div class="bar-row-head"><span>${label}${sub ? html` <small class="muted">${sub}</small>` : html``}</span><strong>${value}</strong></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, Math.round(Math.min(1, ratio) * 100))}%"></div></div>
+      </div>
+    `;
 
     const render = (): void => {
       const scope = ctx.branches.viewScope();
       const isManager = ctx.auth.isAdmin();
-      const isOwner = ctx.auth.isOwner();
+      renderGreeting(isManager, ctx.auth.isOwner());
 
-      // Saludo según la hora y el rol
-      const hour = new Date().getHours();
-      const saludo = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
-      const firstName = ctx.auth.displayName();
-      const sub = isOwner
-        ? "Resumen global de tu negocio."
-        : isManager
-          ? "Operación de la sucursal activa."
-          : "Tus ventas de hoy en esta caja.";
-      setHtml(
-        greetingEl,
-        html`
-          <h2>${saludo}${firstName ? `, ${firstName}` : ""}</h2>
-          <p class="hint">${sub}</p>
-        `
-      );
+      const today = dayReport(scope, 0);
+      const yesterday = dayReport(scope, 1);
 
-      const today = dayRange(todayInputValue());
-      const report = ctx.reports.periodReport(scope, today.start, today.end);
-
-      // ---- VENDEDOR: solo la venta del día ----
+      targetCard.classList.toggle("hidden", !isManager);
+      row3.classList.toggle("hidden", !isManager);
       if (!isManager) {
-        dCardMonth.classList.add("hidden");
-        dCardTarget.classList.add("hidden");
-        dCardLow.classList.add("hidden");
-        dCardRank.classList.add("hidden");
         setHtml(scopeChips, html``);
-        const byPayment: Array<{ label: string; cents: number }> = [];
-        for (const sale of ctx.repos.sales.list()) {
-          if (sale.branch_id !== scope || sale.created_at < today.start || sale.created_at >= today.end || !isRevenueSale(sale)) continue;
-          const row = byPayment.find((item) => item.label === sale.payment);
-          if (row) row.cents += toCents(sale.total);
-          else byPayment.push({ label: sale.payment, cents: toCents(sale.total) });
-        }
-        setHtml(
-          summaryEl,
-          html`
-            <div class="hero-metrics">
-              <div class="metric metric-hero">
-                <span class="micro">Ventas de hoy</span>
-                <strong>${fmtMoneyPesos(report.sales_total)}</strong>
-              </div>
-              <div class="metric metric-hero">
-                <span class="micro">Ventas realizadas</span>
-                <strong>${report.sales_count}</strong>
-              </div>
-            </div>
-            ${byPayment.length
-              ? html`<div class="summary">
-                  ${byPayment.map((row) => html`<div><span>${PAYMENT_LABELS[row.label as keyof typeof PAYMENT_LABELS] ?? row.label}</span><strong>${fmtMoneyPesos(toPesos(row.cents))}</strong></div>`)}
-                </div>`
-              : html`<p class="hint">Aún no hay ventas registradas hoy.</p>`}
-            <button class="primary block" type="button" data-go="venta">Nueva venta</button>
-          `
-        );
+        renderVendor(scope, today, yesterday);
         return;
       }
 
-      // ---- DUEÑO / ADMINISTRADOR: resumen completo con hoy, semana y mes ----
-      dCardMonth.classList.remove("hidden");
-      dCardTarget.classList.remove("hidden");
-      dCardLow.classList.remove("hidden");
-      dCardRank.classList.remove("hidden");
-
-      if (isManager && ctx.branches.isMultiBranch()) {
-        const chips = [
-          ...ctx.branches.list().map((b) => ({ id: b.id, label: b.name })),
-          { id: VIEW_ALL, label: "Consolidado" }
-        ];
-        setHtml(
-          scopeChips,
-          html`<div class="chips">${chips.map(
-            (chip) =>
-              html`<button class="chip ${scope === chip.id ? "chip-active" : ""}" type="button" data-scope="${chip.id}">${chip.label}</button>`
-          )}</div>`
-        );
-      } else {
-        setHtml(scopeChips, html``);
-      }
+      setHtml(
+        scopeChips,
+        ctx.branches.isMultiBranch()
+          ? html`<div class="chips">${[...ctx.branches.list().map((b) => ({ id: b.id, label: b.name })), { id: VIEW_ALL, label: "Consolidado" }].map(
+              (chip) => html`<button class="chip ${scope === chip.id ? "chip-active" : ""}" type="button" data-scope="${chip.id}">${chip.label}</button>`
+            )}</div>`
+          : html``
+      );
 
       const stocks = ctx.repos.stocks.list().filter((row) => scope === VIEW_ALL || row.branch_id === scope);
-      const lowStock = stocks.filter((row) => row.stock <= row.min_stock).sort((a, b) => a.stock - b.stock);
-      const scopeCustomers = ctx.repos.customers.list().filter((c) => scope === VIEW_ALL || c.branch_id === scope);
-      const creditCents = sumCents(scopeCustomers.map((c) => toCents(c.balance)));
-      const lastShift = ctx.shifts.lastShift(ctx.branches.operationalId());
-
-      // Tendencia de los últimos 7 días
-      const days: Array<{ label: string; cents: number }> = [];
-      for (let i = 6; i >= 0; i -= 1) {
-        const day = new Date();
-        day.setDate(day.getDate() - i);
-        const range = dayRange(toInputDateValue(day));
-        const dayReport = ctx.reports.periodReport(scope, range.start, range.end);
-        days.push({ label: day.toLocaleDateString("es-MX", { weekday: "narrow" }), cents: toCents(dayReport.sales_total) });
-      }
-      const maxCents = Math.max(...days.map((d) => d.cents), 1);
-      const weekCents = sumCents(days.map((d) => d.cents));
+      const lowStock = stocks
+        .filter((row) => row.stock <= row.min_stock && ctx.repos.products.byId(row.product_id)?.active !== false)
+        .sort((a, b) => a.stock - b.stock);
+      const owing = ctx.repos.customers.list().filter((c) => (scope === VIEW_ALL || c.branch_id === scope) && c.balance > 0);
+      const creditCents = sumCents(owing.map((c) => toCents(c.balance)));
       const monthReport = ctx.reports.monthReport(scope, monthInputValue());
 
+      const days = Array.from({ length: 7 }, (_, i) => {
+        const offset = 6 - i;
+        const date = new Date();
+        date.setDate(date.getDate() - offset);
+        const report = offset === 0 ? today : offset === 1 ? yesterday : dayReport(scope, offset);
+        return {
+          weekday: date.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", ""),
+          day: date.getDate(),
+          pesos: report.sales_total,
+          count: report.sales_count
+        };
+      });
+      const weekPesos = toPesos(sumCents(days.map((d) => toCents(d.pesos))));
+      const maxPesos = Math.max(...days.map((d) => d.pesos), 1);
+      const avgTicket = today.sales_count ? today.sales_total / today.sales_count : 0;
+
       setHtml(
-        summaryEl,
+        kpisEl,
         html`
-          <div class="hero-metrics">
-            <div class="metric metric-hero">
-              <span class="micro">Ganancia neta hoy</span>
-              <strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong>
-            </div>
-            <div class="metric metric-hero">
-              <span class="micro">Fiado pendiente</span>
-              <strong>${fmtMoneyPesos(toPesos(creditCents))}</strong>
-            </div>
+          ${kpi("blue", iconFor("cart"), "Ventas de hoy", fmtMoneyPesos(today.sales_total), deltaVsYesterday(today.sales_total, yesterday.sales_total))}
+          ${kpi("green", iconFor("chart"), "Ganancia neta hoy", fmtMoneyPesos(today.profit_after_expenses), today.sales_total > 0 ? `Margen bruto ${Math.round((today.gross_profit / today.sales_total) * 100)}%` : "Después de gastos")}
+          ${kpi("violet", iconFor("receipt"), "Ventas realizadas", String(today.sales_count), `Ticket promedio ${fmtMoneyPesos(avgTicket)}`)}
+          ${kpi("amber", iconFor("wallet"), "Fiado pendiente", fmtMoneyPesos(toPesos(creditCents)), owing.length ? `${owing.length} ${owing.length === 1 ? "cliente" : "clientes"}` : "Nadie debe")}
+        `
+      );
+
+      const lastShift = ctx.shifts.lastShift(ctx.branches.operationalId());
+      setHtml(
+        chartCard,
+        html`
+          <div class="card-head">
+            <div><h2>Ventas de la semana</h2><p class="hint">Últimos 7 días</p></div>
+            <div class="align-right"><span class="micro">Total</span><strong class="big-num">${fmtMoneyPesos(weekPesos)}</strong></div>
           </div>
-          <div class="period-strip">
-            <div class="period-cell"><span class="micro">Hoy</span><strong>${fmtMoneyPesos(report.sales_total)}</strong></div>
-            <div class="period-cell"><span class="micro">Semana</span><strong>${fmtMoneyPesos(toPesos(weekCents))}</strong></div>
-            <div class="period-cell"><span class="micro">Mes</span><strong>${fmtMoneyPesos(monthReport.sales_total)}</strong></div>
-          </div>
-          <div class="metric-grid-4">
-            <div class="metric"><span>Ventas de hoy</span><strong>${report.sales_count}</strong></div>
-            <div class="metric"><span>Productos bajos</span><strong>${lowStock.length}</strong></div>
-            <div class="metric"><span>Gastos extra hoy</span><strong>${fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)}</strong></div>
-            <div class="metric"><span>Base siguiente</span><strong>${fmtMoneyPesos(lastShift?.next_opening_cash ?? 0)}</strong></div>
-          </div>
-          <div class="chart-title micro">Ventas últimos 7 días</div>
           <div class="chart" role="img" aria-label="Ventas de los últimos 7 días">
             ${days.map(
               (day, index) => html`
-                <div class="chart-col ${index === days.length - 1 ? "today" : ""}">
-                  <div class="chart-bar" style="height:${Math.max(4, Math.round((day.cents / maxCents) * 100))}%"></div>
-                  <span>${day.label}</span>
+                <div class="chart-col ${index === days.length - 1 ? "today" : ""}" title="${day.weekday} ${day.day}: ${fmtMoneyPesos(day.pesos)} · ${day.count} ventas">
+                  <span class="chart-val">${day.pesos > 0 ? fmtCompact(day.pesos) : ""}</span>
+                  <div class="chart-bar" style="height:${Math.max(3, Math.round((day.pesos / maxPesos) * 100))}%"></div>
+                  <span class="chart-label">${index === days.length - 1 ? "Hoy" : day.weekday}</span>
                 </div>
               `
             )}
           </div>
+          <div class="mini-stats">
+            <div data-tone="blue"><span>Mes</span><strong>${fmtMoneyPesos(monthReport.sales_total)}</strong></div>
+            <div data-tone="coral"><span>Gastos extra hoy</span><strong>${fmtMoneyPesos(today.extra_expenses_total ?? today.expenses_total)}</strong></div>
+            <div data-tone="teal"><span>Base siguiente turno</span><strong>${fmtMoneyPesos(lastShift?.next_opening_cash ?? 0)}</strong></div>
+          </div>
         `
       );
 
-      monthScopeEl.textContent = scope === VIEW_ALL ? "Consolidado de tus sucursales" : ctx.branches.name(scope);
+      renderMonth(scope, monthReport);
+      renderLow(scope, lowStock);
+      renderTarget(scope, today.gross_profit, today.sales_total, monthReport.sales_total, monthReport.gross_profit);
+      renderRank(scope);
+    };
+
+    const renderMonth = (scope: string, month: PeriodReport): void => {
+      const sales = Math.max(month.sales_total, 0);
+      const fixed = month.fixed_costs_total ?? 0;
+      const extra = month.extra_expenses_total ?? month.expenses_total;
+      const net = month.profit_after_expenses;
+      const parts: Array<{ tone: Tone; label: string; value: number }> = [
+        { tone: "amber", label: "Costo de mercancía", value: month.sales_cost },
+        { tone: "coral", label: "Costos fijos", value: fixed },
+        { tone: "violet", label: "Gastos extra", value: extra },
+        { tone: "green", label: "Ganancia neta", value: net }
+      ];
+      const base = Math.max(sales, month.sales_cost + fixed + extra, 1);
       setHtml(
-        monthSummaryEl,
+        monthCard,
         html`
-          <div><span>Ventas</span><strong>${fmtMoneyPesos(monthReport.sales_total)}</strong></div>
-          <div><span>Ganancia neta</span><strong>${fmtMoneyPesos(monthReport.profit_after_expenses)}</strong></div>
-          <div><span>Costos fijos</span><strong>${fmtMoneyPesos(monthReport.fixed_costs_total ?? 0)}</strong></div>
-          <div><span>Gastos extra</span><strong>${fmtMoneyPesos(monthReport.extra_expenses_total ?? monthReport.expenses_total)}</strong></div>
-          <div><span>Compras a proveedores</span><strong>${fmtMoneyPesos(monthReport.purchases_total)}</strong></div>
+          <div class="card-head">
+            <div><h2>Este mes</h2><p class="hint">${scope === VIEW_ALL ? "Consolidado de tus sucursales" : ctx.branches.name(scope)}</p></div>
+          </div>
+          <div class="month-total"><span class="micro">Ventas</span><strong class="big-num">${fmtMoneyPesos(month.sales_total)}</strong></div>
+          <div class="stack-bar" role="img" aria-label="Cómo se reparten las ventas del mes">
+            ${parts.filter((p) => p.value > 0).map((p) => html`<span data-tone="${p.tone}" style="width:${(p.value / base) * 100}%" title="${p.label}: ${fmtMoneyPesos(p.value)}"></span>`)}
+          </div>
+          <div class="legend-list">
+            ${parts.map(
+              (p) => html`<div data-tone="${p.tone}"><span class="legend-dot"></span><span>${p.label}</span><strong class="${p.tone === "green" && p.value < 0 ? "diff-negative" : ""}">${fmtMoneyPesos(p.value)}</strong></div>`
+            )}
+            <div class="legend-plain"><span>Compras a proveedores</span><strong>${fmtMoneyPesos(month.purchases_total)}</strong></div>
+            ${month.mermas_total ? html`<div class="legend-plain"><span>Mermas</span><strong>${fmtMoneyPesos(month.mermas_total)}</strong></div>` : html``}
+          </div>
         `
       );
+    };
 
+    const renderLow = (scope: string, lowStock: ReturnType<typeof ctx.repos.stocks.list>): void => {
       setHtml(
-        lowStockEl,
-        lowStock.length
-          ? html`${lowStock.slice(0, 12).map((row) => {
-              const product = ctx.repos.products.byId(row.product_id);
-              const branchLabel = scope === VIEW_ALL ? ctx.branches.name(row.branch_id) : "";
-              return html`
-                <div class="list-item low">
-                  <div class="item-line"><strong>${product?.name ?? row.product_id}</strong><strong>${fmtQty(row.stock)} ${product?.um ?? "Pza"}</strong></div>
-                  <p class="muted">Mínimo ${fmtQty(row.min_stock)} ${product?.um ?? "Pza"} | ${product?.category || "Sin categoría"}${branchLabel ? ` | ${branchLabel}` : ""}</p>
-                </div>
-              `;
-            })}`
-          : html`<p class="muted">No hay productos por agotarse.</p>`
+        lowCard,
+        html`
+          <div class="card-head">
+            <h2>Por agotarse</h2>
+            ${lowStock.length ? html`<span class="count-badge" data-tone="coral">${lowStock.length}</span>` : html``}
+          </div>
+          ${lowStock.length
+            ? html`<div class="compact-list">
+                ${lowStock.slice(0, 8).map((row) => {
+                  const product = ctx.repos.products.byId(row.product_id);
+                  const out = row.stock <= 0;
+                  return html`
+                    <div class="compact-item">
+                      <div><strong>${product?.name ?? row.product_id}</strong>
+                        <small class="muted">Mín. ${fmtQty(row.min_stock)}${scope === VIEW_ALL ? ` · ${ctx.branches.name(row.branch_id)}` : ""}</small></div>
+                      <span class="stock-pill" data-tone="${out ? "coral" : "amber"}">${out ? "Agotado" : `${fmtQty(row.stock)} ${product?.um ?? "Pza"}`}</span>
+                    </div>
+                  `;
+                })}
+              </div>
+              <button class="ghost block section-gap" type="button" data-go="inventario">Ver inventario${lowStock.length > 8 ? ` (${lowStock.length - 8} más)` : ""}</button>`
+            : html`<p class="empty-note">Todo con existencia suficiente.</p>`}
+        `
       );
-
-      renderTarget(scope, report.gross_profit, report.sales_total, monthReport.sales_total, monthReport.gross_profit);
-      renderRankBody(scope);
     };
 
     /**
@@ -271,24 +332,24 @@ export const inicioTab: TabModule = {
       setHtml(
         targetEl,
         html`
-          <div class="target-head">
-            <div><span class="micro">Necesitas generar al día</span><strong>${fmtMoney(target)}</strong></div>
-            <div class="align-right"><span class="micro">Llevas hoy</span><strong>${fmtMoney(earned)}</strong></div>
+          <div class="target-ring ${progress >= 100 ? "done" : ""}" style="--p:${progress}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}" aria-label="Avance de la meta del día">
+            <div class="target-ring-inner"><strong>${progress}%</strong><span class="micro">de la meta</span></div>
           </div>
-          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}" aria-label="Avance de la meta del día">
-            <div class="progress-bar ${progress >= 100 ? "done" : ""}" style="width:${progress}%"></div>
+          <div class="target-head">
+            <div><span class="micro">Meta de ganancia</span><strong>${fmtMoney(target)}</strong></div>
+            <div class="align-right"><span class="micro">Llevas hoy</span><strong>${fmtMoney(earned)}</strong></div>
           </div>
           <p class="hint">
             ${missing > 0 ? `Faltan ${fmtMoney(missing)} de ganancia para cubrir los costos fijos de hoy.` : "¡Meta del día cubierta!"}
-            ${salesNeeded > 0 ? ` Con tu margen actual (${Math.round(marginBase * 100)}%) equivale a vender ≈ ${fmtMoney(salesNeeded)} al día.` : ""}
+            ${salesNeeded > 0 ? ` Con tu margen (${Math.round(marginBase * 100)}%) equivale a vender ≈ ${fmtMoney(salesNeeded)} al día.` : ""}
           </p>
           <p class="micro">${targetBreakdown(scope)}</p>
         `
       );
     };
 
-    const renderRankBodyFor = (scope: string): void => {
-      let report;
+    const renderRank = (scope: string): void => {
+      let report: PeriodReport;
       if (rankPeriod === "week") {
         const start = new Date();
         start.setDate(start.getDate() - 6);
@@ -296,43 +357,37 @@ export const inicioTab: TabModule = {
       } else if (rankPeriod === "month") {
         report = ctx.reports.monthReport(scope, monthInputValue());
       } else {
-        const range = dayRange(todayInputValue());
-        report = ctx.reports.periodReport(scope, range.start, range.end);
+        report = dayReport(scope, 0);
       }
       const top = report.top_products.slice(0, 5);
-      const notSold = report.slow_products.filter((stat) => stat.qty === 0).slice(0, 8);
+      const notSold = report.slow_products.filter((stat) => stat.qty === 0);
+      const maxQty = Math.max(...top.map((stat) => stat.qty), 1);
       const periodLabel = rankPeriod === "week" ? "esta semana" : rankPeriod === "month" ? "este mes" : "hoy";
+      const tones: Tone[] = ["blue", "teal", "violet", "amber", "green"];
       setHtml(
         rankBodyEl,
         html`
           ${top.length
-            ? html`<div class="list">
-                ${top.map(
-                  (stat, index) => html`
-                    <div class="list-item item-line">
-                      <div><strong>${index + 1}. ${stat.name}</strong><p class="muted">${fmtQty(stat.qty)} ${stat.um} vendidos</p></div>
-                      <strong>${fmtMoneyPesos(stat.total)}</strong>
-                    </div>
-                  `
-                )}
-              </div>`
-            : html`<p class="muted">Aún no hay ventas ${periodLabel}.</p>`}
-          <p class="micro section-gap">Sin ninguna venta</p>
+            ? html`<div class="bar-list">${top.map((stat, index) =>
+                barRow(tones[index % tones.length]!, `${index + 1}. ${stat.name}`, fmtMoneyPesos(stat.total), stat.qty / maxQty, `${fmtQty(stat.qty)} ${stat.um}`)
+              )}</div>`
+            : html`<p class="empty-note">Aún no hay ventas ${periodLabel}.</p>`}
           ${notSold.length
-            ? html`<div class="chips chips-wrap">${notSold.map((stat) => html`<span class="chip chip-muted">${stat.name}</span>`)}</div>`
-            : html`<p class="muted">Todo se movió: cada producto tuvo al menos una venta.</p>`}
+            ? html`<p class="micro section-gap">Sin ventas ${periodLabel} (${notSold.length})</p>
+                <div class="chips chips-wrap">${notSold.slice(0, 8).map((stat) => html`<span class="chip chip-muted">${stat.name}</span>`)}</div>`
+            : html``}
         `
       );
     };
 
-    renderRankBody = renderRankBodyFor;
+    const schedule = lazyRender(root, render);
 
     rankPeriodEl.addEventListener("click", (event) => {
       const chip = (event.target as HTMLElement).closest<HTMLElement>("[data-rank]");
       if (!chip) return;
       rankPeriod = (chip.dataset.rank as RankPeriod) ?? "day";
       rankPeriodEl.querySelectorAll<HTMLElement>(".chip").forEach((c) => c.classList.toggle("chip-active", c.dataset.rank === rankPeriod));
-      renderRankBody(ctx.branches.viewScope());
+      renderRank(ctx.branches.viewScope());
     });
 
     scopeChips.addEventListener("click", (event) => {
@@ -343,7 +398,7 @@ export const inicioTab: TabModule = {
 
     ctx.store.watch(
       (s) => [s.sales, s.expenses, s.purchases, s.products, s.product_stocks, s.customers, s.shifts, s.branches, s.viewBranchId, s.settings] as const,
-      render
+      schedule
     );
   }
 };
