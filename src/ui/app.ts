@@ -717,6 +717,7 @@ function openMoreSheet(ctx: AppContext): void {
     content: html`
       ${session ? html`<p class="muted">${ctx.auth.displayName()} · ${ROLE_LABELS[session.role] ?? ""}</p>` : html``}
       <div class="more-list">
+        <button class="ghost more-item more-assistant" type="button" data-more-assistant>Asistente de la tienda</button>
         ${sections.map(
           (section) => html`<p class="micro more-group-label">${section.label}</p>
             ${section.tabs.map((tab) => html`<button class="ghost more-item" type="button" data-tab="${tab}">${tabLabel(ctx, tab)}</button>`)}`
@@ -728,6 +729,10 @@ function openMoreSheet(ctx: AppContext): void {
       </div>
     `,
     onOpen: (root, close) => {
+      root.querySelector<HTMLElement>("[data-more-assistant]")?.addEventListener("click", () => {
+        close();
+        openAssistantChat(ctx);
+      });
       root.querySelectorAll<HTMLElement>("[data-tab]").forEach((button) => {
         button.addEventListener("click", () => {
           close();

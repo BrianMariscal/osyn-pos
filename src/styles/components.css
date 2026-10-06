@@ -147,7 +147,7 @@ main {
   grid-row: 2;
   grid-column: 2;
   padding: var(--sp-5);
-  max-width: 1180px;
+  max-width: 2200px;
   margin: 0 auto;
   width: 100%;
 }
@@ -817,7 +817,7 @@ body.modal-open { overflow: hidden; }
 }
 
 @media (min-width: 1500px) {
-  main { max-width: 1320px; }
+  main { padding-inline: var(--sp-5); }
 }
 
 /* ==========================================================================
@@ -2222,3 +2222,81 @@ kbd {
 .payroll-day.future .payroll-day-track { background: repeating-linear-gradient(-45deg, var(--card-2), var(--card-2) 4px, transparent 4px, transparent 8px); border-radius: 6px; }
 .payroll-day-goal { position: absolute; left: -3px; right: -3px; border-top: 2px dashed var(--c-coral); z-index: 1; }
 .payroll-day.today .chart-label { color: var(--ink); font-weight: 800; }
+
+/* ==========================================================================
+   Responsive: pantallas grandes aprovechadas y celular sin fallas
+   ========================================================================== */
+
+/* Pantalla completa en computadora: el contenido usa todo el ancho */
+@media (min-width: 1400px) {
+  .split { grid-template-columns: minmax(0, 1.35fr) minmax(380px, 1fr); }
+  .pos { grid-template-columns: minmax(0, 1.6fr) minmax(420px, 1fr); }
+  .dash-row-2 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  /* Proveedores: compra, directorio y compras a la vista, sin sub-pestañas */
+  .sections-always .subtabs-always { display: none; }
+  .sections-always [data-section] { display: block !important; }
+  .sections-always .split { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr); max-width: none; }
+  .span-all { grid-column: 1 / -1; }
+}
+@media (min-width: 1800px) {
+  .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .dash-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Textos que no se parten letra por letra: el bloque derecho baja si no cabe */
+.item-line > div:first-child { min-width: 0; }
+.expense-row { flex-wrap: wrap; }
+.expense-row > div:first-child { flex: 1 1 180px; }
+.expense-row .row-end { margin-left: auto; }
+
+/* Listas y filas tocables: sin selección de texto ni menú al deslizar */
+summary, .result-row, .ticket-row, .tab, .subtabs button, .pay-methods button, .combo-option, .chip-btn {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Logo en Ajustes: botón propio (sin el "Choose File" del navegador) */
+#logoPick { flex: 0 0 auto; }
+
+@media (max-width: 860px) {
+  /* iPhone hace zoom en campos con letra < 16 px: todos a 16 px */
+  input, select, textarea, .input { font-size: 16px !important; }
+  .search-field input { font-size: 17px !important; }
+  .cash-input { font-size: 1.6rem !important; }
+
+  /* El asistente va en "Más": el botón flotante tapaba contenido */
+  .assistant-fab { display: none !important; }
+
+  /* Sub-pestañas: caben las tres */
+  .subtabs button { flex: 1 1 auto; padding: 0.4rem 0.55rem; font-size: var(--fs-xs); min-height: 40px; }
+
+  /* Formas de pago: ícono arriba y texto abajo, sin encimarse */
+  .pos .pay-methods button { flex-direction: column; gap: 3px; min-height: 58px; font-size: 0.7rem; padding: 0.35rem 0.2rem; }
+  .pos .pay-methods button svg { width: 20px; height: 20px; }
+
+  /* Resultados de búsqueda: el nombre completo en dos líneas si hace falta */
+  .result-row { flex-wrap: wrap; row-gap: 4px; padding: var(--sp-3); }
+  .result-row .row-title { flex: 1 1 100%; }
+  .result-row .row-title strong { white-space: normal; }
+  .result-row .stock-pill { margin-right: auto; }
+
+  /* Reportes: título y selector de día en renglones distintos */
+  #salesDayCard > .section-title { flex-direction: column; align-items: stretch; }
+  .day-nav { justify-content: space-between; }
+  .day-nav .input { flex: 1; min-width: 0; }
+}
+
+@media (max-width: 520px) {
+  /* Formularios de dos columnas pasan a una */
+  .row { grid-template-columns: 1fr; }
+  /* Cabecera: con selector de sucursal se oculta el nombre largo de la tienda */
+  .topbar:has(.branch-select:not(.hidden)) .brand h1 { display: none; }
+  .branch-select { max-width: 150px; font-size: 14px !important; padding: 0.4rem 0.5rem; }
+  .total-pill { padding: 0.3rem 0.6rem; }
+  .total-pill strong { font-size: var(--fs-sm); }
+  /* Línea de compra: producto, cantidad + unidad, total y quitar ordenados */
+  .purchase-line { grid-template-columns: minmax(0, 1fr) auto; }
+  .purchase-line .purchase-qty { grid-column: 1 / -1; }
+  .purchase-line [data-f="total"] { grid-column: 1 / 2; }
+}

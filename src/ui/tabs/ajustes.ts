@@ -1,3 +1,4 @@
+import { iconFor } from "../icons";
 import { html, setHtml } from "../../core/html";
 import { VENDOR_CONFIGURABLE_TABS, ROLE_LABELS, TAB_LABELS, ALL_TABS, type Role, type TabId, type Branch } from "../../core/types";
 import { normalizeManagerTabs } from "../../domain/normalize";
@@ -30,7 +31,9 @@ export const ajustesTab: TabModule = {
                 <div class="form-field">Logo
                   <div class="logo-field">
                     <img id="logoPreview" class="logo-thumb hidden" alt="Logo actual">
-                    <input id="logoFile" class="file-input" type="file" accept="image/*" aria-label="Elegir logo">
+                    <label class="import-label" id="logoPick">${iconFor("upload")} Elegir imagen
+                      <input id="logoFile" type="file" accept="image/*" aria-label="Elegir logo">
+                    </label>
                     <button id="removeLogo" class="ghost danger" type="button">Quitar logo</button>
                   </div>
                 </div>

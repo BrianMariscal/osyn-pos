@@ -89,7 +89,7 @@ export const gastosTab: TabModule = {
     const list = root.querySelector<HTMLElement>("#expensesList")!;
 
     const expenseRow = (expense: Expense, fixed: boolean) => html`
-      <div class="list-item item-line">
+      <div class="list-item item-line expense-row">
         <div>
           <strong>${expense.concept}</strong>
           <p class="muted">${fixed ? `${expensePeriod(expense) === "semanal" ? "Semanal" : "Mensual"} · ` : ""}${expense.category} | ${fixed ? `Desde ${fmtDate(expense.created_at)}` : fmtDateTime(expense.created_at)}</p>

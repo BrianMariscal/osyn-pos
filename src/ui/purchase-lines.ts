@@ -183,11 +183,15 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     container.querySelector<HTMLElement>(`[data-line="${index}"] [data-f="qty"]`)?.focus();
   };
 
-  // pointerdown: elige antes de que el buscador pierda el foco
-  container.addEventListener("pointerdown", (event) => {
+  // Se elige con un toque/clic completo: en celular, poner el dedo para desplazar
+  // la lista ya NO elige (antes se usaba pointerdown y se elegía al hacer scroll).
+  // Con mouse, mousedown evita que el buscador pierda el foco antes del clic.
+  container.addEventListener("mousedown", (event) => {
+    if ((event.target as HTMLElement).closest("[data-pick], .combo-list")) event.preventDefault();
+  });
+  container.addEventListener("click", (event) => {
     const option = (event.target as HTMLElement).closest<HTMLElement>("[data-pick]");
     if (!option) return;
-    event.preventDefault();
     pick(Number(option.closest<HTMLElement>("[data-line]")?.dataset.line), option.dataset.pick!);
   });
   container.addEventListener("keydown", (event) => {
@@ -203,6 +207,15 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     if (!field) return;
     const line = lines[Number(field.closest<HTMLElement>("[data-line]")?.dataset.line)];
     if (!line?.open) return;
+    // Si el foco pasa a la lista (toque en celular), se deja abierta para elegir
+    const next = (event as FocusEvent).relatedTarget as HTMLElement | null;
+    if (next?.closest(".combo-list")) return;
+    // En celular el toque llega después del blur: se espera un momento antes de cerrar
+    window.setTimeout(() => closeCombo(field, line), 250);
+  });
+
+  const closeCombo = (field: HTMLInputElement, line: LineState): void => {
+    if (!line.open || document.activeElement === field) return;
     // Se queda el mejor resultado; el texto muestra su nombre completo
     line.open = false;
     const product = ctx.repos.products.byId(line.productId);
@@ -212,7 +225,7 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     }
     const pop = field.closest<HTMLElement>("[data-line]")?.querySelector<HTMLElement>(".combo-pop");
     if (pop) setHtml(pop, comboPop(line, productsForSupplier(products(), options.supplierId?.() ?? "")));
-  });
+  };
 
   container.addEventListener("input", (event) => {
     const field = (event.target as HTMLElement).closest<HTMLInputElement>("input[data-f]");
