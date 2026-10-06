@@ -1,8 +1,7 @@
 /**
  * Cloudflare Pages Functions: atiende /api/* con los mismos handlers de api/
- * (escritos con la forma req/res de Vercel/Node). Este adaptador traduce
- * Request → req y res → Response, así api/*.js no cambia y sigue sirviendo
- * en Vercel o en `vercel dev`.
+ * (escritos con la forma req/res de Node). Este adaptador traduce
+ * Request → req y res → Response, así api/*.js se mantiene simple y portable.
  */
 import posAssistant from "../../api/pos-assistant.js";
 import tts from "../../api/tts.js";
@@ -14,7 +13,7 @@ const ROUTES = {
   users
 };
 
-/** Variables de Cloudflare (secrets/vars) → process.env, como en Vercel. */
+/** Variables de Cloudflare (secrets/vars) → process.env, que es lo que leen los handlers. */
 function exposeEnv(env) {
   globalThis.process ??= { env: {} };
   process.env ??= {};

@@ -5,7 +5,7 @@
  *     perfiles de otros admins ni del dueño, ni cambiar su propio perfil.
  * La clave service_role vive SOLO en el servidor.
  *
- * Env var requerida en Vercel: SUPABASE_SERVICE_ROLE_KEY
+ * Variable requerida en Cloudflare Pages: SUPABASE_SERVICE_ROLE_KEY
  */
 import authenticate from "./_auth.js";
 import rateLimit from "./_ratelimit.js";

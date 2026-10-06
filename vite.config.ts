@@ -95,7 +95,7 @@ export default defineConfig({
     // En `npm run dev` los endpoints /api/* no existen: se delegan a producción.
     proxy: {
       "/api": {
-        target: "https://abarrotes-pos-fawn.vercel.app",
+        target: "https://osynpos.shop",
         changeOrigin: true,
         secure: true
       }
