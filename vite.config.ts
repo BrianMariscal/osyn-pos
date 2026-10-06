@@ -60,6 +60,12 @@ export default defineConfig({
       }
     })
   ],
+  define: {
+    // Versión visible en el menú de cuenta: fecha y hora de la compilación (hora de México)
+    __APP_VERSION__: JSON.stringify(
+      new Date().toLocaleString("sv-SE", { timeZone: "America/Mexico_City" }).slice(0, 16).replace(" ", " · ")
+    )
+  },
   build: {
     target: "es2020"
   },

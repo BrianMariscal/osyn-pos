@@ -198,6 +198,15 @@ export function buildApp(ctx: AppContext): void {
   });
   void navigator.serviceWorker?.getRegistration?.().then((registration) => {
     if (!registration) return;
+    // Una pestaña abierta todo el día no se entera de versiones nuevas: se
+    // revisa cada 15 minutos y al volver a la app.
+    const check = (): void => {
+      void registration.update().catch(() => undefined);
+    };
+    window.setInterval(check, 15 * 60_000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) check();
+    });
     registration.addEventListener("updatefound", () => {
       const installing = registration.installing;
       installing?.addEventListener("statechange", () => {
@@ -441,6 +450,27 @@ function syncStatus(ctx: AppContext): { state: SyncState; label: string; detail:
   return { state: "idle", label: "Conectando…", detail: "" };
 }
 
+/**
+ * Busca una versión nueva de la app. Si hay, se instala y la página se recarga
+ * sola (controllerchange). Devuelve true si encontró una.
+ */
+async function checkForUpdate(): Promise<boolean> {
+  const registration = await navigator.serviceWorker?.getRegistration?.();
+  if (!registration) {
+    window.location.reload();
+    return true;
+  }
+  await registration.update().catch(() => undefined);
+  const waiting = registration.waiting ?? registration.installing;
+  if (waiting) {
+    waiting.postMessage({ type: "SKIP_WAITING" });
+    // Respaldo por si el cambio de versión no dispara la recarga
+    window.setTimeout(() => window.location.reload(), 4000);
+    return true;
+  }
+  return false;
+}
+
 type ThemeChoice = "light" | "dark" | "auto";
 const THEME_KEY = "pos-theme";
 
@@ -508,6 +538,14 @@ function wireSessionMenu(ctx: AppContext): void {
             <button class="ghost more-item" type="button" data-menu="voiceconfig">Elegir voz…</button>
           </div>
         </section>
+        <section class="menu-section">
+          <p class="micro">Aplicación</p>
+          <div class="sync-card">
+            <span class="sync-dot sync-dot-lg" data-state="ok"></span>
+            <div class="sync-text"><strong>Versión ${__APP_VERSION__}</strong><span class="muted" id="menuUpdateText">Se actualiza sola al haber cambios</span></div>
+            <button class="ghost sync-now" type="button" data-menu-update>Buscar actualización</button>
+          </div>
+        </section>
         <button class="ghost more-item danger-item" type="button" data-menu="logout">Cerrar sesión</button>
       `,
       onOpen: (root, close) => {
@@ -550,6 +588,16 @@ function wireSessionMenu(ctx: AppContext): void {
             syncing = false;
             renderSync();
             ctx.toast(result.ok ? "Sincronizado" : friendlySyncError(result.error ?? "No se pudo sincronizar"));
+          });
+        });
+        root.querySelector<HTMLElement>("[data-menu-update]")!.addEventListener("click", (event) => {
+          const button = event.currentTarget as HTMLButtonElement;
+          const text = root.querySelector<HTMLElement>("#menuUpdateText")!;
+          button.disabled = true;
+          text.textContent = "Buscando…";
+          void checkForUpdate().then((found) => {
+            button.disabled = false;
+            text.textContent = found ? "Instalando la versión nueva…" : "Ya tienes la versión más reciente";
           });
         });
         themeEl.addEventListener("click", (event) => {
