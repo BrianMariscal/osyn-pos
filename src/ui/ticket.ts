@@ -233,15 +233,57 @@ function waNumber(phone: string): string {
  */
 function sendTicket(ctx: AppContext, sale: Sale, blob: Blob, phone: string): void {
   const file = new File([blob], `ticket-${saleFolio(sale)}.png`, { type: "image/png" });
+  const digits = phone.replace(/\D/g, "");
+  if (digits && digits.length !== 10 && digits.length < 12) {
+    ctx.toast("Revisa el número: escribe los 10 dígitos del celular del cliente");
+    return;
+  }
+  // Con número: se abre el chat de ese cliente (cualquier dispositivo)
+  if (digits) {
+    sendToNumber(ctx, file, waNumber(digits));
+    return;
+  }
+  // Sin número, en celular: menú de compartir (eliges WhatsApp y el contacto)
   if (useShareSheet()) {
     // Solo la imagen: con texto adjunto algunas versiones de WhatsApp mandan solo el texto
     navigator.share({ files: [file] }).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") return; // canceló
-      shareFromDesktop(ctx, file, phone);
+      shareFromDesktop(ctx, file, "");
     });
     return;
   }
-  shareFromDesktop(ctx, file, phone);
+  shareFromDesktop(ctx, file, "");
+}
+
+function copyImage(file: File): Promise<void> {
+  return typeof ClipboardItem !== "undefined" && navigator.clipboard?.write
+    ? navigator.clipboard.write([new ClipboardItem({ "image/png": file })])
+    : Promise.reject(new Error("sin portapapeles"));
+}
+
+/** Abre el chat del número y deja la imagen copiada para pegarla. */
+function sendToNumber(ctx: AppContext, file: File, number: string): void {
+  if (!isMobileDevice()) {
+    shareFromDesktop(ctx, file, number);
+    return;
+  }
+  // Celular: primero se copia la imagen (si se abre WhatsApp antes, la copia se pierde)
+  copyImage(file)
+    .then(() => {
+      ctx.toast("Imagen del ticket copiada: en el chat mantén presionado y elige Pegar");
+      openWhatsAppChat(number);
+    })
+    .catch(() => {
+      // Sin portapapeles de imágenes: se comparte la imagen o se descarga
+      if (canShareImages()) {
+        ctx.toast("Elige WhatsApp y el chat del cliente");
+        navigator.share({ files: [file] }).catch(() => undefined);
+        return;
+      }
+      downloadBlob(file.name, file);
+      ctx.toast("Ticket guardado: en el chat toca el clip y adjunta la imagen");
+      openWhatsAppChat(number);
+    });
 }
 
 /**
@@ -264,11 +306,8 @@ function openWhatsAppChat(number: string): void {
 }
 
 function shareFromDesktop(ctx: AppContext, file: File, phone: string): void {
-  const copy =
-    typeof ClipboardItem !== "undefined" && navigator.clipboard?.write
-      ? navigator.clipboard.write([new ClipboardItem({ "image/png": file })])
-      : Promise.reject(new Error("sin portapapeles"));
-  openWhatsAppChat(waNumber(phone));
+  const copy = copyImage(file);
+  openWhatsAppChat(phone ? waNumber(phone) : "");
   copy
     .then(() => ctx.toast("Imagen del ticket copiada: en el chat de WhatsApp pégala con Ctrl+V"))
     .catch(() => {
@@ -279,7 +318,7 @@ function shareFromDesktop(ctx: AppContext, file: File, phone: string): void {
 
 /** Ventana del ticket (al cobrar o desde el historial). Enviarlo es opcional. */
 export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: boolean } = {}): void {
-  const shareFiles = useShareSheet();
+  const mobile = isMobileDevice();
   const customerPhone = sale.customer_id ? ctx.repos.customers.byId(sale.customer_id)?.phone ?? "" : "";
   const internal = sale.payment === "interno";
   openModal({
@@ -293,12 +332,12 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
         ? html`<p class="hint">Uso interno: no suma a las ventas.</p>`
         : html`<div class="ticket-send">
             <p class="micro">¿El cliente quiere su ticket?</p>
-            ${shareFiles
-              ? html``
-              : html`<label class="form-field">Número de WhatsApp del cliente
-                  <input id="ticketPhone" class="input" type="tel" inputmode="tel" autocomplete="off" placeholder="10 dígitos, ej. 55 1234 5678" value="${customerPhone}">
-                </label>
-                <p class="hint">Se abre su chat en WhatsApp Web y la imagen del ticket queda copiada: pégala con Ctrl + V y envía.</p>`}
+            <label class="form-field">Número de WhatsApp del cliente
+              <input id="ticketPhone" class="input" type="tel" inputmode="tel" autocomplete="off" placeholder="10 dígitos, ej. 55 1234 5678" value="${customerPhone}">
+            </label>
+            <p class="hint">${mobile
+              ? "Con número: se abre su chat y la imagen del ticket queda copiada (mantén presionado › Pegar). Sin número: eliges el contacto en el menú de compartir."
+              : "Se abre su chat en WhatsApp Web y la imagen del ticket queda copiada: pégala con Ctrl + V y envía."}</p>
             <div class="ticket-actions">
               <button class="primary whatsapp-btn" type="button" data-ticket-send>Enviar por WhatsApp</button>
               <button class="ghost" type="button" data-ticket-download>Descargar imagen</button>
