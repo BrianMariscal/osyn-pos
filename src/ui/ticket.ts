@@ -236,12 +236,26 @@ function sendTicket(ctx: AppContext, sale: Sale, blob: Blob, phone: string): voi
  * portapapeles y se abre WhatsApp; en el chat basta con pegar (Ctrl+V).
  * Si no se puede copiar, se descarga para adjuntarla.
  */
+/**
+ * Abre el chat directo, sin la página intermedia de wa.me. En computadora usa
+ * siempre la misma pestaña de WhatsApp Web (WhatsApp Web solo funciona en una
+ * pestaña a la vez); en celular abre la app.
+ */
+function openWhatsAppChat(number: string): void {
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (mobile) {
+    window.location.href = number ? `whatsapp://send?phone=${number}` : "whatsapp://";
+    return;
+  }
+  window.open(number ? `https://web.whatsapp.com/send?phone=${number}` : "https://web.whatsapp.com/", "whatsapp-web");
+}
+
 function shareFromDesktop(ctx: AppContext, file: File, phone: string): void {
   const copy =
     typeof ClipboardItem !== "undefined" && navigator.clipboard?.write
       ? navigator.clipboard.write([new ClipboardItem({ "image/png": file })])
       : Promise.reject(new Error("sin portapapeles"));
-  window.open(`https://wa.me/${waNumber(phone)}`, "_blank", "noopener");
+  openWhatsAppChat(waNumber(phone));
   copy
     .then(() => ctx.toast("Imagen del ticket copiada: en el chat de WhatsApp pégala con Ctrl+V"))
     .catch(() => {
