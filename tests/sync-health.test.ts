@@ -17,6 +17,11 @@ describe("aviso de sincronización en Inicio", () => {
     expect(syncAlert(sync({ pending: 3, lastSyncAt: new Date(NOW - 10 * 60_000).toISOString() }), NOW)).toBeNull();
   });
 
+  it("un equipo recién conectado no avisa hasta que su primera sync falle", () => {
+    expect(syncAlert(sync({ pending: 2 }), NOW)).toBeNull();
+    expect(syncAlert(sync({ pending: 2, error: "Failed to fetch" }), NOW)).toMatch(/2 cambios sin subir a la nube\./);
+  });
+
   it("avisa si lleva más de una hora sin subir", () => {
     const message = syncAlert(sync({ pending: 3, lastSyncAt: new Date(NOW - 3 * 3600_000).toISOString() }), NOW);
     expect(message).toMatch(/3 cambios sin subir a la nube desde hace 3 h/);
