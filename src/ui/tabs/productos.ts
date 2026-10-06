@@ -23,16 +23,19 @@ export const productosTab: TabModule = {
       html`
         <div class="split">
           <article class="card">
-            <h2 id="productFormTitle">Alta de producto</h2>
-            <p class="hint" id="stockScopeHint"></p>
-            <p class="hint">La descarga incluye todos los datos (proveedor, categoría, código, piezas por caja, grupo del corte, existencia y mínimo) y se puede volver a importar para migrar.</p>
-            <div class="actions wrap-actions">
-              <button id="downloadTemplate" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
-              <button id="downloadProductsCsv" class="ghost" type="button">${iconFor("download")} Descargar CSV</button>
-              <label class="import-label">${iconFor("upload")} Importar Excel / CSV
-                <input id="importProducts" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
-              </label>
+            <div class="section-title">
+              <h2>Productos <span class="count-badge" data-tone="blue" id="productsTotal"></span></h2>
+              <button id="newProductToggle" class="primary" type="button">${iconFor("plus")} Nuevo</button>
             </div>
+            <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre o código de barras" autocomplete="off">
+            ${productFiltersMarkup("products")}
+            <p class="hint" id="productsCount"></p>
+            <div id="productsList" class="collapsible-list"></div>
+          </article>
+          <article class="card" id="productFormCard">
+            <details id="productFormBox" class="form-box">
+              <summary><h2 id="productFormTitle">Nuevo producto</h2><span class="hint">Toca para abrir el formulario</span></summary>
+              <p class="hint" id="stockScopeHint"></p>
             <form id="productForm" class="form">
               <input type="hidden" id="productId">
               <label class="form-field">Nombre
@@ -91,13 +94,17 @@ export const productosTab: TabModule = {
                 <button class="ghost" type="button" id="productCancel" hidden>Cancelar edición</button>
               </div>
             </form>
-          </article>
-          <article class="card">
-            <h2>Productos registrados</h2>
-            <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre o código de barras" autocomplete="off">
-            ${productFiltersMarkup("products")}
-            <p class="hint" id="productsCount"></p>
-            <div id="productsList" class="list"></div>
+            </details>
+            <div class="form-box-foot">
+              <p class="micro">Migrar o respaldar</p>
+              <p class="hint">El Excel incluye todos los datos (proveedor, categoría, código, piezas por caja, grupo del corte, existencia y mínimo) y se puede volver a importar.</p>
+              <div class="actions wrap-actions">
+                <button id="downloadTemplate" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
+                <label class="import-label">${iconFor("upload")} Importar Excel / CSV
+                  <input id="importProducts" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
+                </label>
+              </div>
+            </div>
           </article>
         </div>
       `
@@ -123,6 +130,13 @@ export const productosTab: TabModule = {
     const hint = root.querySelector<HTMLElement>("#stockScopeHint")!;
     const listSearch = root.querySelector<HTMLInputElement>("#productsSearch")!;
     const countEl = root.querySelector<HTMLElement>("#productsCount")!;
+    const totalEl = root.querySelector<HTMLElement>("#productsTotal")!;
+    const formBox = root.querySelector<HTMLDetailsElement>("#productFormBox")!;
+    /** Categorías y productos abiertos (se conservan al redibujar por sync). */
+    const openGroups = new Set<string>();
+    const openRows = new Set<string>();
+    const PAGE = 40;
+    let limit = PAGE;
     /** Existencia mostrada al empezar a editar: solo se guarda si el usuario la cambió. */
     let stockAtEdit: string | null = null;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -156,7 +170,7 @@ export const productosTab: TabModule = {
       cancelEdit.hidden = true;
       minInput.value = "2";
       stockInput.disabled = false;
-      formTitle.textContent = "Alta de producto";
+      formTitle.textContent = "Nuevo producto";
     };
 
     // Al elegir proveedor se sugiere su giro como categoría (si no se ha elegido otra).
@@ -182,31 +196,32 @@ export const productosTab: TabModule = {
       const suppliers = new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
       filters.refresh();
       const products = filters.apply(all, listSearch.value);
-      countEl.textContent = all.length ? `${products.length} de ${all.length} productos` : "";
+      totalEl.textContent = all.length ? String(all.length) : "";
+      const filtering = Boolean(listSearch.value.trim()) || filters.active();
+      countEl.textContent = filtering && all.length ? `${products.length} de ${all.length} productos` : "";
       if (!products.length) {
-        setHtml(list, html`<p class="muted">${all.length ? "Ningún producto coincide." : "Aún no hay productos."}</p>`);
+        setHtml(list, html`<p class="empty-note">${all.length ? "Ningún producto coincide." : "Aún no hay productos. Toca “Nuevo” para dar de alta el primero."}</p>`);
         return;
       }
-      setHtml(
-        list,
-        html`${products.map((product) => {
-          const stock = stockRowFor(product.id);
-          const low = (stock?.stock ?? 0) <= (stock?.min_stock ?? 0);
-          const supplier = product.supplier_id ? suppliers.get(product.supplier_id) : undefined;
-          const group = detectSaleGroup(product);
-          return html`
-            <div class="list-item ${low ? "low" : ""} ${product.active === false ? "inactive" : ""}">
-              <div class="item-line"><strong>${product.name}</strong><strong>${fmtMoneyPesos(product.price)}</strong></div>
-              <p class="muted">
-                ${product.category || "Sin categoría"} · ${product.um} · Costo ${fmtMoneyPesos(product.cost)}
-                · Stock ${stock ? fmtQtySafe(stock.stock) : "—"} (mín ${stock ? fmtQtySafe(stock.min_stock) : "—"})
-              </p>
+      const row = (product: Product) => {
+        const stock = stockRowFor(product.id);
+        const qty = stock?.stock ?? 0;
+        const low = qty <= (stock?.min_stock ?? 0);
+        const supplier = product.supplier_id ? suppliers.get(product.supplier_id) : undefined;
+        const group = detectSaleGroup(product);
+        return html`
+          <details class="row-item ${product.active === false ? "inactive" : ""}" data-product="${product.id}" ${openRows.has(product.id) ? "open" : null}>
+            <summary>
+              <span class="row-title"><strong>${product.name}</strong><small class="muted">${product.um}${product.barcode ? ` · ${product.barcode}` : ""}${product.active === false ? " · Oculto" : ""}</small></span>
+              <span class="row-price">${fmtMoneyPesos(product.price)}</span>
+              <span class="stock-pill" data-tone="${qty <= 0 ? "coral" : low ? "amber" : "green"}">${stock ? fmtQtySafe(qty) : "—"}</span>
+            </summary>
+            <div class="row-body">
+              <p class="muted">${product.category || "Sin categoría"} · Costo ${fmtMoneyPesos(product.cost)} · Mínimo ${stock ? fmtQtySafe(stock.min_stock) : "—"}</p>
               <div class="tag-row">
                 ${supplier ? html`<span class="tag">${supplierCode(supplier)} ${supplier.name}</span>` : html``}
                 ${product.pack_size ? html`<span class="tag">Caja de ${product.pack_size}${product.pack_price ? ` · ${fmtMoneyPesos(product.pack_price)}` : ""}</span>` : html``}
                 ${group !== "general" ? html`<span class="tag tag-accent">${SALE_GROUP_LABELS[group]}</span>` : html``}
-                ${product.barcode ? html`<span class="tag">${iconFor("barcode")} ${product.barcode}</span>` : html``}
-                ${product.active === false ? html`<span class="tag tag-off">Oculto</span>` : html``}
               </div>
               <div class="actions">
                 <button class="ghost" type="button" data-edit="${product.id}">${iconFor("edit")} Editar</button>
@@ -215,6 +230,44 @@ export const productosTab: TabModule = {
                 <button class="ghost danger" type="button" data-delete="${product.id}">${iconFor("trash")} Eliminar</button>
               </div>
             </div>
+          </details>
+        `;
+      };
+      if (filtering) {
+        // Con búsqueda o filtro: resultados directos (de 40 en 40)
+        const shown = products.slice(0, limit);
+        setHtml(
+          list,
+          html`<div class="list">${shown.map(row)}</div>${products.length > shown.length
+            ? html`<button class="ghost block list-more" type="button" data-more-products>Ver más (${products.length - shown.length})</button>`
+            : html``}`
+        );
+        return;
+      }
+      // Sin búsqueda: agrupados por categoría, plegados; solo se dibujan los abiertos
+      const groups = new Map<string, Product[]>();
+      for (const product of products) {
+        const key = product.category?.trim() || "Sin categoría";
+        groups.set(key, [...(groups.get(key) ?? []), product]);
+      }
+      const ordered = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"));
+      setHtml(
+        list,
+        html`${ordered.map(([name, items]) => {
+          const lowCount = items.filter((p) => {
+            const stock = stockRowFor(p.id);
+            return (stock?.stock ?? 0) <= (stock?.min_stock ?? 0);
+          }).length;
+          const open = openGroups.has(name);
+          return html`
+            <details class="group-box" data-group="${name}" ${open ? "open" : null}>
+              <summary>
+                <strong>${name}</strong>
+                <span class="tag">${items.length}</span>
+                ${lowCount ? html`<span class="count-badge" data-tone="amber" title="Productos en o bajo el mínimo">${lowCount} ${lowCount === 1 ? "bajo" : "bajos"}</span>` : html``}
+              </summary>
+              ${open ? html`<div class="list">${items.map(row)}</div>` : html``}
+            </details>
           `;
         })}`
       );
@@ -271,6 +324,7 @@ export const productosTab: TabModule = {
       // pisaría ventas recientes que el servidor aún no ha descontado.
       if (current && !stockChanged && normalizeQty(current.min_stock) === minValue) {
         resetForm();
+        if (existing) formBox.open = false;
         ctx.toast(existing ? "Producto actualizado" : "Producto guardado");
         return;
       }
@@ -283,13 +337,42 @@ export const productosTab: TabModule = {
         updated_at: ts
       });
       resetForm();
+      if (existing) formBox.open = false;
       ctx.toast(existing ? "Producto actualizado" : "Producto guardado");
     });
 
-    cancelEdit.addEventListener("click", resetForm);
+    cancelEdit.addEventListener("click", () => {
+      resetForm();
+      formBox.open = false;
+    });
+
+    list.addEventListener("toggle", (event) => {
+      const box = event.target as HTMLDetailsElement;
+      if (box.dataset?.group !== undefined) {
+        if (box.open) openGroups.add(box.dataset.group);
+        else openGroups.delete(box.dataset.group);
+        // El contenido de la categoría se dibuja al abrirla
+        if (box.open && !box.querySelector(".list")) render();
+      } else if (box.dataset?.product) {
+        if (box.open) openRows.add(box.dataset.product);
+        else openRows.delete(box.dataset.product);
+      }
+    }, true);
+
+    root.querySelector<HTMLButtonElement>("#newProductToggle")!.addEventListener("click", () => {
+      if (idInput.value) resetForm();
+      formBox.open = true;
+      formBox.scrollIntoView({ behavior: "smooth", block: "start" });
+      nameInput.focus({ preventScroll: true });
+    });
 
     list.addEventListener("click", async (event) => {
       const target = event.target as HTMLElement;
+      if (target.closest("[data-more-products]")) {
+        limit += PAGE;
+        render();
+        return;
+      }
       const editButton = target.closest<HTMLElement>("[data-edit]");
       if (editButton) {
         const product = ctx.repos.products.byId(editButton.dataset.edit!);
@@ -312,7 +395,8 @@ export const productosTab: TabModule = {
         barcodeInput.value = product.barcode ?? "";
         cancelEdit.hidden = false;
         formTitle.textContent = `Editando: ${product.name}`;
-        form.scrollIntoView({ behavior: "smooth", block: "start" });
+        formBox.open = true;
+        formBox.scrollIntoView({ behavior: "smooth", block: "start" });
         nameInput.focus({ preventScroll: true });
         return;
       }
@@ -349,12 +433,12 @@ export const productosTab: TabModule = {
     });
 
     listSearch.addEventListener("input", () => {
+      limit = PAGE;
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(render, 180);
     });
 
     root.querySelector<HTMLButtonElement>("#downloadTemplate")!.addEventListener("click", () => exportProducts(ctx, "xls"));
-    root.querySelector<HTMLButtonElement>("#downloadProductsCsv")!.addEventListener("click", () => exportProducts(ctx, "csv"));
 
     root.querySelector<HTMLInputElement>("#importProducts")!.addEventListener("change", async (event) => {
       const input = event.target as HTMLInputElement;

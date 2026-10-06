@@ -27,7 +27,6 @@ export const inventarioTab: TabModule = {
             <div id="inventorySummary" class="summary"></div>
             <div class="actions">
               <button id="downloadInventoryXls" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
-              <button id="downloadInventoryCsv" class="ghost" type="button">${iconFor("download")} Descargar CSV</button>
               <label class="import-label">${iconFor("upload")} Importar
                 <input id="importInventory" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
               </label>
@@ -313,7 +312,6 @@ export const inventarioTab: TabModule = {
     });
 
     root.querySelector<HTMLButtonElement>("#downloadInventoryXls")!.addEventListener("click", () => exportProducts(ctx, "xls", "inventario"));
-    root.querySelector<HTMLButtonElement>("#downloadInventoryCsv")!.addEventListener("click", () => exportProducts(ctx, "csv", "inventario"));
     // Importar modifica el catálogo: solo dueño/administrador (así lo exige la base de datos).
     root.querySelector<HTMLInputElement>("#importInventory")!.closest("label")!.hidden = !ctx.auth.isAdmin();
     root.querySelector<HTMLInputElement>("#importInventory")!.addEventListener("change", async (event) => {

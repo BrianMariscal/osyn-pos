@@ -20,8 +20,10 @@ interface LineState {
   mode: LineMode;
   qty: string;
   total: string;
-  /** Texto para filtrar la lista de productos de la línea. */
+  /** Texto del buscador de producto de la línea. */
   search: string;
+  /** Sugerencias visibles mientras se escribe. */
+  open: boolean;
 }
 
 export interface PurchaseLinesOptions {
@@ -44,7 +46,7 @@ function packSizeOf(product: Product | undefined): number {
 }
 
 export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, options: PurchaseLinesOptions): PurchaseLines {
-  const blank = (): LineState => ({ productId: "", mode: "pza", qty: "", total: "", search: "" });
+  const blank = (): LineState => ({ productId: "", mode: "pza", qty: "", total: "", search: "", open: false });
   let lines: LineState[] = [blank()];
 
   const products = (): Product[] =>
@@ -73,40 +75,60 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     return parts.join(" · ");
   };
 
-  const optionsMarkup = (line: LineState, list: Product[]) => {
+  const SUGGESTIONS = 6;
+
+  /** Buscador de producto: al escribir se elige solo el mejor resultado; los demás se pueden tocar. */
+  const productField = (line: LineState, index: number, list: Product[]) => {
     const supplierId = options.supplierId?.() ?? "";
     if (!list.length) {
-      return html`<option value="" disabled selected>${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}</option>`;
+      return html`<input class="input" disabled placeholder="${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}">`;
     }
-    // El producto elegido siempre se conserva aunque no coincida con la búsqueda.
-    const found = searchProducts(list, line.search);
-    const selected = list.find((p) => p.id === line.productId);
-    const shown = selected && !found.includes(selected) ? [selected, ...found] : found;
-    const option = (p: Product) =>
-      html`<option value="${p.id}" ${p.id === line.productId ? "selected" : null}>${p.name} (${p.um})</option>`;
-    return html`<option value="">${found.length ? "Elige producto…" : "Ningún producto coincide"}</option>${shown.map(option)}`;
+    return html`
+      <input class="input" data-f="search" type="search" placeholder="Busca producto o código de barras" autocomplete="off"
+        role="combobox" aria-label="Producto ${index + 1}" value="${line.search}">
+      <div class="combo-pop">${comboPop(line, list)}</div>
+    `;
   };
 
-  const lineMarkup = (line: LineState, index: number, list: Product[]) => {
+  const comboPop = (line: LineState, list: Product[]) => {
+    const query = line.search.trim();
+    const found = line.open && query ? searchProducts(list, query).slice(0, SUGGESTIONS) : [];
+    const selected = ctx.repos.products.byId(line.productId);
+    return html`
+      ${line.open && query
+        ? html`<div class="combo-list" role="listbox">
+            ${found.length
+              ? found.map(
+                  (p) => html`<button type="button" role="option" class="combo-option ${p.id === line.productId ? "active" : ""}" data-pick="${p.id}" aria-selected="${p.id === line.productId ? "true" : "false"}">
+                    <span>${p.name}</span><small class="muted">${p.um}${p.cost ? ` · costo ${fmtMoney(toCents(p.cost))}` : ""}</small>
+                  </button>`
+                )
+              : html`<p class="combo-empty">Ningún producto coincide</p>`}
+          </div>`
+        : html``}
+      ${selected && !line.open ? html`<span class="combo-picked">✓ ${selected.name} (${selected.um})</span>` : html``}
+    `;
+  };
+
+  const qtyMarkup = (line: LineState) => {
     const product = ctx.repos.products.byId(line.productId);
     const size = packSizeOf(product);
     return html`
+      <input class="input" data-f="qty" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
+      ${size
+        ? html`<select class="input" data-f="mode" aria-label="Unidad de compra">
+            <option value="caja" ${line.mode === "caja" ? "selected" : null}>Cajas</option>
+            <option value="pza" ${line.mode === "pza" ? "selected" : null}>${product?.um ?? "Pza"}</option>
+          </select>`
+        : html`<span class="unit-tag">${product?.um ?? "Pza"}</span>`}
+    `;
+  };
+
+  const lineMarkup = (line: LineState, index: number, list: Product[]) => {
+    return html`
       <div class="purchase-line" data-line="${index}">
-        <div class="purchase-product">
-          ${list.length > 8
-            ? html`<input class="input" data-f="search" type="search" placeholder="Buscar producto o código" autocomplete="off" aria-label="Buscar producto ${index + 1}" value="${line.search}">`
-            : html``}
-          <select class="input" data-f="productId" aria-label="Producto ${index + 1}">${optionsMarkup(line, list)}</select>
-        </div>
-        <div class="purchase-qty">
-          <input class="input" data-f="qty" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
-          ${size
-            ? html`<select class="input" data-f="mode" aria-label="Unidad de compra">
-                <option value="caja" ${line.mode === "caja" ? "selected" : null}>Cajas</option>
-                <option value="pza" ${line.mode === "pza" ? "selected" : null}>${product?.um ?? "Pza"}</option>
-              </select>`
-            : html`<span class="unit-tag">${product?.um ?? "Pza"}</span>`}
-        </div>
+        <div class="purchase-product combo">${productField(line, index, list)}</div>
+        <div class="purchase-qty">${qtyMarkup(line)}</div>
         <input class="input" data-f="total" type="number" step="0.01" min="0" inputmode="decimal" placeholder="${options.requireTotal ? "Total pagado" : "Total pagado (opcional)"}" value="${line.total}">
         <button class="ghost danger" type="button" data-remove-line="${index}" aria-label="Quitar producto" ${lines.length > 1 ? null : "disabled"}>Quitar</button>
         <p class="hint purchase-hint" data-hint="${index}">${hintFor(line)}</p>
@@ -120,7 +142,7 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     const list = productsForSupplier(products(), supplierId);
     const allowed = new Set(list.map((product) => product.id));
     // Productos que ya no existen o no son del proveedor se limpian de las líneas.
-    lines = lines.map((line) => (line.productId && !allowed.has(line.productId) ? { ...line, productId: "", mode: "pza" } : line));
+    lines = lines.map((line) => (line.productId && !allowed.has(line.productId) ? { ...line, productId: "", mode: "pza", search: "" } : line));
     const focused = document.activeElement as HTMLElement | null;
     const focusKey = focused && container.contains(focused) ? `${focused.closest<HTMLElement>("[data-line]")?.dataset.line}|${focused.dataset.f}` : "";
     setHtml(
@@ -131,7 +153,10 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     );
     if (focusKey) {
       const [lineIndex, field] = focusKey.split("|");
-      container.querySelector<HTMLElement>(`[data-line="${lineIndex}"] [data-f="${field}"]`)?.focus();
+      const el = container.querySelector<HTMLInputElement>(`[data-line="${lineIndex}"] [data-f="${field}"]`);
+      el?.focus();
+      // El buscador conserva el cursor al final mientras se escribe
+      if (el && field === "search") el.setSelectionRange(el.value.length, el.value.length);
     }
   };
 
@@ -140,6 +165,54 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     const line = lines[index];
     if (el && line) el.textContent = hintFor(line);
   };
+
+  const choose = (line: LineState, product: Product | undefined): void => {
+    line.productId = product?.id ?? "";
+    // Producto con caja: por defecto se captura en cajas.
+    line.mode = packSizeOf(product) ? "caja" : "pza";
+  };
+
+  const pick = (index: number, productId: string): void => {
+    const line = lines[index];
+    const product = ctx.repos.products.byId(productId);
+    if (!line || !product) return;
+    choose(line, product);
+    line.search = product.name;
+    line.open = false;
+    render();
+    container.querySelector<HTMLElement>(`[data-line="${index}"] [data-f="qty"]`)?.focus();
+  };
+
+  // pointerdown: elige antes de que el buscador pierda el foco
+  container.addEventListener("pointerdown", (event) => {
+    const option = (event.target as HTMLElement).closest<HTMLElement>("[data-pick]");
+    if (!option) return;
+    event.preventDefault();
+    pick(Number(option.closest<HTMLElement>("[data-line]")?.dataset.line), option.dataset.pick!);
+  });
+  container.addEventListener("keydown", (event) => {
+    const field = (event.target as HTMLElement).closest<HTMLInputElement>('input[data-f="search"]');
+    if (!field || event.key !== "Enter") return;
+    event.preventDefault();
+    const index = Number(field.closest<HTMLElement>("[data-line]")?.dataset.line);
+    const line = lines[index];
+    if (line?.productId) pick(index, line.productId);
+  });
+  container.addEventListener("focusout", (event) => {
+    const field = (event.target as HTMLElement).closest<HTMLInputElement>('input[data-f="search"]');
+    if (!field) return;
+    const line = lines[Number(field.closest<HTMLElement>("[data-line]")?.dataset.line)];
+    if (!line?.open) return;
+    // Se queda el mejor resultado; el texto muestra su nombre completo
+    line.open = false;
+    const product = ctx.repos.products.byId(line.productId);
+    if (product) {
+      line.search = product.name;
+      field.value = product.name;
+    }
+    const pop = field.closest<HTMLElement>("[data-line]")?.querySelector<HTMLElement>(".combo-pop");
+    if (pop) setHtml(pop, comboPop(line, productsForSupplier(products(), options.supplierId?.() ?? "")));
+  });
 
   container.addEventListener("input", (event) => {
     const field = (event.target as HTMLElement).closest<HTMLInputElement>("input[data-f]");
@@ -150,8 +223,17 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     if (field.dataset.f === "total") line.total = field.value;
     if (field.dataset.f === "search") {
       line.search = field.value;
-      const select = field.closest<HTMLElement>("[data-line]")?.querySelector<HTMLSelectElement>('[data-f="productId"]');
-      if (select) setHtml(select, optionsMarkup(line, productsForSupplier(products(), options.supplierId?.() ?? "")));
+      line.open = true;
+      const list = productsForSupplier(products(), options.supplierId?.() ?? "");
+      const best = field.value.trim() ? searchProducts(list, field.value)[0] : undefined;
+      const row = field.closest<HTMLElement>("[data-line]")!;
+      if ((best?.id ?? "") !== line.productId) {
+        choose(line, best);
+        // Solo se redibuja la cantidad/unidad: el buscador conserva el foco
+        setHtml(row.querySelector<HTMLElement>(".purchase-qty")!, qtyMarkup(line));
+      }
+      setHtml(row.querySelector<HTMLElement>(".combo-pop")!, comboPop(line, list));
+      updateHint(index);
       return;
     }
     updateHint(index);
@@ -162,12 +244,7 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     const index = Number(field?.closest<HTMLElement>("[data-line]")?.dataset.line);
     const line = lines[index];
     if (!field || !line) return;
-    if (field.dataset.f === "productId") {
-      line.productId = field.value;
-      // Producto con caja: por defecto se captura en cajas.
-      line.mode = packSizeOf(ctx.repos.products.byId(field.value)) ? "caja" : "pza";
-      render();
-    } else if (field.dataset.f === "mode") {
+    if (field.dataset.f === "mode") {
       line.mode = field.value === "caja" ? "caja" : "pza";
       render();
     }
@@ -189,13 +266,13 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     addLine() {
       lines = [...lines, blank()];
       render();
-      container.querySelector<HTMLElement>(`[data-line="${lines.length - 1}"] [data-f="productId"]`)?.focus();
+      container.querySelector<HTMLElement>(`[data-line="${lines.length - 1}"] [data-f="search"]`)?.focus();
     },
     read() {
       const items: StockReceipt[] = [];
       for (const [index, line] of lines.entries()) {
         const label = lines.length > 1 ? ` (línea ${index + 1})` : "";
-        if (!line.productId) return { ok: false, error: `Elige el producto${label}` };
+        if (!line.productId) return { ok: false, error: `Busca y elige el producto${label}` };
         const qty = baseQty(line);
         if (qty <= 0) return { ok: false, error: `Escribe una cantidad válida${label}` };
         const total = Number(line.total || 0);

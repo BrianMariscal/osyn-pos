@@ -4,7 +4,7 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import type { Supplier } from "../../core/types";
-import { assignMissingSupplierNumbers, nextSupplierNumber, searchProducts, supplierCode, supplierLabel } from "../../domain/catalog";
+import { assignMissingSupplierNumbers, nextSupplierNumber, plainText, searchProducts, supplierCode, supplierLabel } from "../../domain/catalog";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { mountPurchaseLines } from "../purchase-lines";
@@ -23,20 +23,6 @@ export const proveedoresTab: TabModule = {
       html`
         <div class="split">
           <article class="card">
-            <div class="section-title">
-              <h2>Proveedores</h2>
-              <button id="addSupplier" class="primary" type="button">${iconFor("plus")} Agregar</button>
-            </div>
-            <p class="hint">Tu catálogo: Central de Abastos, distribuidoras, etc. Cada proveedor recibe un número automático y puedes asociarle los productos que surte.</p>
-            <div class="actions wrap-actions">
-              <button id="downloadSuppliersXls" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
-              <button id="downloadSuppliersCsv" class="ghost" type="button">${iconFor("download")} Descargar CSV</button>
-              <label class="import-label" id="importSuppliersLabel">${iconFor("upload")} Importar
-                <input id="importSuppliers" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
-              </label>
-            </div>
-            <div id="suppliersList" class="list"></div>
-
             <h2>Registrar compra</h2>
             <form id="purchaseForm" class="form">
               <div class="row">
@@ -54,11 +40,28 @@ export const proveedoresTab: TabModule = {
               <div id="purchaseLines" class="purchase-lines"></div>
               <button class="primary" type="submit">Registrar compra completa</button>
             </form>
+
+            <div class="section-title section-gap">
+              <h2>Compras registradas</h2>
+              <span class="hint" id="purchasesCount"></span>
+            </div>
+            <div id="purchasesList" class="list"></div>
           </article>
 
           <article class="card">
-            <h2>Compras registradas</h2>
-            <div id="purchasesList" class="list"></div>
+            <div class="section-title">
+              <h2>Proveedores <span class="count-badge" data-tone="violet" id="suppliersCount"></span></h2>
+              <button id="addSupplier" class="primary" type="button">${iconFor("plus")} Agregar</button>
+            </div>
+            <p class="hint">Cada proveedor recibe un número automático. Toca uno para ver sus datos, productos y opciones.</p>
+            <input id="supplierSearch" class="input" type="search" placeholder="Buscar proveedor, giro o número (#3)" autocomplete="off">
+            <div id="suppliersList" class="list collapsible-list"></div>
+            <div class="actions wrap-actions">
+              <button id="downloadSuppliersXls" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
+              <label class="import-label" id="importSuppliersLabel">${iconFor("upload")} Importar
+                <input id="importSuppliers" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
+              </label>
+            </div>
           </article>
         </div>
       `
@@ -71,6 +74,14 @@ export const proveedoresTab: TabModule = {
     const purchasePaidFrom = root.querySelector<HTMLSelectElement>("#purchasePaidFrom")!;
     const purchaseLinesEl = root.querySelector<HTMLElement>("#purchaseLines")!;
     const list = root.querySelector<HTMLElement>("#purchasesList")!;
+    const supplierSearch = root.querySelector<HTMLInputElement>("#supplierSearch")!;
+    const suppliersCount = root.querySelector<HTMLElement>("#suppliersCount")!;
+    const purchasesCount = root.querySelector<HTMLElement>("#purchasesCount")!;
+    /** Proveedores expandidos (se conservan al redibujar por sync). */
+    const openSuppliers = new Set<string>();
+    const PAGE = 15;
+    let supplierLimit = PAGE;
+    let purchaseLimit = 10;
 
     // "Central de Abastos" no es un proveedor del catálogo: compra local en
     // varios puestos, normalmente con dinero aparte. Ofrece todos los productos.
@@ -82,7 +93,6 @@ export const proveedoresTab: TabModule = {
     const canManage = (): boolean => ctx.auth.isAdmin();
 
     root.querySelector<HTMLButtonElement>("#downloadSuppliersXls")!.addEventListener("click", () => exportSuppliers(ctx, "xls"));
-    root.querySelector<HTMLButtonElement>("#downloadSuppliersCsv")!.addEventListener("click", () => exportSuppliers(ctx, "csv"));
     root.querySelector<HTMLElement>("#importSuppliersLabel")!.hidden = !canManage();
     root.querySelector<HTMLInputElement>("#importSuppliers")!.addEventListener("change", async (event) => {
       const input = event.target as HTMLInputElement;
@@ -109,34 +119,48 @@ export const proveedoresTab: TabModule = {
           (supplier) => html`<option value="${supplier.id}" ${supplier.id === selected ? "selected" : null}>${supplierLabel(supplier)}</option>`
         )}`
       );
+      suppliersCount.textContent = suppliers.length ? String(suppliers.length) : "";
+      supplierSearch.classList.toggle("hidden", suppliers.length < 6);
       if (!suppliers.length) {
-        setHtml(suppliersList, html`<p class="muted">Agrega tu primer proveedor: Central de Abastos, una distribuidora…</p>`);
+        setHtml(suppliersList, html`<p class="muted">Agrega tu primer proveedor: una distribuidora, la tienda de la esquina…</p>`);
         return;
       }
+      const q = plainText(supplierSearch.value);
+      const byNumber = /^#?(\d+)$/.exec(q);
+      const matches = suppliers.filter((supplier) =>
+        !q ||
+        (byNumber ? Number(supplier.number) === Number(byNumber[1]) : q.split(/\s+/).every((word) => plainText(`${supplier.name} ${supplier.type ?? ""} ${supplier.phone}`).includes(word)))
+      );
+      const shown = matches.slice(0, supplierLimit);
       setHtml(
         suppliersList,
-        html`${suppliers.map((supplier) => {
-          const count = productCount(supplier.id);
-          return html`
-            <div class="list-item">
-              <div class="item-line">
-                <div class="supplier-head">
-                  ${supplierCode(supplier) ? html`<span class="supplier-num">${supplierCode(supplier)}</span>` : html``}
-                  <strong>${supplier.name}</strong>
-                </div>
-                <span class="tag">${count} ${count === 1 ? "producto" : "productos"}</span>
-              </div>
-              <p class="muted">${supplier.type ? `${supplier.type} · ` : ""}${supplier.phone || "Sin teléfono"}${supplier.notes ? ` · ${supplier.notes}` : ""}</p>
-              <div class="actions">
-                <button class="ghost" type="button" data-products-supplier="${supplier.id}">${iconFor("box")} Productos</button>
-                ${canManage()
-                  ? html`<button class="ghost" type="button" data-edit-supplier="${supplier.id}">Editar</button>
-                      <button class="ghost danger" type="button" data-delete-supplier="${supplier.id}">Eliminar</button>`
-                  : html``}
-              </div>
-            </div>
-          `;
-        })}`
+        matches.length
+          ? html`${shown.map((supplier) => {
+              const count = productCount(supplier.id);
+              return html`
+                <details class="row-item" data-supplier="${supplier.id}" ${openSuppliers.has(supplier.id) ? "open" : null}>
+                  <summary>
+                    ${supplierCode(supplier) ? html`<span class="supplier-num">${supplierCode(supplier)}</span>` : html``}
+                    <span class="row-title"><strong>${supplier.name}</strong><small class="muted">${supplier.type || "Sin giro"}</small></span>
+                    <span class="tag">${count} ${count === 1 ? "producto" : "productos"}</span>
+                  </summary>
+                  <div class="row-body">
+                    <p class="muted">${supplier.phone ? html`Tel. <a href="tel:${supplier.phone}">${supplier.phone}</a>` : "Sin teléfono"}${supplier.notes ? ` · ${supplier.notes}` : ""}</p>
+                    <div class="actions">
+                      <button class="ghost" type="button" data-products-supplier="${supplier.id}">${iconFor("box")} Productos</button>
+                      ${canManage()
+                        ? html`<button class="ghost" type="button" data-edit-supplier="${supplier.id}">${iconFor("edit")} Editar</button>
+                            <button class="ghost danger" type="button" data-delete-supplier="${supplier.id}">${iconFor("trash")} Eliminar</button>`
+                        : html``}
+                    </div>
+                  </div>
+                </details>
+              `;
+            })}
+            ${matches.length > shown.length
+              ? html`<button class="ghost block list-more" type="button" data-more-suppliers>Ver más (${matches.length - shown.length})</button>`
+              : html``}`
+          : html`<p class="muted">Ningún proveedor coincide.</p>`
       );
     };
 
@@ -270,6 +294,11 @@ export const proveedoresTab: TabModule = {
 
     suppliersList.addEventListener("click", async (event) => {
       const target = event.target as HTMLElement;
+      if (target.closest("[data-more-suppliers]")) {
+        supplierLimit += PAGE;
+        renderSuppliers();
+        return;
+      }
       const productsButton = target.closest<HTMLElement>("[data-products-supplier]");
       if (productsButton) {
         const supplier = ctx.repos.suppliers.byId(productsButton.dataset.productsSupplier!);
@@ -309,12 +338,12 @@ export const proveedoresTab: TabModule = {
       const purchases = ctx.repos.purchases
         .list()
         .filter((purchase) => purchase.branch_id === branchId)
-        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-        .slice(0, 30);
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+      purchasesCount.textContent = purchases.length ? `${purchases.length} en esta sucursal` : "";
       setHtml(
         list,
         purchases.length
-          ? html`${purchases.map(
+          ? html`${purchases.slice(0, purchaseLimit).map(
               (purchase) => html`
                 <div class="list-item">
                   <div class="item-line">
@@ -325,10 +354,30 @@ export const proveedoresTab: TabModule = {
                   <p class="muted">${purchase.product_name} | ${fmtQty(purchase.qty)} ${purchase.um ?? "Pza"}${purchase.packs ? ` (${fmtQty(purchase.packs)} ${purchase.packs === 1 ? "caja" : "cajas"} de ${fmtQty(purchase.pack_size ?? 0)})` : ""} | ${fmtDateTime(purchase.created_at)}</p>
                 </div>
               `
-            )}`
+            )}${purchases.length > purchaseLimit
+              ? html`<button class="ghost block list-more" type="button" data-more-purchases>Ver más (${purchases.length - purchaseLimit})</button>`
+              : html``}`
           : html`<p class="muted">Sin compras registradas.</p>`
       );
     };
+
+    list.addEventListener("click", (event) => {
+      if (!(event.target as HTMLElement).closest("[data-more-purchases]")) return;
+      purchaseLimit += 20;
+      renderPurchases();
+    });
+    supplierSearch.addEventListener("input", () => {
+      supplierLimit = PAGE;
+      renderSuppliers();
+    });
+    // Recuerda qué proveedores están abiertos para no cerrarlos al sincronizar
+    suppliersList.addEventListener("toggle", (event) => {
+      const row = event.target as HTMLDetailsElement;
+      const id = row.dataset?.supplier;
+      if (!id) return;
+      if (row.open) openSuppliers.add(id);
+      else openSuppliers.delete(id);
+    }, true);
 
     root.querySelector<HTMLButtonElement>("#addPurchaseLine")!.addEventListener("click", () => lines.addLine());
     purchaseSupplier.addEventListener("change", () => {

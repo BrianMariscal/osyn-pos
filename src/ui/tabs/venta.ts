@@ -37,6 +37,7 @@ export const ventaTab: TabModule = {
               <button id="scanButton" class="ghost" type="button" title="Escanear código de barras o QR">${iconFor("barcode")} <span class="hide-sm">Escanear</span></button>
             </div>
             ${productFiltersMarkup("sale")}
+            <section id="productPreview" class="preview-card hidden" aria-live="polite"></section>
             <div class="voice-sale-box">
               <button id="voiceSaleButton" class="primary" type="button">${iconFor("mic")} Hablar venta</button>
               <p id="voiceSaleText" class="hint">Di: "dos cocas, una leche y tres panes".</p>
@@ -162,7 +163,6 @@ export const ventaTab: TabModule = {
             class="product-tile ${stock <= min ? "low" : ""} ${out ? "out" : ""}"
             type="button"
             data-add="${product.id}"
-            ${out ? "disabled" : null}
           >
             <strong>${product.name}</strong>
             <span class="tile-cat">${product.category || "Sin categoría"}${supplier ? ` · ${supplierCode(supplier) || supplier.name}` : ""}</span>
@@ -194,7 +194,8 @@ export const ventaTab: TabModule = {
             price: fmtMoneyPesos(product.price),
             badge: `#${index + 1}`,
             detail: `${fmtQty(qty)} ${product.um} vendidos`,
-            disabled: stockOf(product.id) <= 0
+            // Tocar solo muestra el producto: también se puede consultar uno agotado
+            disabled: false
           }))
         },
         {
@@ -208,7 +209,7 @@ export const ventaTab: TabModule = {
             price: fmtMoneyPesos(product.price),
             badge: stock <= 0 ? "Agotado" : "Quedan pocos",
             detail: `Quedan ${fmtQty(stock)} ${product.um} · mín ${fmtQty(min)}`,
-            disabled: stock <= 0
+            disabled: false
           }))
         },
         {
@@ -328,21 +329,186 @@ export const ventaTab: TabModule = {
       renderPaymentState();
     };
 
-    const addProduct = (product: Product): void => {
-      const result = ctx.sales.addToCart(product.id);
-      if (result.ok) {
-        vibrate(40);
-        ctx.toast(`${product.name} agregado`);
-      } else {
-        ctx.toast(result.error);
+    /**
+     * Vista previa: lo escaneado, buscado, tocado o dictado se muestra primero
+     * (precio y existencia) y solo entra al carrito al tocar "Agregar". Así se
+     * puede consultar un precio sin tocar el carrito.
+     */
+    interface PreviewItem { productId: string; qty: number; unit: CartUnit; promo?: number }
+    const previewEl = root.querySelector<HTMLElement>("#productPreview")!;
+    let preview: PreviewItem[] = [];
+    let previewMissing: string[] = [];
+
+    const closePreview = (): void => {
+      preview = [];
+      previewMissing = [];
+      renderPreview();
+    };
+
+    const renderPreview = (): void => {
+      previewEl.classList.toggle("hidden", !preview.length && !previewMissing.length);
+      if (!preview.length && !previewMissing.length) {
+        setHtml(previewEl, html``);
+        return;
+      }
+      const suppliers = suppliersById();
+      const many = preview.length > 1;
+      setHtml(
+        previewEl,
+        html`
+          <div class="preview-head">
+            <span class="micro">${many ? `${preview.length} productos encontrados` : "Producto"}</span>
+            <button class="icon-btn" type="button" data-preview-close aria-label="Cerrar vista previa">✕</button>
+          </div>
+          ${preview.map((item, index) => {
+            const product = ctx.repos.products.byId(item.productId);
+            if (!product) return html``;
+            const isBox = item.unit === "caja";
+            const stock = ctx.sales.stockOf(product.id);
+            const min = ctx.sales.minStockOf(product.id);
+            const supplier = product.supplier_id ? suppliers.get(product.supplier_id) : undefined;
+            const unitPrice = isBox ? product.pack_price ?? 0 : item.promo ?? product.price;
+            const step = isBox ? 1 : qtyStep(product.um);
+            const byPack = ctx.sales.sellsByPack(product.id);
+            const stockTone = stock <= 0 ? "coral" : stock <= min ? "amber" : "green";
+            return html`
+              <div class="preview-item" data-preview="${index}">
+                <div class="preview-main">
+                  <div class="preview-info">
+                    <strong class="preview-name">${product.name}</strong>
+                    <span class="muted">${product.category || "Sin categoría"}${supplier ? ` · ${supplierCode(supplier) || supplier.name}` : ""}${product.barcode ? ` · ${product.barcode}` : ""}</span>
+                  </div>
+                  <div class="preview-price">
+                    ${item.promo && !isBox ? html`<s class="muted">${fmtMoneyPesos(product.price)}</s>` : html``}
+                    <strong>${fmtMoneyPesos(unitPrice)}</strong>
+                    <span class="muted">por ${isBox ? `caja de ${product.pack_size ?? 1}` : product.um}</span>
+                  </div>
+                </div>
+                <div class="preview-meta">
+                  <span class="stock-pill" data-tone="${stockTone}">${stock <= 0 ? "Agotado" : `Existencia: ${fmtQty(stock)} ${product.um}`}</span>
+                  ${byPack && !isBox ? html`<span class="muted">Caja de ${product.pack_size}: ${fmtMoneyPesos(product.pack_price ?? 0)}</span>` : html``}
+                </div>
+                <div class="preview-actions">
+                  ${byPack
+                    ? html`<div class="unit-toggle" role="group" aria-label="Vender por">
+                        <button type="button" class="${isBox ? "" : "active"}" data-preview-unit="pza">Pieza</button>
+                        <button type="button" class="${isBox ? "active" : ""}" data-preview-unit="caja">Caja</button>
+                      </div>`
+                    : html``}
+                  <div class="qty-stepper">
+                    <button type="button" data-preview-dec aria-label="Menos">−</button>
+                    <input class="input" type="number" min="${step}" step="${step}" value="${item.qty}" data-preview-qty inputmode="decimal" aria-label="Cantidad">
+                    <button type="button" data-preview-inc aria-label="Más">+</button>
+                  </div>
+                  ${many
+                    ? html`<button class="ghost" type="button" data-preview-remove aria-label="Quitar de la lista">Quitar</button>`
+                    : html`<button class="primary grow" type="button" data-preview-add ${stock <= 0 ? "disabled" : null}>${iconFor("cart")} Agregar · ${fmtMoney(lineTotalCents(item.qty, unitPrice))}</button>`}
+                </div>
+              </div>
+            `;
+          })}
+          ${previewMissing.length ? html`<p class="hint notice">No encontré: ${previewMissing.join(", ")}</p>` : html``}
+          ${many ? html`<button class="primary block" type="button" data-preview-add-all>${iconFor("cart")} Agregar todo al carrito</button>` : html``}
+        `
+      );
+    };
+
+    /** Muestra uno o varios productos en la vista previa (reemplaza la anterior). */
+    const showPreview = (items: PreviewItem[], missing: string[] = [], announce = false): void => {
+      preview = items;
+      previewMissing = missing;
+      renderPreview();
+      vibrate(25);
+      if (window.matchMedia?.("(max-width: 860px)").matches) previewEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      if (announce && items.length === 1) {
+        const product = ctx.repos.products.byId(items[0]!.productId);
+        if (product) speak(`${product.name}, ${speakPesos(items[0]!.promo ?? product.price)}.`, voiceEnabled());
       }
     };
+
+    const previewProduct = (product: Product, promo?: number): void =>
+      showPreview([{ productId: product.id, qty: 1, unit: "pza", ...(promo ? { promo } : {}) }], [], true);
+
+    const addPreviewItem = (item: PreviewItem): boolean => {
+      const product = ctx.repos.products.byId(item.productId);
+      const result = ctx.sales.addToCart(item.productId, item.qty, item.promo, item.unit);
+      if (!result.ok) {
+        ctx.toast(`${product?.name ?? "Producto"}: ${result.error}`);
+        return false;
+      }
+      return true;
+    };
+
+    const afterAdd = (count: number): void => {
+      if (!count) return;
+      vibrate(40);
+      ctx.toast(count === 1 ? "Agregado al carrito" : `${count} productos agregados al carrito`);
+      if (search.value) {
+        search.value = "";
+        renderGrid();
+      }
+    };
+
+    previewEl.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-preview-close]")) {
+        closePreview();
+        return;
+      }
+      if (target.closest("[data-preview-add-all]")) {
+        const remaining = preview.filter((item) => !addPreviewItem(item));
+        const added = preview.length - remaining.length;
+        preview = remaining;
+        previewMissing = remaining.length ? previewMissing : [];
+        renderPreview();
+        afterAdd(added);
+        return;
+      }
+      const row = target.closest<HTMLElement>("[data-preview]");
+      const index = Number(row?.dataset.preview);
+      const item = preview[index];
+      if (!row || !item) return;
+      const product = ctx.repos.products.byId(item.productId);
+      if (target.closest("[data-preview-add]")) {
+        if (addPreviewItem(item)) {
+          closePreview();
+          afterAdd(1);
+        }
+        return;
+      }
+      if (target.closest("[data-preview-remove]")) {
+        preview.splice(index, 1);
+        renderPreview();
+        return;
+      }
+      const unit = target.closest<HTMLElement>("[data-preview-unit]");
+      if (unit) {
+        item.unit = unit.dataset.previewUnit === "caja" ? "caja" : "pza";
+        item.qty = 1;
+        renderPreview();
+        return;
+      }
+      const step = item.unit === "caja" ? 1 : qtyStep(product?.um ?? "Pza");
+      if (target.closest("[data-preview-inc]")) item.qty = Math.round((item.qty + step) * 1000) / 1000;
+      else if (target.closest("[data-preview-dec]")) item.qty = Math.max(step, Math.round((item.qty - step) * 1000) / 1000);
+      else return;
+      renderPreview();
+    });
+
+    previewEl.addEventListener("change", (event) => {
+      const input = (event.target as HTMLElement).closest<HTMLInputElement>("[data-preview-qty]");
+      const item = preview[Number(input?.closest<HTMLElement>("[data-preview]")?.dataset.preview)];
+      if (!input || !item) return;
+      const qty = Number(input.value);
+      if (Number.isFinite(qty) && qty > 0) item.qty = qty;
+      renderPreview();
+    });
 
     /** Código leído (cámara, lector USB/Bluetooth o QR): producto o alta rápida. */
     const handleCode = (code: string): void => {
       const product = resolveScannedCode(ctx.repos.products.list(), code);
       if (product) {
-        addProduct(product);
+        previewProduct(product);
         return;
       }
       // Texto que no es un código (QR con nombre): se usa como búsqueda.
@@ -350,15 +516,13 @@ export const ventaTab: TabModule = {
       renderGrid();
       const matches = filteredProducts();
       if (matches.length === 1) {
-        addProduct(matches[0]!);
-        search.value = "";
-        renderGrid();
+        previewProduct(matches[0]!);
         return;
       }
       if (!matches.length) {
         search.value = "";
         renderGrid();
-        openNewProductModal(ctx, (created) => addProduct(created), { barcode: code });
+        openNewProductModal(ctx, (created) => previewProduct(created), { barcode: code });
       }
     };
 
@@ -368,19 +532,29 @@ export const ventaTab: TabModule = {
     });
 
     // Enter en la búsqueda: los lectores de código (USB/Bluetooth) "teclean" el
-    // código y Enter. Código exacto o un solo resultado → al carrito.
+    // código y Enter. Código exacto o un solo resultado → vista previa.
+    // Con la búsqueda vacía, Enter agrega lo que está en la vista previa.
     search.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
       const value = search.value.trim();
-      if (!value) return;
+      if (!value) {
+        if (preview.length === 1 && addPreviewItem(preview[0]!)) {
+          closePreview();
+          afterAdd(1);
+        }
+        return;
+      }
       if (searchTimer) clearTimeout(searchTimer);
       const exact = resolveScannedCode(ctx.repos.products.list(), value);
       const matches = exact ? [exact] : filteredProducts();
       if (matches.length === 1) {
-        addProduct(matches[0]!);
-        search.value = "";
-        renderGrid();
+        previewProduct(matches[0]!);
+        // Código escaneado: se limpia para el siguiente; búsqueda escrita se conserva
+        if (exact) {
+          search.value = "";
+          renderGrid();
+        }
       } else if (!matches.length && /^\d{6,}$/.test(value)) {
         handleCode(value);
       } else {
@@ -391,9 +565,8 @@ export const ventaTab: TabModule = {
 
     grid.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLElement>("[data-add]");
-      if (!button) return;
-      const result = ctx.sales.addToCart(button.dataset.add!);
-      if (!result.ok) ctx.toast(result.error);
+      const product = button && ctx.repos.products.byId(button.dataset.add!);
+      if (product) previewProduct(product);
     });
 
     highlights.addEventListener("click", (event) => {
@@ -407,12 +580,7 @@ export const ventaTab: TabModule = {
       if (!button) return;
       const promo = button.dataset.promo ? Number(button.dataset.promo) : undefined;
       const product = ctx.repos.products.byId(button.dataset.add!);
-      const result = ctx.sales.addToCart(button.dataset.add!, 1, promo);
-      if (!result.ok) ctx.toast(result.error);
-      else if (product) {
-        vibrate(40);
-        ctx.toast(promo ? `${product.name} en oferta: ${fmtMoneyPesos(promo)}` : `${product.name} agregado`);
-      }
+      if (product) previewProduct(product, promo);
     });
 
     root.querySelector<HTMLButtonElement>("#closeCatalog")!.addEventListener("click", () => {
@@ -475,6 +643,10 @@ export const ventaTab: TabModule = {
         filters.refresh();
         renderGrid();
         renderCart();
+        if (preview.length) {
+          preview = preview.filter((item) => ctx.repos.products.byId(item.productId));
+          renderPreview();
+        }
       }
     );
     ctx.store.watch((s) => [s.products, s.product_stocks, s.sales, s.branches, s.currentBranchId] as const, renderHighlights);
@@ -585,24 +757,20 @@ export const ventaTab: TabModule = {
         }
         const orders = aiOrders.length >= localOrders.length ? aiOrders : localOrders;
         const { matched, notFound } = matchOrdersToProducts(orders, ctx.repos.products.list());
-        let added = 0;
-        const names: string[] = [];
-        matched.forEach(({ product, qty }) => {
-          const result = ctx.sales.addToCart(product.id, qty);
-          if (result.ok) {
-            added += 1;
-            names.push(`${fmtQty(qty)} ${product.um} ${product.name}`);
-          }
-        });
-        const messages = [`${added} producto(s) agregados`];
-        if (notFound.length) messages.push(`No encontré: ${notFound.join(", ")}`);
-        ctx.toast(messages.join(". "));
-        speak(
-          added
-            ? `Agregue ${names.join(", ")}. Revisa y presiona cobrar.`
-            : "No encontré productos para agregar al carrito.",
-          voiceEnabled()
-        );
+        // Se muestran primero (precio y existencia); se agregan al tocar "Agregar"
+        showPreview(matched.map(({ product, qty }) => ({ productId: product.id, qty, unit: "pza" as CartUnit })), notFound);
+        if (matched.length === 1) {
+          const { product } = matched[0]!;
+          speak(`${product.name}, ${speakPesos(product.price)}.`, voiceEnabled());
+        } else {
+          speak(
+            matched.length
+              ? `Encontré ${matched.map(({ product }) => product.name).join(", ")}. Toca agregar todo para pasarlos al carrito.`
+              : "No encontré productos.",
+            voiceEnabled()
+          );
+        }
+        if (!matched.length) ctx.toast(notFound.length ? `No encontré: ${notFound.join(", ")}` : "No encontré productos");
       } catch (error) {
         ctx.toast(error instanceof Error ? error.message : "No se pudo interpretar la venta");
       } finally {
