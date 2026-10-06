@@ -6,7 +6,6 @@ import { daysInMonth, payrollProgress } from "../../domain/expense-service";
 import { isRevenueSale } from "../../domain/sale-groups";
 import { fmtQty } from "../../core/qty";
 import { VIEW_ALL } from "../../domain/app-state";
-import { iconFor } from "../icons";
 import { lazyRender } from "../lazy-render";
 import type { TabModule } from "./tab-module";
 
@@ -37,11 +36,7 @@ export const inicioTab: TabModule = {
       html`
         <header class="dash-head">
           <div id="greeting"></div>
-          <div class="dash-actions">
-            <div id="scopeChips"></div>
-            <button class="primary" type="button" data-go="venta">${iconFor("cart")} Nueva venta</button>
-            <button class="ghost hide-sm" type="button" data-go="corte" id="goCorte">${iconFor("calculator")} Corte de caja</button>
-          </div>
+          <div class="dash-actions"><div id="scopeChips"></div></div>
         </header>
         <div class="dash">
           <section class="card hero-card span-2" id="heroCard"></section>
@@ -452,7 +447,6 @@ export const inicioTab: TabModule = {
       const isManager = ctx.auth.isAdmin();
       renderGreeting(isManager, ctx.auth.isOwner());
       managerOnly.forEach((card) => card.classList.toggle("hidden", !isManager));
-      root.querySelector("#goCorte")?.classList.toggle("hidden", !isManager);
       setHtml(
         scopeChips,
         isManager && ctx.branches.canSwitch()
