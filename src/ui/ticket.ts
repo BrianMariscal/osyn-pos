@@ -198,6 +198,19 @@ export async function ticketImage(ctx: AppContext, sale: Sale): Promise<Blob> {
   );
 }
 
+function isMobileDevice(): boolean {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+}
+
+/**
+ * Menú de compartir del sistema solo en celular. En computadora (Windows/Mac
+ * también "pueden compartir", pero su menú no siempre trae WhatsApp) se pide
+ * el número y se abre el chat del cliente con la imagen copiada.
+ */
+function useShareSheet(): boolean {
+  return isMobileDevice() && canShareImages();
+}
+
 function canShareImages(): boolean {
   try {
     const probe = new File([new Blob(["x"], { type: "image/png" })], "t.png", { type: "image/png" });
@@ -220,7 +233,7 @@ function waNumber(phone: string): string {
  */
 function sendTicket(ctx: AppContext, sale: Sale, blob: Blob, phone: string): void {
   const file = new File([blob], `ticket-${saleFolio(sale)}.png`, { type: "image/png" });
-  if (canShareImages()) {
+  if (useShareSheet()) {
     // Solo la imagen: con texto adjunto algunas versiones de WhatsApp mandan solo el texto
     navigator.share({ files: [file] }).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") return; // canceló
@@ -242,7 +255,7 @@ function sendTicket(ctx: AppContext, sale: Sale, blob: Blob, phone: string): voi
  * pestaña a la vez); en celular abre la app.
  */
 function openWhatsAppChat(number: string): void {
-  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const mobile = isMobileDevice();
   if (mobile) {
     window.location.href = number ? `whatsapp://send?phone=${number}` : "whatsapp://";
     return;
@@ -266,7 +279,7 @@ function shareFromDesktop(ctx: AppContext, file: File, phone: string): void {
 
 /** Ventana del ticket (al cobrar o desde el historial). Enviarlo es opcional. */
 export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: boolean } = {}): void {
-  const shareFiles = canShareImages();
+  const shareFiles = useShareSheet();
   const customerPhone = sale.customer_id ? ctx.repos.customers.byId(sale.customer_id)?.phone ?? "" : "";
   const internal = sale.payment === "interno";
   openModal({
@@ -282,7 +295,10 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
             <p class="micro">¿El cliente quiere su ticket?</p>
             ${shareFiles
               ? html``
-              : html`<input id="ticketPhone" class="input" type="tel" inputmode="tel" placeholder="WhatsApp del cliente (opcional)" value="${customerPhone}">`}
+              : html`<label class="form-field">Número de WhatsApp del cliente
+                  <input id="ticketPhone" class="input" type="tel" inputmode="tel" autocomplete="off" placeholder="10 dígitos, ej. 55 1234 5678" value="${customerPhone}">
+                </label>
+                <p class="hint">Se abre su chat en WhatsApp Web y la imagen del ticket queda copiada: pégala con Ctrl + V y envía.</p>`}
             <div class="ticket-actions">
               <button class="primary whatsapp-btn" type="button" data-ticket-send>Enviar por WhatsApp</button>
               <button class="ghost" type="button" data-ticket-download>Descargar imagen</button>
