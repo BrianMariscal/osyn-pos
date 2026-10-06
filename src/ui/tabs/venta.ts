@@ -1,15 +1,16 @@
 import { html, setHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
 import { fmtQty } from "../../core/qty";
-import { PAYMENT_LABELS, type CartUnit, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
+import { type CartUnit, type PaymentMethod, type Product, type Supplier } from "../../core/types";
 import { lowStockProducts, resolveScannedCode, suggestOffers, supplierCode, topSellers } from "../../domain/catalog";
 import { mountCarousels } from "../carousel";
 import { scanBarcode } from "../scanner";
-import { openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { speak, vibrate, isVoiceEnabled } from "../voice-recognition";
 import { openNewProductModal } from "./inventario";
 import { mountProductFilters, productFiltersMarkup } from "../product-filters";
+import { cashChange, quickCashOptions } from "../../domain/ticket";
+import { openTicket } from "../ticket";
 import type { TabModule } from "./tab-module";
 
 /** Paso del stepper según la unidad: piezas enteras, medio litro/kilo, 50 gramos. */
@@ -60,6 +61,13 @@ export const ventaTab: TabModule = {
                     <option value="interno">Venta interna (uso de la tienda)</option>
                   </select>
                 </label>
+                <div id="cashBox" class="cash-box">
+                  <label class="form-field">Paga con
+                    <input id="cashReceived" class="input cash-input" type="number" step="0.5" min="0" inputmode="decimal" placeholder="Opcional: con cuánto paga">
+                  </label>
+                  <div class="cash-quick" id="cashQuick"></div>
+                  <div class="cash-change" id="cashChange" aria-live="polite"></div>
+                </div>
                 <div id="creditBox" class="credit-box hidden">
                   <label class="form-field">Cliente
                     <select id="creditCustomer" class="input"></select>
@@ -105,6 +113,10 @@ export const ventaTab: TabModule = {
     const creditHint = root.querySelector<HTMLElement>("#creditHint")!;
     const internalHint = root.querySelector<HTMLElement>("#internalHint")!;
     const completeButton = root.querySelector<HTMLButtonElement>("#completeSale")!;
+    const cashBox = root.querySelector<HTMLElement>("#cashBox")!;
+    const cashInput = root.querySelector<HTMLInputElement>("#cashReceived")!;
+    const cashQuick = root.querySelector<HTMLElement>("#cashQuick")!;
+    const cashChangeEl = root.querySelector<HTMLElement>("#cashChange")!;
     const cartCard = root.querySelector<HTMLElement>("#cartCard")!;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -219,6 +231,35 @@ export const ventaTab: TabModule = {
       ]);
     };
 
+    const cartTotalCents = (): number =>
+      sumCents(
+        ctx.sales.cart().map((line) => (ctx.repos.products.byId(line.productId) ? lineTotalCents(line.qty, ctx.sales.unitPrice(line)) : 0))
+      );
+
+    /** Efectivo: con cuánto paga y cuánto cambio se entrega. */
+    const renderCash = (): void => {
+      const cash = payment.value === "efectivo";
+      const total = cartTotalCents();
+      cashBox.classList.toggle("hidden", !cash || total <= 0);
+      if (!cash || total <= 0) return;
+      setHtml(
+        cashQuick,
+        html`<button type="button" class="chip-btn" data-cash="exact">Exacto</button>${quickCashOptions(total).map(
+          (bill) => html`<button type="button" class="chip-btn" data-cash="${bill}">$${bill}</button>`
+        )}`
+      );
+      const check = cashChange(total, cashInput.value);
+      cashChangeEl.className = `cash-change ${check.status}`;
+      setHtml(
+        cashChangeEl,
+        check.status === "ok"
+          ? html`<span>Cambio</span><strong>${fmtMoney(check.changeCents)}</strong>`
+          : check.status === "short"
+            ? html`<span>Faltan</span><strong>${fmtMoney(check.missingCents)}</strong>`
+            : html``
+      );
+    };
+
     const renderPaymentState = (): void => {
       const method = payment.value as PaymentMethod;
       const fiado = method === "fiado";
@@ -228,6 +269,7 @@ export const ventaTab: TabModule = {
       internalHint.classList.toggle("hidden", !internal);
       completeButton.textContent = internal ? "Registrar uso interno" : fiado ? "Fiar" : "Cobrar";
       totalLabelEl.textContent = internal ? "Total (a precio de venta)" : "Total";
+      renderCash();
       const selected = customer.value && customer.value !== NEW_CUSTOMER ? ctx.repos.customers.byId(customer.value) : undefined;
       creditHint.textContent = selected
         ? `Saldo actual: ${fmtMoneyPesos(selected.balance)}. La venta se suma a su cuenta en Fiado.`
@@ -640,6 +682,13 @@ export const ventaTab: TabModule = {
     ctx.store.watch((s) => [s.products, s.product_stocks, s.sales, s.branches, s.currentBranchId] as const, renderHighlights);
 
     payment.addEventListener("change", renderPaymentState);
+    cashInput.addEventListener("input", renderCash);
+    cashQuick.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-cash]");
+      if (!button) return;
+      cashInput.value = button.dataset.cash === "exact" ? (cartTotalCents() / 100).toFixed(2) : button.dataset.cash!;
+      renderCash();
+    });
     customer.addEventListener("change", () => {
       renderPaymentState();
       if (customer.value === NEW_CUSTOMER) ncName.focus();
@@ -663,10 +712,13 @@ export const ventaTab: TabModule = {
         ncName.focus();
         return;
       }
+      const received = method === "efectivo" && cashInput.value.trim() ? Number(cashInput.value) : null;
       const result = ctx.sales.completeSale({
         payment: method,
         customerId,
-        newCustomer: isNew ? { name: ncName.value, phone: ncPhone.value, notes: ncNotes.value } : null
+        newCustomer: isNew ? { name: ncName.value, phone: ncPhone.value, notes: ncNotes.value } : null,
+        cashReceived: received,
+        cashier: ctx.auth.displayName() || undefined
       });
       if (!result.ok) {
         ctx.toast(result.error);
@@ -691,40 +743,12 @@ export const ventaTab: TabModule = {
         payment.value = "efectivo";
         customer.value = "";
       }
-      openReceipt(sale);
+      cashInput.value = "";
+      openTicket(ctx, sale, { justSold: true });
+      if (sale.change) speak(`Cambio: ${speakPesos(sale.change)}.`, voiceEnabled());
       renderCart();
     });
 
-    const openReceipt = (sale: Sale): void => {
-      const totalCents = sumCents(sale.items.map((item) => lineTotalCents(item.qty, item.price)));
-      const customerName = sale.customer_id ? ctx.repos.customers.byId(sale.customer_id)?.name : undefined;
-      const internal = sale.payment === "interno";
-      openModal({
-        title: internal ? "Uso interno registrado" : sale.payment === "fiado" ? "Venta fiada registrada" : "Venta registrada",
-        content: html`
-          <div class="receipt">
-            ${sale.items.map(
-              (item) => html`
-                <div class="item-line">
-                  <span>${item.pack_size
-                    ? `${fmtQty(item.qty)} ${item.qty === 1 ? "caja" : "cajas"} (${fmtQty(item.qty * item.pack_size)} ${item.um})`
-                    : `${fmtQty(item.qty)} ${item.um}`} · ${item.name}${item.regular_price ? html` <span class="offer-tag">Oferta</span>` : html``}</span>
-                  <strong>${fmtMoney(lineTotalCents(item.qty, item.price))}</strong>
-                </div>
-              `
-            )}
-            <div class="total-row receipt-total">
-              <span>Total</span>
-              <strong>${fmtMoney(totalCents)}</strong>
-            </div>
-            <p class="muted">${PAYMENT_LABELS[sale.payment]}${customerName ? ` · ${customerName}` : ""}</p>
-            ${internal ? html`<p class="hint">No suma a las ventas. Valor a costo: ${fmtMoneyPesos(sale.cost)}.</p>` : html``}
-            ${sale.payment === "fiado" ? html`<p class="hint">Quedó en la cuenta del cliente en Fiado.</p>` : html``}
-          </div>
-        `,
-        actions: [{ label: "Nueva venta", kind: "primary" }]
-      });
-    };
 
 
     // Escáner de cámara: código de barras o QR

@@ -116,6 +116,11 @@ export interface Sale {
   customer_id: string | null;
   /** El servidor descuenta el stock de esta venta (la app ya no lo sube). */
   stock_by_server?: boolean;
+  /** Efectivo: con cuánto pagó el cliente y el cambio entregado. */
+  cash_received?: number;
+  change?: number;
+  /** Quién cobró (nombre del usuario). */
+  cashier?: string;
   created_at: string;
   updated_at: string;
   deleted?: boolean;

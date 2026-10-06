@@ -1,6 +1,11 @@
 import { html, setHtml } from "../../core/html";
-import { dayRange, fmtDateTime, monthInputValue, nowISO, todayInputValue } from "../../core/dates";
-import { fmtMoneyPesos } from "../../core/money";
+import { dayRange, fmtDateTime, monthInputValue, nowISO, todayInputValue, toInputDateValue } from "../../core/dates";
+import { fmtMoney, fmtMoneyPesos, sumCents, toCents } from "../../core/money";
+import { fmtQty } from "../../core/qty";
+import { PAYMENT_LABELS, type PaymentMethod } from "../../core/types";
+import { saleFolio } from "../../domain/ticket";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
+import { openTicket } from "../ticket";
 import { VIEW_ALL } from "../../domain/app-state";
 import { confirmDialog } from "../components/modal";
 import { openReportPdf } from "../pdf";
@@ -14,6 +19,19 @@ export const reportesTab: TabModule = {
       root,
       html`
         <div class="split">
+          <article class="card span-all" id="salesDayCard">
+            <div class="section-title">
+              <h2>Ventas del día</h2>
+              <div class="day-nav">
+                <button class="icon-btn" type="button" data-day-shift="-1" aria-label="Día anterior">‹</button>
+                <input id="salesDay" class="input" type="date" aria-label="Día">
+                <button class="icon-btn" type="button" data-day-shift="1" aria-label="Día siguiente">›</button>
+                <button class="ghost" type="button" data-day-today>Hoy</button>
+              </div>
+            </div>
+            <div id="salesDaySummary" class="mini-stats"></div>
+            <div id="salesDayList" class="list"></div>
+          </article>
           <article class="card">
             <h2>Reportes y PDF</h2>
             <div id="reportScopeChips" class="chips chips-row"></div>
@@ -46,9 +64,91 @@ export const reportesTab: TabModule = {
     // En celular: una sección a la vez (en computadora van lado a lado)
     const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
     mountSections(root, [
-      { id: "reportes", label: "Reportes", el: articles[0] ?? null },
-      { id: "cierre", label: "Cierre mensual", el: articles[1] ?? null }
+      { id: "ventas", label: "Ventas del día", el: articles[0] ?? null },
+      { id: "reportes", label: "Reportes", el: articles[1] ?? null },
+      { id: "cierre", label: "Cierre mensual", el: articles[2] ?? null }
     ]);
+
+    // ---- Ventas del día: tickets de un día, con su resumen ----
+    const salesDayInput = root.querySelector<HTMLInputElement>("#salesDay")!;
+    const salesDaySummary = root.querySelector<HTMLElement>("#salesDaySummary")!;
+    const salesDayList = root.querySelector<HTMLElement>("#salesDayList")!;
+    salesDayInput.value = todayInputValue();
+    let salesDayPage = 0;
+
+    const daySales = () => {
+      const scope = currentScope();
+      const range = dayRange(salesDayInput.value || todayInputValue());
+      return ctx.repos.sales
+        .list()
+        .filter((sale) => (scope === VIEW_ALL || sale.branch_id === scope) && sale.created_at >= range.start && sale.created_at < range.end)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    };
+
+    const renderSalesDay = (): void => {
+      const sales = daySales();
+      const revenue = sales.filter((sale) => sale.payment !== "interno");
+      const byPayment = new Map<string, number>();
+      for (const sale of revenue) byPayment.set(sale.payment, (byPayment.get(sale.payment) ?? 0) + toCents(sale.total));
+      const totalCents = sumCents(revenue.map((sale) => toCents(sale.total)));
+      const tones: Record<string, string> = { efectivo: "green", transferencia: "blue", tarjeta: "violet", fiado: "amber" };
+      setHtml(
+        salesDaySummary,
+        html`
+          <div data-tone="blue"><span>Total vendido</span><strong>${fmtMoney(totalCents)}</strong></div>
+          <div data-tone="teal"><span>Tickets</span><strong>${revenue.length}</strong></div>
+          ${[...byPayment.entries()].map(
+            ([payment, cents]) => html`<div data-tone="${tones[payment] ?? "blue"}"><span>${PAYMENT_LABELS[payment as PaymentMethod] ?? payment}</span><strong>${fmtMoney(cents)}</strong></div>`
+          )}
+        `
+      );
+      if (!sales.length) {
+        setHtml(salesDayList, html`<p class="empty-note">No hay ventas este día.</p>`);
+        return;
+      }
+      const page = paginate(sales, salesDayPage, 10);
+      setHtml(
+        salesDayList,
+        html`${page.items.map((sale) => {
+          const pieces = sale.items.reduce((sum, item) => sum + (item.pack_size ? item.qty * item.pack_size : item.qty), 0);
+          const names = sale.items.map((item) => item.name).join(", ");
+          return html`
+            <button class="ticket-row" type="button" data-ticket="${sale.id}">
+              <span class="ticket-row-time">${new Date(sale.created_at).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</span>
+              <span class="row-title"><strong>${names}</strong><small class="muted">Folio ${saleFolio(sale)} · ${fmtQty(pieces)} art.${sale.cashier ? ` · ${sale.cashier}` : ""}</small></span>
+              <span class="tag" data-tone="${tones[sale.payment] ?? "teal"}">${PAYMENT_LABELS[sale.payment]}</span>
+              <strong class="row-price">${fmtMoneyPesos(sale.total)}</strong>
+            </button>
+          `;
+        })}${pagerMarkup("salesDay", page)}`
+      );
+    };
+
+    salesDayInput.addEventListener("change", () => {
+      salesDayPage = 0;
+      renderSalesDay();
+    });
+    root.querySelector<HTMLElement>("#salesDayCard")!.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement;
+      const shift = target.closest<HTMLElement>("[data-day-shift]");
+      if (shift || target.closest("[data-day-today]")) {
+        const base = salesDayInput.value ? new Date(`${salesDayInput.value}T12:00:00`) : new Date();
+        if (shift) base.setDate(base.getDate() + Number(shift.dataset.dayShift));
+        salesDayInput.value = shift ? toInputDateValue(base) : todayInputValue();
+        salesDayPage = 0;
+        renderSalesDay();
+        return;
+      }
+      const paging = pagerClick(event);
+      if (paging) {
+        salesDayPage = paging.page;
+        renderSalesDay();
+        return;
+      }
+      const row = target.closest<HTMLElement>("[data-ticket]");
+      const sale = row && ctx.repos.sales.byId(row.dataset.ticket!);
+      if (sale) openTicket(ctx, sale);
+    });
 
     const dateInput = root.querySelector<HTMLInputElement>("#reportDate")!;
     const monthInput = root.querySelector<HTMLInputElement>("#monthClose")!;
@@ -206,7 +306,10 @@ export const reportesTab: TabModule = {
     initDates();
     ctx.store.watch(
       (s) => [s.sales, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId] as const,
-      render
+      () => {
+        render();
+        renderSalesDay();
+      }
     );
     render();
   }

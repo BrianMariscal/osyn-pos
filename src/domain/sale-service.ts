@@ -1,6 +1,6 @@
 import { nowISO } from "../core/dates";
 import { uid } from "../core/id";
-import { lineTotalCents, sumCents, toCents, toPesos } from "../core/money";
+import { fmtMoney, lineTotalCents, sumCents, toCents, toPesos } from "../core/money";
 import { normalizeQty } from "../core/qty";
 import { fmtQty } from "../core/qty";
 import type { CartLine, CartUnit, Customer, PaymentMethod, ProductStock, Sale, SaleItem } from "../core/types";
@@ -22,6 +22,10 @@ export interface CompleteSaleInput {
   customerId: string | null;
   /** Fiado a un cliente que aún no existe: se da de alta al cobrar. */
   newCustomer?: NewCustomerInput | null;
+  /** Efectivo: con cuánto pagó el cliente (opcional; sin valor no se calcula cambio). */
+  cashReceived?: number | null;
+  /** Nombre de quien cobra (aparece en el ticket). */
+  cashier?: string;
 }
 
 export type CompleteSaleResult = { ok: true; sale: Sale } | { ok: false; error: string };
@@ -237,6 +241,10 @@ export class SaleService {
         updated_at: ts
       };
     }
+    const cashReceived = input.payment === "efectivo" && input.cashReceived && input.cashReceived > 0 ? input.cashReceived : null;
+    if (cashReceived !== null && toCents(cashReceived) < totalCents) {
+      return { ok: false, error: `El pago no alcanza: faltan ${fmtMoney(totalCents - toCents(cashReceived))}` };
+    }
     const serverStock = Boolean(this.store.getState().sync.serverStock);
     // Venta interna: se registra a costo y sin ganancia (no es ingreso).
     const total = toPesos(internal ? costCents : totalCents);
@@ -250,6 +258,8 @@ export class SaleService {
       payment: input.payment,
       customer_id: customer ? customer.id : null,
       ...(serverStock ? { stock_by_server: true } : {}),
+      ...(cashReceived !== null ? { cash_received: cashReceived, change: toPesos(toCents(cashReceived) - totalCents) } : {}),
+      ...(input.cashier ? { cashier: input.cashier } : {}),
       created_at: ts,
       updated_at: ts
     };

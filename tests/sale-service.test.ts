@@ -54,6 +54,32 @@ describe("sale-service", () => {
     expect(sales.cart()).toHaveLength(0);
   });
 
+  it("guarda con cuánto pagó, el cambio y quién cobró", () => {
+    sales.addToCart("p1", 2);
+    const result = sales.completeSale({ payment: "efectivo", customerId: null, cashReceived: 50, cashier: "Ana" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.sale.cash_received).toBe(50);
+      expect(result.sale.change).toBe(14);
+      expect(result.sale.cashier).toBe("Ana");
+    }
+  });
+
+  it("no cobra si el efectivo no alcanza y deja el carrito intacto", () => {
+    sales.addToCart("p1", 2);
+    const result = sales.completeSale({ payment: "efectivo", customerId: null, cashReceived: 20 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("$16.00");
+    expect(sales.cart()).toHaveLength(1);
+    expect(sales.stockOf("p1")).toBe(10);
+  });
+
+  it("sin efectivo no guarda cambio", () => {
+    sales.addToCart("p1", 1);
+    const result = sales.completeSale({ payment: "tarjeta", customerId: null, cashReceived: 100 });
+    expect(result.ok && result.sale.cash_received).toBeFalsy();
+  });
+
   it("permite agregar varios productos distintos y más cantidad del mismo", () => {
     repos.products.upsert({ id: "p2", name: "Pan", category: "Panadería", um: "Pza", cost: 4, price: 6, active: true, updated_at: nowISO() });
     repos.stocks.upsert({ id: "p2:sucursal-1", product_id: "p2", branch_id: "sucursal-1", stock: 7, min_stock: 0, updated_at: nowISO() });
