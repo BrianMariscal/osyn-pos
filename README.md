@@ -22,7 +22,7 @@ en el dispositivo) y se puede instalar como app en Android.
 
 - Frontend: TypeScript modular + Vite + PWA (service worker offline).
 - Datos: IndexedDB en el dispositivo + Supabase (Postgres + Auth + RLS) como nube.
-- Backend ligero: funciones serverless de Vercel en `api/` (asistente IA y usuarios).
+- Backend ligero: funciones en `api/` servidas por Cloudflare Pages Functions (asistente IA, voz y usuarios).
 - Tests: Vitest.
 
 ## Desarrollo
@@ -47,16 +47,19 @@ src/
   ai/       cliente del asistente
   ui/       shell, componentes (modal/toast) y una pestaña por módulo
   styles/   design system (tokens + componentes)
-api/          funciones serverless (asistente, usuarios)
+api/          funciones serverless (asistente, voz, usuarios) con forma req/res de Node
+functions/    adaptador de Cloudflare Pages que sirve api/ en /api/*
+supabase/     schema.sql, migraciones y verificacion.sql (qué protecciones tiene la base)
+public/       config.js (llaves públicas), _headers (seguridad), íconos, assetlinks (Android)
 tests/        pruebas de Vitest
-docs/         decisiones y guías
-supabase-*.sql  schema, migraciones multi-sucursal y endurecimiento de seguridad
+docs/         decisiones y guías (respaldos, modelo comercial)
+.github/      CI (lint, tipos, pruebas, build) y respaldo diario cifrado
 ```
 
 ## Supabase (nueva instalación)
 
 1. Crea un proyecto en Supabase.
-2. En **SQL Editor** ejecuta `supabase-schema.sql`. Las bases nuevas crean **una
+2. En **SQL Editor** ejecuta `supabase/schema.sql`. Las bases nuevas crean **una
    sola sucursal** ("Sucursal 1"); el dueño agrega más desde la app
    (Ajustes > Sucursales).
 3. Crea el dueño, un administrador y un vendedor inicial (Node 18+):
@@ -73,29 +76,29 @@ supabase-*.sql  schema, migraciones multi-sucursal y endurecimiento de seguridad
 4. Sin `--anon`, pega la `Project URL` y la `anon key` en `public/config.js`.
 
  5. Para que los cambios se vean **al instante** en todos los dispositivos,
-    ejecuta `supabase-migracion-realtime.sql` en el SQL Editor (una sola vez).
+    ejecuta `supabase/migracion-realtime.sql` en el SQL Editor (una sola vez).
     Sin este paso la app sincroniza igual, revisando cada pocos segundos.
 
- 6. Ejecuta `supabase-migracion-guardias-fiado.sql` y
-    `supabase-migracion-precios-servidor.sql` (después de
-    `supabase-migracion-stock-servidor.sql`): un vendedor ya no puede alterar
+ 6. Ejecuta `supabase/migracion-guardias-fiado.sql` y
+    `supabase/migracion-precios-servidor.sql` (después de
+    `supabase/migracion-stock-servidor.sql`): un vendedor ya no puede alterar
     saldos de fiado ni registrar ventas debajo del costo o con cantidades inválidas.
- 7. Corre `supabase-verificacion.sql` (solo lectura): cada renglón debe decir
+ 7. Corre `supabase/verificacion.sql` (solo lectura): cada renglón debe decir
     **OK**; si dice **FALTA**, indica qué archivo aplicar.
 
- > ¿Base ya existente con datos? Aplica `supabase-migracion-multisucursal.sql`
+ > ¿Base ya existente con datos? Aplica `supabase/migracion-multisucursal.sql`
  > para pasar a esquema multi-sucursal sin perder información (respáldala antes).
- > Después aplica `supabase-migracion-endurecimiento.sql` para restringir el
+ > Después aplica `supabase/migracion-endurecimiento.sql` para restringir el
  > catálogo de proveedores y validar cantidades y montos no negativos.
  > Para asignar administradores a una sucursal, aplica también
- > `supabase-migracion-admin-sucursal.sql`: un administrador con sucursal solo
+ > `supabase/migracion-admin-sucursal.sql`: un administrador con sucursal solo
  > ve y opera esa sucursal; sin sucursal sigue viendo todas.
 
 ## Sincronización y offline
 
 - Todo se guarda primero en IndexedDB y después se sube/baja por tabla con
   cambios incrementales (las tablas se descargan en paralelo).
-- Tiempo real: con `supabase-migracion-realtime.sql` aplicado, cada cambio en
+- Tiempo real: con `supabase/migracion-realtime.sql` aplicado, cada cambio en
   otro dispositivo dispara la sync en ~1 s (WebSocket de Supabase Realtime).
   Sin él, se revisa cada 8 s mientras la app está visible.
 - El pull relee los últimos 10 minutos para tolerar relojes desfasados entre
@@ -108,14 +111,23 @@ supabase-*.sql  schema, migraciones multi-sucursal y endurecimiento de seguridad
 
 ## Despliegue
 
-Vercel detecta Vite automáticamente (`npm run build` → `dist/`).
+Producción: **Cloudflare Pages** (proyecto `osynpos`, dominio osynpos.shop), plan
+gratuito con uso comercial permitido.
 
-| Variable en Vercel | Para qué |
+```bash
+npm run deploy:cf    # build + wrangler pages deploy
+```
+
+Las cabeceras de seguridad viven en `public/_headers`. Las variables se ponen en
+Cloudflare → Workers & Pages → osynpos → Settings → Variables and Secrets:
+
+| Variable | Para qué |
 |---|---|
 | `SUPABASE_URL` | Valida sesiones y usuarios en `api/*` |
 | `SUPABASE_ANON_KEY` | Ídem |
 | `SUPABASE_SERVICE_ROLE_KEY` | Crear/editar usuarios desde `api/*` (secreta) |
-| `NVIDIA_API_KEY` o `OPENAI_API_KEY` | Motor del asistente (voz y chat) |
+| `NVIDIA_API_KEY` o `OPENAI_API_KEY` | Motor del asistente (chat) |
+| `ELEVENLABS_API_KEY` | Voz del asistente |
 | `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN` | Opcional (Upstash gratis): límite de solicitudes compartido entre instancias. Sin ellas se cuenta en memoria |
 
 Monitoreo de errores (opcional, Sentry gratis): pon el DSN en `sentryDsn` de

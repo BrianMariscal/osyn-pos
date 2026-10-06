@@ -25,7 +25,7 @@ Cada tienda tiene su propia instancia aislada:
 
 - Su propio proyecto de Supabase (schema único, sin sucursales extra).
 - Su propio despliegue/URL en Vercel con `config.js` apuntando a su proyecto.
-- Instalación: crear proyecto → ejecutar `supabase-schema.sql` → correr
+- Instalación: crear proyecto → ejecutar `supabase/schema.sql` → correr
   `scripts/setup-usuarios.mjs` para crear admin/vendedor iniciales.
 
 **Ventajas**
@@ -78,7 +78,7 @@ la inversión; en ese momento se migra con un script por cliente.
 
 ## Checklist antes de vender (por cliente)
 
-1. Crear proyecto Supabase y aplicar `supabase-schema.sql` (bases nuevas crean
+1. Crear proyecto Supabase y aplicar `supabase/schema.sql` (bases nuevas crean
    UNA sucursal por defecto: "Sucursal 1").
 2. Crear el admin inicial con `scripts/setup-usuarios.mjs` (nunca en el navegador
    del cliente).

@@ -27,7 +27,7 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in respaldo-AAAA-MM-DD.dump.en
 pg_restore --list respaldo.dump | head
 
 # 3. Restaurar SOLO las tablas de la tienda en un proyecto Supabase nuevo
-#    (después de correr supabase-schema.sql y las migraciones)
+#    (después de correr supabase/schema.sql y las migraciones)
 pg_restore --data-only --schema=public --no-owner -d "CADENA_SESSION_POOLER_DEL_PROYECTO_NUEVO" respaldo.dump
 ```
 

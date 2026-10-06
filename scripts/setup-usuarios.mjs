@@ -79,7 +79,7 @@ async function main() {
   if (!probe.ok) {
     const body = await probe.text();
     console.error(`No pude leer la tabla profiles (${probe.status}): ${body}`);
-    console.error("Ejecuta primero supabase-schema.sql en Supabase > SQL Editor.");
+    console.error("Ejecuta primero supabase/schema.sql en Supabase > SQL Editor.");
     process.exit(1);
   }
 

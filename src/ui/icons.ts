@@ -54,12 +54,6 @@ export const TAB_ICONS: Record<string, keyof typeof ICONS> = {
 };
 
 /** Color pastel por grupo de navegación (identidad por sección). */
-export const GROUP_COLORS: Record<string, string> = {
-  Venta: "#2f6398",
-  Tienda: "#2e7d5b",
-  Dinero: "#b07a2a",
-  Control: "#7c5cbf"
-};
 
 /** Icono como SafeHtml para insertar en templates html``. */
 export function iconFor(name: keyof typeof ICONS): SafeHtml {

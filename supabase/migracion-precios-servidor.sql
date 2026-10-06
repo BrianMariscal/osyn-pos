@@ -1,5 +1,5 @@
 -- Abarrotes POS: el servidor valida precios y cantidades de cada venta.
--- Ejecutar en Supabase SQL Editor DESPUÉS de supabase-migracion-stock-servidor.sql
+-- Ejecutar en Supabase SQL Editor DESPUÉS de supabase/migracion-stock-servidor.sql
 -- (usa public.pos_is_manager_or_service). Se puede correr más de una vez.
 --
 -- Antes el total se recalculaba con el precio que mandaba el dispositivo: un

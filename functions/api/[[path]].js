@@ -4,13 +4,11 @@
  * Request → req y res → Response, así api/*.js no cambia y sigue sirviendo
  * en Vercel o en `vercel dev`.
  */
-import parseSale from "../../api/parse-sale.js";
 import posAssistant from "../../api/pos-assistant.js";
 import tts from "../../api/tts.js";
 import users from "../../api/users.js";
 
 const ROUTES = {
-  "parse-sale": parseSale,
   "pos-assistant": posAssistant,
   tts,
   users

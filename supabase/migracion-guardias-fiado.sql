@@ -1,5 +1,5 @@
 -- Abarrotes POS: el servidor protege el saldo de fiado.
--- Ejecutar en Supabase SQL Editor DESPUÉS de supabase-migracion-stock-servidor.sql
+-- Ejecutar en Supabase SQL Editor DESPUÉS de supabase/migracion-stock-servidor.sql
 -- (usa public.pos_is_manager_or_service). Se puede correr más de una vez.
 --
 -- Antes un vendedor podía subir cualquier saldo para un cliente (p. ej. dejarlo
