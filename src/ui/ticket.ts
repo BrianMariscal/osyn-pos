@@ -1,13 +1,12 @@
 /**
  * Ticket de venta: vista en pantalla, imagen PNG del comprobante y envío por
- * WhatsApp (opcional). En celular se comparte la IMAGEN con el menú del
- * sistema (WhatsApp, etc.); donde no se puede, se descarga y se abre WhatsApp
- * con el resumen en texto.
+ * WhatsApp (opcional), siempre como imagen: en celular con el menú de
+ * compartir del sistema; en computadora se copia la imagen y se abre el chat.
  */
 import { html, type SafeHtml } from "../core/html";
 import { fmtMoney, lineTotalCents, toCents } from "../core/money";
 import { PAYMENT_LABELS, type Sale } from "../core/types";
-import { itemLabel, saleFolio, saleTotalCents, ticketText } from "../domain/ticket";
+import { itemLabel, saleFolio, saleTotalCents } from "../domain/ticket";
 import { openModal } from "./components/modal";
 import { downloadBlob } from "./tabs/download";
 import type { AppContext } from "./context";
@@ -214,24 +213,41 @@ function waNumber(phone: string): string {
   return digits.length === 10 ? `52${digits}` : digits;
 }
 
-async function sendTicket(ctx: AppContext, sale: Sale, phone: string): Promise<void> {
-  const info = infoFor(ctx, sale);
-  const message = ticketText(sale, info.store, info.branch);
-  const blob = await ticketImage(ctx, sale);
+/**
+ * Envía el ticket como IMAGEN. Se llama directo en el toque (sin esperas):
+ * iPhone/Android solo permiten abrir el menú de compartir dentro del gesto,
+ * por eso la imagen se genera antes, al abrir la ventana del ticket.
+ */
+function sendTicket(ctx: AppContext, sale: Sale, blob: Blob, phone: string): void {
   const file = new File([blob], `ticket-${saleFolio(sale)}.png`, { type: "image/png" });
   if (canShareImages()) {
-    try {
-      await navigator.share({ files: [file], title: `Ticket ${saleFolio(sale)}`, text: `Ticket ${saleFolio(sale)} · ${info.store}` });
-      return;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return; // el usuario canceló
-    }
+    // Solo la imagen: con texto adjunto algunas versiones de WhatsApp mandan solo el texto
+    navigator.share({ files: [file] }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === "AbortError") return; // canceló
+      shareFromDesktop(ctx, file, phone);
+    });
+    return;
   }
-  // Sin compartir archivos (computadora): se descarga la imagen y se abre WhatsApp con el resumen
-  downloadBlob(file.name, blob);
-  const number = waNumber(phone);
-  window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, "_blank", "noopener");
-  ctx.toast("Ticket descargado: adjunta la imagen en el chat de WhatsApp");
+  shareFromDesktop(ctx, file, phone);
+}
+
+/**
+ * Computadora (o navegador sin compartir archivos): se copia la imagen al
+ * portapapeles y se abre WhatsApp; en el chat basta con pegar (Ctrl+V).
+ * Si no se puede copiar, se descarga para adjuntarla.
+ */
+function shareFromDesktop(ctx: AppContext, file: File, phone: string): void {
+  const copy =
+    typeof ClipboardItem !== "undefined" && navigator.clipboard?.write
+      ? navigator.clipboard.write([new ClipboardItem({ "image/png": file })])
+      : Promise.reject(new Error("sin portapapeles"));
+  window.open(`https://wa.me/${waNumber(phone)}`, "_blank", "noopener");
+  copy
+    .then(() => ctx.toast("Imagen del ticket copiada: en el chat de WhatsApp pégala con Ctrl+V"))
+    .catch(() => {
+      downloadBlob(file.name, file);
+      ctx.toast("Ticket descargado: en WhatsApp adjunta la imagen (clip › Fotos)");
+    });
 }
 
 /** Ventana del ticket (al cobrar o desde el historial). Enviarlo es opcional. */
@@ -261,18 +277,23 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
     `,
     actions: [{ label: options.justSold ? "Nueva venta" : "Cerrar", kind: options.justSold ? "primary" : "ghost" }],
     onOpen: (root) => {
-      root.querySelector<HTMLElement>("[data-ticket-send]")?.addEventListener("click", (event) => {
-        const button = event.currentTarget as HTMLButtonElement;
-        button.disabled = true;
+      // La imagen se prepara desde ahora para compartirla al instante
+      let image: Blob | null = null;
+      const ready = ticketImage(ctx, sale).then((blob) => (image = blob));
+      ready.catch(() => undefined);
+      root.querySelector<HTMLElement>("[data-ticket-send]")?.addEventListener("click", () => {
         const phone = root.querySelector<HTMLInputElement>("#ticketPhone")?.value ?? "";
-        void sendTicket(ctx, sale, phone)
-          .catch((error: unknown) => ctx.toast(error instanceof Error ? error.message : "No se pudo enviar el ticket"))
-          .finally(() => {
-            button.disabled = false;
-          });
+        if (image) {
+          sendTicket(ctx, sale, image, phone);
+          return;
+        }
+        ctx.toast("Preparando la imagen del ticket…");
+        void ready
+          .then((blob) => sendTicket(ctx, sale, blob, phone))
+          .catch((error: unknown) => ctx.toast(error instanceof Error ? error.message : "No se pudo crear la imagen"));
       });
       root.querySelector<HTMLElement>("[data-ticket-download]")?.addEventListener("click", () => {
-        void ticketImage(ctx, sale)
+        void ready
           .then((blob) => downloadBlob(`ticket-${saleFolio(sale)}.png`, blob))
           .catch((error: unknown) => ctx.toast(error instanceof Error ? error.message : "No se pudo crear la imagen"));
       });
