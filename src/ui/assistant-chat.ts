@@ -4,7 +4,7 @@ import { sumCents, toCents, toPesos } from "../core/money";
 import { VIEW_ALL } from "../domain/app-state";
 import { answerQuestion, type BrainContext, type RankData } from "../domain/assistant-brain";
 import type { PeriodReport } from "../core/types";
-import { runAssistant, executeAssistantAction } from "../ai/assistant-client";
+import { isAiUnavailable, runAssistant, executeAssistantAction } from "../ai/assistant-client";
 import { listenOnce, speak, speechSupported, isVoiceEnabled } from "./voice-recognition";
 import { openModal } from "./components/modal";
 import type { AppContext } from "./context";
@@ -119,17 +119,19 @@ export function openAssistantChat(ctx: AppContext): void {
       if (!speechSupported()) mic.classList.add("hidden");
       const voiceOn = isVoiceEnabled;
 
+      let thinking = false;
       const renderLog = (): void => {
         setHtml(
           log,
           html`${messages.map(
             (message) => html`<div class="chat-msg ${message.who === "user" ? "chat-user" : "chat-bot"}">${message.text}</div>`
-          )}`
+          )}${thinking ? html`<div class="chat-msg chat-bot chat-typing" aria-label="Pensando"><span></span><span></span><span></span></div>` : html``}`
         );
         log.scrollTop = log.scrollHeight;
       };
 
       const reply = (text: string): void => {
+        thinking = false;
         messages.push({ who: "bot", text });
         renderLog();
         speak(text, voiceOn());
@@ -138,13 +140,21 @@ export function openAssistantChat(ctx: AppContext): void {
       const handle = async (raw: string): Promise<void> => {
         const text = raw.trim();
         if (!text) return;
+        // Tu mensaje aparece al instante; la respuesta se calcula en el siguiente cuadro
         messages.push({ who: "user", text });
+        thinking = true;
         renderLog();
         input.value = "";
+        input.focus();
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
         const local = answerQuestion(text, buildBrain(ctx));
         if (local) {
           reply(local);
+          return;
+        }
+        if (isAiUnavailable()) {
+          reply("No tengo esa respuesta. Pregúntame por ventas de hoy, la semana o el mes, ganancia, fiado, productos por agotarse, precios o el corte de caja.");
           return;
         }
         try {

@@ -6,6 +6,7 @@ import { MERMA_REASONS, type MermaReason } from "../../core/types";
 import { iconFor } from "../icons";
 import { searchProducts } from "../../domain/catalog";
 import { mountSections } from "../sections";
+import { scanButtonMarkup, wireScanToSearch } from "../scan-field";
 import type { TabModule } from "./tab-module";
 
 export const mermasTab: TabModule = {
@@ -20,7 +21,10 @@ export const mermasTab: TabModule = {
             <p class="hint">Producto caducado, dañado o roto: descuenta la existencia de esta sucursal y queda registrado con su impacto a costo.</p>
             <form id="mermaForm" class="form">
               <label class="form-field">Producto
-                <input id="mermaSearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off">
+                <span class="search-row">
+                  <input id="mermaSearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off">
+                  ${scanButtonMarkup("mermaScan")}
+                </span>
                 <select id="mermaProduct" class="input"></select>
               </label>
               <div class="row">
@@ -63,6 +67,8 @@ export const mermasTab: TabModule = {
     const form = root.querySelector<HTMLFormElement>("#mermaForm")!;
     const productSelect = root.querySelector<HTMLSelectElement>("#mermaProduct")!;
     const productSearch = root.querySelector<HTMLInputElement>("#mermaSearch")!;
+    // Escaneado: queda elegido el producto y el cursor pasa a la cantidad
+    wireScanToSearch(ctx, root.querySelector<HTMLElement>("#mermaScan")!, productSearch, () => qtyInput.focus());
     const qtyInput = root.querySelector<HTMLInputElement>("#mermaQty")!;
     const reasonSelect = root.querySelector<HTMLSelectElement>("#mermaReason")!;
     const noteInput = root.querySelector<HTMLInputElement>("#mermaNote")!;

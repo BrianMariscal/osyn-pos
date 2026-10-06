@@ -10,7 +10,9 @@ import { fmtMoney, toCents } from "../core/money";
 import { fmtQty, normalizeQty } from "../core/qty";
 import type { Product } from "../core/types";
 import { unitsFromPacks, type StockReceipt } from "../domain/inventory-service";
-import { productsForSupplier, searchProducts } from "../domain/catalog";
+import { productsForSupplier, resolveScannedCode, searchProducts } from "../domain/catalog";
+import { iconFor } from "./icons";
+import { scanBarcode } from "./scanner";
 import type { AppContext } from "./context";
 
 type LineMode = "pza" | "caja";
@@ -84,8 +86,11 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
       return html`<input class="input" disabled placeholder="${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}">`;
     }
     return html`
-      <input class="input" data-f="search" type="search" placeholder="Busca producto o código de barras" autocomplete="off"
-        role="combobox" aria-label="Producto ${index + 1}" value="${line.search}">
+      <div class="combo-row">
+        <input class="input" data-f="search" type="search" placeholder="Busca producto o código de barras" autocomplete="off"
+          role="combobox" aria-label="Producto ${index + 1}" value="${line.search}">
+        <button class="primary scan-btn" type="button" data-scan-line title="Escanear código de barras o QR" aria-label="Escanear producto ${index + 1}">${iconFor("barcode")}</button>
+      </div>
       <div class="combo-pop">${comboPop(line, list)}</div>
     `;
   };
@@ -189,6 +194,23 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
   container.addEventListener("mousedown", (event) => {
     if ((event.target as HTMLElement).closest("[data-pick], .combo-list")) event.preventDefault();
   });
+  // Escáner por línea: el producto leído queda elegido directo
+  container.addEventListener("click", async (event) => {
+    const scan = (event.target as HTMLElement).closest<HTMLElement>("[data-scan-line]");
+    if (!scan) return;
+    const index = Number(scan.closest<HTMLElement>("[data-line]")?.dataset.line);
+    try {
+      const code = await scanBarcode();
+      if (!code) return;
+      const allowed = productsForSupplier(products(), options.supplierId?.() ?? "");
+      const product = resolveScannedCode(allowed, code);
+      if (product) pick(index, product.id);
+      else ctx.toast(resolveScannedCode(products(), code) ? "Ese producto no es de este proveedor" : "Ese código no está registrado");
+    } catch (error) {
+      ctx.toast(error instanceof Error ? error.message : "No se pudo escanear");
+    }
+  });
+
   container.addEventListener("click", (event) => {
     const option = (event.target as HTMLElement).closest<HTMLElement>("[data-pick]");
     if (!option) return;

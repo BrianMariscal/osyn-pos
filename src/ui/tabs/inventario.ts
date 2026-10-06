@@ -15,6 +15,7 @@ import { mountProductFilters, productFiltersMarkup } from "../product-filters";
 import { exportProducts, importProducts } from "../product-transfer-ui";
 import { mountSections } from "../sections";
 import { paginate, pagerClick, pagerMarkup } from "../pager";
+import { scanButtonMarkup, wireScanToSearch } from "../scan-field";
 import type { TabModule } from "./tab-module";
 
 export const inventarioTab: TabModule = {
@@ -47,7 +48,10 @@ export const inventarioTab: TabModule = {
 
           <article class="card">
             <h2>Existencias y alertas</h2>
-            <input id="inventorySearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off">
+            <div class="search-row">
+              <input id="inventorySearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off">
+              ${scanButtonMarkup("inventoryScan")}
+            </div>
             ${productFiltersMarkup("inventory")}
             <div id="inventoryList" class="list"></div>
             <h2>Historial de conteos</h2>
@@ -69,6 +73,7 @@ export const inventarioTab: TabModule = {
     const listEl = root.querySelector<HTMLElement>("#inventoryList")!;
     const historyEl = root.querySelector<HTMLElement>("#inventoryCountsHistory")!;
     const search = root.querySelector<HTMLInputElement>("#inventorySearch")!;
+    wireScanToSearch(ctx, root.querySelector<HTMLElement>("#inventoryScan")!, search);
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
     const filters = mountProductFilters(root, "inventory", ctx, () => {
       listPage = 0;

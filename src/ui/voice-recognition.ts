@@ -231,6 +231,9 @@ function stopCurrentSpeech(): void {
 
 /** La voz cloud no depende de una selección vieja guardada en el dispositivo. */
 async function getJessicaVoiceId(): Promise<string | null> {
+  // La voz ya elegida/guardada se usa al instante (antes se pedía la lista de voces)
+  const saved = cloudVoiceId();
+  if (saved) return saved;
   if (!jessicaVoicePromise) {
     jessicaVoicePromise = fetchTtsVoices()
       .then((voices) => {

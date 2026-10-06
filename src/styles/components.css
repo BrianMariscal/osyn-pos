@@ -2300,3 +2300,109 @@ summary, .result-row, .ticket-row, .tab, .subtabs button, .pay-methods button, .
   .purchase-line .purchase-qty { grid-column: 1 / -1; }
   .purchase-line [data-f="total"] { grid-column: 1 / 2; }
 }
+
+/* Asistente: indicador "escribiendo…" */
+.chat-typing { display: inline-flex; gap: 4px; align-items: center; padding: 12px 14px !important; }
+.chat-typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: typing 1s infinite ease-in-out; }
+.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+/* Venta en PC: ocupa todo el alto de la pantalla, como una caja registradora */
+@media (min-width: 861px) {
+  #panel-venta.active { animation: none; }
+  #panel-venta .pos {
+    height: calc(100dvh - 57px - 2 * var(--sp-5));
+    min-height: 520px;
+    align-items: stretch;
+  }
+  #panel-venta .pos-main { display: flex; flex-direction: column; min-height: 0; }
+  #panel-venta .search-results { flex-shrink: 0; max-height: 46%; overflow-y: auto; }
+  #panel-venta .pos-lines { flex: 1; min-height: 0; overflow-y: auto; }
+  #panel-venta .pos-lines .cart-empty-note { height: 100%; align-content: center; }
+  #panel-venta .pos-lines .cart-empty-note svg { width: 54px; height: 54px; opacity: 0.6; }
+  #panel-venta .pos-pay { position: static; display: flex; flex-direction: column; overflow-y: auto; }
+  #panel-venta .pos-pay .pay-total { padding: var(--sp-4) var(--sp-5); }
+  #panel-venta .pos-pay .pay-total strong { font-size: 3.2rem; }
+  #panel-venta .pos-pay .pay-button { margin-top: auto; min-height: 76px; font-size: 1.6rem; }
+  #panel-venta .pos-pay .pay-methods button { min-height: 56px; }
+}
+
+/* ==========================================================================
+   Inicio v3: tablero en rejilla
+   ========================================================================== */
+.dash-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.dash-actions .chips { margin: 0; }
+.dash { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4); align-items: stretch; }
+.dash > .card { margin: 0; min-width: 0; }
+.dash > .span-2 { grid-column: span 2; }
+@media (max-width: 1200px) {
+  .dash { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash > .hero-card { grid-column: 1 / -1; }
+  .dash > #weekCard { grid-column: 1 / -1; }
+}
+@media (max-width: 860px) {
+  .dash { grid-template-columns: 1fr; gap: var(--sp-3); }
+  .dash > .span-2 { grid-column: auto; }
+}
+
+.delta-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 700; background: var(--card-2); color: var(--muted); white-space: nowrap; }
+.delta-chip.up { background: color-mix(in srgb, var(--c-green) 14%, var(--card)); color: var(--c-green); }
+.delta-chip.down { background: color-mix(in srgb, var(--c-coral) 14%, var(--card)); color: var(--c-coral); }
+.card-head .align-right .delta-chip { margin-top: 4px; }
+.card-head .align-right { display: grid; justify-items: end; }
+
+/* Hoy */
+.hero-card { background: linear-gradient(135deg, color-mix(in srgb, var(--c-blue) 9%, var(--card)), var(--card) 60%); }
+.hero-top { display: flex; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; align-items: flex-start; }
+.hero-value { display: block; font-size: clamp(2.2rem, 4vw, 3.2rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; margin: 4px 0 8px; font-variant-numeric: tabular-nums; }
+.hero-deltas { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; font-size: var(--fs-xs); }
+.hero-stats { display: grid; grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: var(--sp-2); }
+.hero-stat { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--tone-soft); border-left: 3px solid var(--tone); }
+.hero-stat span { display: block; font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.hero-stat strong { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.hour-chart { display: flex; align-items: stretch; gap: 3px; height: 120px; margin-top: var(--sp-4); }
+.hour-col { flex: 1; display: grid; grid-template-rows: 1fr auto; gap: 4px; min-width: 0; }
+.hour-bars { position: relative; display: flex; align-items: flex-end; justify-content: center; gap: 1px; }
+.hour-y, .hour-t { width: 45%; max-width: 12px; border-radius: 3px 3px 0 0; }
+.hour-y { background: color-mix(in srgb, var(--muted) 30%, var(--card)); }
+.hour-t { background: var(--c-blue); }
+.hour-col.now .hour-t { background: var(--c-violet); }
+.hour-col.future .hour-bars { opacity: 0.5; }
+.hour-label { font-size: var(--fs-2xs); color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; min-height: 1em; }
+.hour-col.now .hour-label { color: var(--ink); font-weight: 800; }
+.chart-legend { display: flex; align-items: center; gap: 6px; margin-top: var(--sp-2); font-size: var(--fs-2xs); color: var(--muted); }
+.chart-legend span { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.lg-today { background: var(--c-blue); }
+.lg-yesterday { background: color-mix(in srgb, var(--muted) 30%, var(--card)); margin-left: 8px; }
+
+/* Metas */
+.goals-card { display: flex; flex-direction: column; gap: var(--sp-4); }
+.goals-card .card-head { margin-bottom: 0; }
+.goal { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-3); align-items: center; }
+.goal-payroll { grid-template-columns: 1fr; gap: 6px; padding-top: var(--sp-3); border-top: var(--line-w) solid var(--line); }
+.goal-text { display: grid; gap: 2px; }
+.goal-text strong { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
+.goal-text small { font-size: var(--fs-sm); font-weight: 600; }
+.goal-ring { --p: 0; width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--c-blue) calc(var(--p) * 1%), var(--card-2) 0); position: relative; }
+.goal-ring::before { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: var(--card); }
+.goal-ring strong { position: relative; font-size: var(--fs-lg); font-weight: 800; }
+.goal-ring.done { background: conic-gradient(var(--c-green) 100%, var(--card-2) 0); }
+.goal-foot { margin-top: auto; }
+
+/* Semana con línea de promedio */
+.week-chart { position: relative; height: 180px; }
+.chart-avg { position: absolute; left: 0; right: 0; border-top: 1.5px dashed color-mix(in srgb, var(--muted) 60%, transparent); pointer-events: none; z-index: 1; margin-bottom: 22px; }
+.chart-avg span { position: absolute; right: 0; top: -16px; font-size: var(--fs-2xs); color: var(--muted); }
+.week-chart .chart-col { position: relative; z-index: 2; }
+.chart-card .chart, #weekCard .chart { gap: var(--sp-2); }
+#weekCard .chart-bar { max-width: 56px; width: 100%; min-height: 4px; border-radius: 6px 6px 3px 3px; background: color-mix(in srgb, var(--c-blue) 32%, var(--card)); }
+#weekCard .chart-col.today .chart-bar { background: var(--c-blue); }
+#weekCard .chart-col { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; flex: 1; height: 100%; }
+#weekCard .chart { display: flex; align-items: stretch; }
+
+/* Botón de escáner junto a buscadores */
+.scan-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding-inline: 0.85rem; }
+.scan-btn svg { width: 20px; height: 20px; }
+.combo-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }
+.form-field > .search-row { margin-top: var(--sp-1); }

@@ -15,6 +15,7 @@ import { mountProductFilters, productFiltersMarkup } from "../product-filters";
 import { exportProducts, importProducts } from "../product-transfer-ui";
 import { paginate, pagerClick, pagerMarkup } from "../pager";
 import { mountSections } from "../sections";
+import { scanButtonMarkup, wireScanToSearch } from "../scan-field";
 import type { TabModule } from "./tab-module";
 
 export const productosTab: TabModule = {
@@ -29,7 +30,10 @@ export const productosTab: TabModule = {
               <h2>Productos <span class="count-badge" data-tone="blue" id="productsTotal"></span></h2>
               <button id="newProductToggle" class="primary" type="button">${iconFor("plus")} Nuevo</button>
             </div>
-            <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre o código de barras" autocomplete="off">
+            <div class="search-row">
+              <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre o código de barras" autocomplete="off">
+              ${scanButtonMarkup("productsScan")}
+            </div>
             ${productFiltersMarkup("products")}
             <p class="hint" id="productsCount"></p>
             <div id="productsList" class="collapsible-list"></div>
@@ -143,6 +147,8 @@ export const productosTab: TabModule = {
     const list = root.querySelector<HTMLElement>("#productsList")!;
     const hint = root.querySelector<HTMLElement>("#stockScopeHint")!;
     const listSearch = root.querySelector<HTMLInputElement>("#productsSearch")!;
+    // Escanear en la lista: muestra el producto (y lo abre para ver sus datos)
+    wireScanToSearch(ctx, root.querySelector<HTMLElement>("#productsScan")!, listSearch);
     const countEl = root.querySelector<HTMLElement>("#productsCount")!;
     const totalEl = root.querySelector<HTMLElement>("#productsTotal")!;
     const formBox = root.querySelector<HTMLDetailsElement>("#productFormBox")!;
