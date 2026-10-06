@@ -221,7 +221,21 @@ as $$
   select role in ('dueno', 'admin') from public.profiles where user_id = auth.uid()
 $$;
 
--- Ajustes de la app legibles por cualquier usuario autenticado (solo lectura).
+-- ¿El usuario tiene perfil en la tienda? Una cuenta creada por el registro
+-- abierto de Supabase Auth no lo tiene y no debe leer nada.
+create or replace function public.has_profile()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (select 1 from public.profiles where user_id = auth.uid())
+$$;
+
+grant execute on function public.has_profile() to authenticated;
+
+-- Ajustes de la app legibles por cualquier usuario con perfil (solo lectura).
 -- La escritura sigue siendo solo admin vía la fila products '__pos_settings__'.
 create or replace function public.pos_settings()
 returns jsonb
@@ -232,7 +246,7 @@ stable
 as $$
   select coalesce(data->'settings', '{}'::jsonb)
   from public.products
-  where id = '__pos_settings__'
+  where id = '__pos_settings__' and public.has_profile()
 $$;
 
 -- Sin este GRANT PostgREST no expone la función (403/404 en el RPC) y los
@@ -284,7 +298,7 @@ drop policy if exists "branches_admin_write" on branches;
 drop policy if exists "branches_owner_write" on branches;
 
 create policy "branches_select" on branches for select to authenticated
-  using (true);
+  using (public.has_profile());
 create policy "branches_owner_write" on branches for all to authenticated
   using (public.current_user_role() = 'dueno')
   with check (public.current_user_role() = 'dueno');
@@ -300,7 +314,7 @@ drop policy if exists "products_admin_delete" on products;
 -- la app la aparta del catálogo y es la forma en que los vendedores reciben los
 -- ajustes aunque la función pos_settings() aún no exista en la base.
 create policy "products_select" on products for select to authenticated
-  using (true);
+  using (public.has_profile());
 create policy "products_insert" on products for insert to authenticated
   with check (
     public.current_user_role() = 'dueno'
@@ -412,7 +426,7 @@ drop policy if exists "suppliers_insert" on suppliers;
 drop policy if exists "suppliers_update" on suppliers;
 drop policy if exists "suppliers_delete" on suppliers;
 create policy "suppliers_select" on suppliers for select to authenticated
-  using (true);
+  using (public.has_profile());
 create policy "suppliers_insert" on suppliers for insert to authenticated
   with check (true);
 create policy "suppliers_update" on suppliers for update to authenticated

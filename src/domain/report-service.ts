@@ -15,8 +15,8 @@ interface CacheEntry {
 
 /**
  * Reportes por rango y alcance (sucursal o consolidado), memoizados por
- * (alcance, rango, versión-de-datos). Cualquier cambio de estado sube la
- * versión y el siguiente cálculo refresca.
+ * (alcance, rango, versión-de-datos). La versión solo sube cuando cambian
+ * los datos que usan los reportes (no con el carrito ni el estado de sync).
  */
 export class ReportService {
   private cache = new Map<string, CacheEntry>();
@@ -26,8 +26,14 @@ export class ReportService {
     private repos: Repositories,
     store: Store<AppState>
   ) {
+    const inputs = (state: AppState): unknown[] => [state.sales, state.expenses, state.purchases, state.mermas, state.products];
+    let last = inputs(store.getState());
     store.subscribe(() => {
-      this.version += 1;
+      const next = inputs(store.getState());
+      if (next.some((value, index) => value !== last[index])) {
+        last = next;
+        this.version += 1;
+      }
     });
   }
 
@@ -108,7 +114,8 @@ export class ReportService {
           total: 0,
           um: item.um
         };
-        current.qty = normalizeQty(current.qty + normalizeQty(item.qty));
+        // Cajas cuentan como sus piezas.
+        current.qty = normalizeQty(current.qty + normalizeQty(item.qty) * (item.pack_size || 1));
         current.total = toPesos(sumCents([toCents(current.total), Math.round(normalizeQty(item.qty) * toCents(item.price))]));
         byProduct.set(item.productId, current);
       });

@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   const settings = new SettingsService(store, tracker);
   const sales = new SaleService(store, repos, branches);
   const credit = new CreditService(repos);
-  const inventory = new InventoryService(repos, branches);
+  const inventory = new InventoryService(repos, branches, () => Boolean(store.getState().sync.serverStock));
   const shifts = new ShiftService(repos, branches);
   const reports = new ReportService(repos, store);
   const expenses = new ExpenseService(repos, branches);

@@ -8,10 +8,14 @@ import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { openCountPdf } from "../pdf";
 import { scanBarcode } from "../scanner";
-import { downloadCsv } from "./download";
 import { supplierLabel } from "../../domain/catalog";
 import { categoryFieldMarkup, mountCategoryField, type CategoryField } from "../category-field";
 import type { AppContext } from "../context";
+import { mountProductFilters, productFiltersMarkup } from "../product-filters";
+import { exportProducts, importProducts } from "../product-transfer-ui";
+import { mountSections } from "../sections";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
+import { scanButtonMarkup, wireScanToSearch } from "../scan-field";
 import type { TabModule } from "./tab-module";
 
 export const inventarioTab: TabModule = {
@@ -25,7 +29,10 @@ export const inventarioTab: TabModule = {
             <h2>Resumen de inventario</h2>
             <div id="inventorySummary" class="summary"></div>
             <div class="actions">
-              <button id="downloadInventoryCsv" class="ghost" type="button">${iconFor("download")} Descargar CSV</button>
+              <button id="downloadInventoryXls" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
+              <label class="import-label">${iconFor("upload")} Importar
+                <input id="importInventory" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
+              </label>
               <button id="newProduct" class="primary" type="button">${iconFor("plus")} Nuevo producto</button>
             </div>
 
@@ -42,8 +49,10 @@ export const inventarioTab: TabModule = {
           <article class="card">
             <h2>Existencias y alertas</h2>
             <div class="search-row">
-              <input id="inventorySearch" class="input" type="search" placeholder="Buscar producto o código" autocomplete="off">
+              <input id="inventorySearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off">
+              ${scanButtonMarkup("inventoryScan")}
             </div>
+            ${productFiltersMarkup("inventory")}
             <div id="inventoryList" class="list"></div>
             <h2>Historial de conteos</h2>
             <div id="inventoryCountsHistory" class="list"></div>
@@ -52,12 +61,24 @@ export const inventarioTab: TabModule = {
       `
     );
 
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    const sections = mountSections(root, [
+      { id: "existencias", label: "Existencias", el: articles[1] ?? null },
+      { id: "resumen", label: "Resumen y conteo", el: articles[0] ?? null }
+    ]);
+
     const summaryEl = root.querySelector<HTMLElement>("#inventorySummary")!;
     const countSummaryEl = root.querySelector<HTMLElement>("#inventoryCountSummary")!;
     const listEl = root.querySelector<HTMLElement>("#inventoryList")!;
     const historyEl = root.querySelector<HTMLElement>("#inventoryCountsHistory")!;
     const search = root.querySelector<HTMLInputElement>("#inventorySearch")!;
+    wireScanToSearch(ctx, root.querySelector<HTMLElement>("#inventoryScan")!, search);
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
+    const filters = mountProductFilters(root, "inventory", ctx, () => {
+      listPage = 0;
+      renderList();
+    });
     let pendingListRender = false;
     const isTypingCount = (): boolean => {
       const focused = document.activeElement;
@@ -108,28 +129,27 @@ export const inventarioTab: TabModule = {
     const renderList = (): void => {
       const branchId = ctx.branches.operationalId();
       const counting = Boolean(ctx.inventory.activeCount());
-      const q = search.value.toLowerCase().trim();
       // Todos los productos activos: los que aún no tienen existencia en esta
       // sucursal también se pueden contar (antes no aparecían).
       const stockByProduct = new Map(
         ctx.repos.stocks.list().filter((row) => row.branch_id === branchId).map((row) => [row.product_id, row])
       );
-      const rows = ctx.repos.products
-        .list()
-        .filter((product) => product.active !== false)
-        .filter((product) => !q || product.name.toLowerCase().includes(q) || (product.category || "").toLowerCase().includes(q) || product.barcode === q)
+      filters.refresh();
+      const rows = filters
+        .apply(ctx.repos.products.list().filter((product) => product.active !== false), search.value)
         .map((product) => ({
           product,
           row: stockByProduct.get(product.id) ?? { stock: 0, min_stock: 0 }
-        }))
-        .sort((a, b) => a.product.name.localeCompare(b.product.name));
+        }));
       if (!rows.length) {
-        setHtml(listEl, html`<p class="muted">Sin productos en inventario.</p>`);
+        setHtml(listEl, html`<p class="muted">${search.value.trim() || filters.active() ? "Ningún producto coincide." : "Sin productos en inventario."}</p>`);
         return;
       }
+      // Sin conteo: de 15 en 15. Durante el conteo se ven todos (Enter pasa al siguiente).
+      const page = paginate(rows, counting ? 0 : listPage, counting ? Math.max(rows.length, 1) : 15);
       setHtml(
         listEl,
-        html`${rows.map(({ row, product }) => {
+        html`${page.items.map(({ row, product }) => {
           const counted = counting ? ctx.inventory.countedValue(product!.id) : undefined;
           const diff =
             counted === undefined || counted === ""
@@ -154,7 +174,7 @@ export const inventarioTab: TabModule = {
                 : html``}
             </div>
           `;
-        })}`
+        })}${pagerMarkup("inventory", page)}`
       );
     };
 
@@ -183,7 +203,16 @@ export const inventarioTab: TabModule = {
       renderHistory();
     };
 
+    let listPage = 0;
+    listEl.addEventListener("click", (event) => {
+      const paging = pagerClick(event);
+      if (!paging) return;
+      listPage = paging.page;
+      renderList();
+      listEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     search.addEventListener("input", () => {
+      listPage = 0;
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(renderList, 180);
     });
@@ -266,7 +295,9 @@ export const inventarioTab: TabModule = {
       saveCount();
       renderCountSummary();
       renderList();
-      ctx.toast("Conteo físico iniciado");
+      // En celular las casillas de conteo están en Existencias
+      sections.show("existencias");
+      ctx.toast("Conteo físico iniciado: captura en Existencias");
     });
 
     root.querySelector<HTMLButtonElement>("#applyInventoryCount")!.addEventListener("click", async () => {
@@ -310,27 +341,15 @@ export const inventarioTab: TabModule = {
       renderAll();
     });
 
-    root.querySelector<HTMLButtonElement>("#downloadInventoryCsv")!.addEventListener("click", () => {
-      const branchId = ctx.branches.operationalId();
-      const rows = ctx.repos.stocks
-        .list()
-        .filter((row) => row.branch_id === branchId)
-        .map((row) => ({ row, product: ctx.repos.products.byId(row.product_id) }))
-        .filter((entry) => entry.product && entry.product.active !== false);
-      downloadCsv("inventario.csv", [
-        ["nombre", "categoria", "um", "costo", "precio", "existencia", "minimo", "valor_costo", "valor_venta"],
-        ...rows.map(({ row, product }) => [
-          product!.name,
-          product!.category ?? "",
-          product!.um,
-          String(product!.cost ?? 0),
-          String(product!.price ?? 0),
-          String(row.stock),
-          String(row.min_stock),
-          String(row.stock * (product!.cost ?? 0)),
-          String(row.stock * (product!.price ?? 0))
-        ])
-      ]);
+    root.querySelector<HTMLButtonElement>("#downloadInventoryXls")!.addEventListener("click", () => exportProducts(ctx, "xls", "inventario"));
+    // Importar modifica el catálogo: solo dueño/administrador (así lo exige la base de datos).
+    root.querySelector<HTMLInputElement>("#importInventory")!.closest("label")!.hidden = !ctx.auth.isAdmin();
+    root.querySelector<HTMLInputElement>("#importInventory")!.addEventListener("change", async (event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (!file) return;
+      await importProducts(ctx, file);
+      input.value = "";
     });
 
     ctx.store.watch(

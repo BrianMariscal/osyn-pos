@@ -74,6 +74,18 @@ export class Repository<T extends BaseRow> {
     }
   }
 
+  /**
+   * Cambio solo local, sin marcarlo para subir: lo que el servidor calcula por
+   * su cuenta (stock movido por ventas/compras/mermas). Conserva el updated_at
+   * anterior para que el valor de la nube lo reemplace en el siguiente pull.
+   */
+  applyLocal(row: T): void {
+    const rows = this.all();
+    const previous = rows.find((r) => r.id === row.id);
+    const next = { ...row, updated_at: previous?.updated_at ?? row.updated_at };
+    this.commit(previous ? rows.map((r) => (r.id === row.id ? next : r)) : [next, ...rows]);
+  }
+
   softDelete(id: string): void {
     const row = this.byId(id);
     if (!row || row.deleted) return;

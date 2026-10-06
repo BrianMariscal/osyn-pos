@@ -4,15 +4,18 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos } from "../../core/money";
 import { normalizeQty } from "../../core/qty";
 import { SALE_GROUP_LABELS, SALE_GROUPS, UNITS, type Product, type SaleGroup, type Unit } from "../../core/types";
-import { productMatches, productQrPayload, supplierCode, supplierLabel } from "../../domain/catalog";
+import { productQrPayload, supplierCode, supplierLabel } from "../../domain/catalog";
 import { detectSaleGroup } from "../../domain/sale-groups";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { scanBarcode } from "../scanner";
-import { parseCsvLine, parseSpreadsheetRows } from "./csv";
-import { downloadText } from "./download";
 import type { AppContext } from "../context";
 import { categoryFieldMarkup, mountCategoryField } from "../category-field";
+import { mountProductFilters, productFiltersMarkup } from "../product-filters";
+import { exportProducts, importProducts } from "../product-transfer-ui";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
+import { mountSections } from "../sections";
+import { scanButtonMarkup, wireScanToSearch } from "../scan-field";
 import type { TabModule } from "./tab-module";
 
 export const productosTab: TabModule = {
@@ -23,14 +26,22 @@ export const productosTab: TabModule = {
       html`
         <div class="split">
           <article class="card">
-            <h2 id="productFormTitle">Alta de producto</h2>
-            <p class="hint" id="stockScopeHint"></p>
-            <div class="actions wrap-actions">
-              <button id="downloadTemplate" class="ghost" type="button">${iconFor("download")} Plantilla Excel</button>
-              <label class="import-label">${iconFor("upload")} Importar productos
-                <input id="importProducts" type="file" accept=".csv,.xls,text/csv,application/vnd.ms-excel">
-              </label>
+            <div class="section-title">
+              <h2>Productos <span class="count-badge" data-tone="blue" id="productsTotal"></span></h2>
+              <button id="newProductToggle" class="primary" type="button">${iconFor("plus")} Nuevo</button>
             </div>
+            <div class="search-row">
+              <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre o código de barras" autocomplete="off">
+              ${scanButtonMarkup("productsScan")}
+            </div>
+            ${productFiltersMarkup("products")}
+            <p class="hint" id="productsCount"></p>
+            <div id="productsList" class="collapsible-list"></div>
+          </article>
+          <article class="card" id="productFormCard">
+            <details id="productFormBox" class="form-box">
+              <summary><h2 id="productFormTitle">Nuevo producto</h2><span class="hint">Toca para abrir el formulario</span></summary>
+              <p class="hint" id="stockScopeHint"></p>
             <form id="productForm" class="form">
               <input type="hidden" id="productId">
               <label class="form-field">Nombre
@@ -52,14 +63,18 @@ export const productosTab: TabModule = {
                   <input id="productPrice" class="input" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00" required>
                 </label>
               </div>
+              <label class="form-field">Proveedor
+                <select id="productSupplier" class="input"></select>
+              </label>
               <div class="row">
-                <label class="form-field">Proveedor
-                  <select id="productSupplier" class="input"></select>
-                </label>
                 <label class="form-field">Piezas por caja / paquete
-                  <input id="productPack" class="input" type="number" step="1" min="0" inputmode="numeric" placeholder="Ej. 12 (opcional)">
+                  <input id="productPack" class="input" type="number" step="1" min="0" inputmode="numeric" placeholder="Ej. 20 (opcional)">
+                </label>
+                <label class="form-field">Precio por caja
+                  <input id="productPackPrice" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Ej. 100 (opcional)">
                 </label>
               </div>
+              <p class="hint">Con piezas por caja y precio por caja, en Venta podrás cobrar la caja completa o piezas sueltas.</p>
               <label class="form-field">Grupo en el corte
                 <select id="productGroup" class="input">
                   <option value="">Automático (según categoría)</option>
@@ -85,19 +100,33 @@ export const productosTab: TabModule = {
                 <button class="ghost" type="button" id="productCancel" hidden>Cancelar edición</button>
               </div>
             </form>
-          </article>
-          <article class="card">
-            <h2>Productos registrados</h2>
-            <div class="search-stack">
-              <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre, código o proveedor (#3)" autocomplete="off">
-              <select id="productsSupplierFilter" class="input" aria-label="Filtrar por proveedor"></select>
+            </details>
+            <div class="form-box-foot">
+              <p class="micro">Migrar o respaldar</p>
+              <p class="hint">El Excel incluye todos los datos (proveedor, categoría, código, piezas por caja, grupo del corte, existencia y mínimo) y se puede volver a importar.</p>
+              <div class="actions wrap-actions">
+                <button id="downloadTemplate" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
+                <label class="import-label">${iconFor("upload")} Importar Excel / CSV
+                  <input id="importProducts" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
+                </label>
+              </div>
             </div>
-            <p class="hint" id="productsCount"></p>
-            <div id="productsList" class="list"></div>
           </article>
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    const sections = mountSections(root, [
+      { id: "lista", label: "Productos", el: articles[0] ?? null },
+      { id: "nuevo", label: "Nuevo producto", el: articles[1] ?? null }
+    ], {
+      // En celular la sección es el formulario: se abre directo
+      onShow: (id) => {
+        if (id === "nuevo") root.querySelector<HTMLDetailsElement>("#productFormBox")!.open = true;
+      }
+    });
 
     const form = root.querySelector<HTMLFormElement>("#productForm")!;
     const formTitle = root.querySelector<HTMLElement>("#productFormTitle")!;
@@ -109,6 +138,7 @@ export const productosTab: TabModule = {
     const priceInput = root.querySelector<HTMLInputElement>("#productPrice")!;
     const supplierInput = root.querySelector<HTMLSelectElement>("#productSupplier")!;
     const packInput = root.querySelector<HTMLInputElement>("#productPack")!;
+    const packPriceInput = root.querySelector<HTMLInputElement>("#productPackPrice")!;
     const groupInput = root.querySelector<HTMLSelectElement>("#productGroup")!;
     const stockInput = root.querySelector<HTMLInputElement>("#productStock")!;
     const minInput = root.querySelector<HTMLInputElement>("#productMin")!;
@@ -117,11 +147,25 @@ export const productosTab: TabModule = {
     const list = root.querySelector<HTMLElement>("#productsList")!;
     const hint = root.querySelector<HTMLElement>("#stockScopeHint")!;
     const listSearch = root.querySelector<HTMLInputElement>("#productsSearch")!;
-    const listSupplier = root.querySelector<HTMLSelectElement>("#productsSupplierFilter")!;
+    // Escanear en la lista: muestra el producto (y lo abre para ver sus datos)
+    wireScanToSearch(ctx, root.querySelector<HTMLElement>("#productsScan")!, listSearch);
     const countEl = root.querySelector<HTMLElement>("#productsCount")!;
+    const totalEl = root.querySelector<HTMLElement>("#productsTotal")!;
+    const formBox = root.querySelector<HTMLDetailsElement>("#productFormBox")!;
+    /** Categorías y productos abiertos (se conservan al redibujar por sync). */
+    const openGroups = new Set<string>();
+    const openRows = new Set<string>();
+    /** Página actual de cada lista ("all" = resultados de búsqueda, "g:<categoría>"). */
+    const pages = new Map<string, number>();
+    const PAGE_SEARCH = 10;
+    const PAGE_GROUP = 8;
     /** Existencia mostrada al empezar a editar: solo se guarda si el usuario la cambió. */
     let stockAtEdit: string | null = null;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
+    const filters = mountProductFilters(root, "products", ctx, () => {
+      pages.set("all", 0);
+      render();
+    });
 
     const stockRowFor = (productId: string) =>
       ctx.repos.stocks.all().find(
@@ -134,20 +178,13 @@ export const productosTab: TabModule = {
     const renderSupplierOptions = (): void => {
       const suppliers = sortedSuppliers();
       const formValue = supplierInput.value;
-      const filterValue = listSupplier.value;
       setHtml(
         supplierInput,
         html`<option value="">Sin proveedor</option>${suppliers.map(
           (s) => html`<option value="${s.id}" ${s.id === formValue ? "selected" : null}>${supplierLabel(s)}</option>`
         )}`
       );
-      setHtml(
-        listSupplier,
-        html`<option value="">Todos los proveedores</option>${suppliers.map(
-          (s) => html`<option value="${s.id}" ${s.id === filterValue ? "selected" : null}>${supplierLabel(s)}</option>`
-        )}<option value="none" ${filterValue === "none" ? "selected" : null}>Sin proveedor</option>`
-      );
-      listSupplier.classList.toggle("hidden", !suppliers.length);
+      filters.refresh();
     };
 
     const resetForm = (): void => {
@@ -158,7 +195,7 @@ export const productosTab: TabModule = {
       cancelEdit.hidden = true;
       minInput.value = "2";
       stockInput.disabled = false;
-      formTitle.textContent = "Alta de producto";
+      formTitle.textContent = "Nuevo producto";
     };
 
     // Al elegir proveedor se sugiere su giro como categoría (si no se ha elegido otra).
@@ -182,36 +219,34 @@ export const productosTab: TabModule = {
       const all = ctx.repos.products.list();
       category.refresh();
       const suppliers = new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
-      const supplierFilter = listSupplier.value;
-      const products = all
-        .filter((p) => !supplierFilter || (supplierFilter === "none" ? !p.supplier_id || !suppliers.has(p.supplier_id) : p.supplier_id === supplierFilter))
-        .filter((p) => productMatches(p, listSearch.value, p.supplier_id ? suppliers.get(p.supplier_id) : undefined))
-        .sort((a, b) => a.name.localeCompare(b.name));
-      countEl.textContent = all.length ? `${products.length} de ${all.length} productos` : "";
+      filters.refresh();
+      const products = filters.apply(all, listSearch.value);
+      totalEl.textContent = all.length ? String(all.length) : "";
+      const filtering = Boolean(listSearch.value.trim()) || filters.active();
+      countEl.textContent = filtering && all.length ? `${products.length} de ${all.length} productos` : "";
       if (!products.length) {
-        setHtml(list, html`<p class="muted">${all.length ? "Ningún producto coincide." : "Aún no hay productos."}</p>`);
+        setHtml(list, html`<p class="empty-note">${all.length ? "Ningún producto coincide." : "Aún no hay productos. Toca “Nuevo” para dar de alta el primero."}</p>`);
         return;
       }
-      setHtml(
-        list,
-        html`${products.map((product) => {
-          const stock = stockRowFor(product.id);
-          const low = (stock?.stock ?? 0) <= (stock?.min_stock ?? 0);
-          const supplier = product.supplier_id ? suppliers.get(product.supplier_id) : undefined;
-          const group = detectSaleGroup(product);
-          return html`
-            <div class="list-item ${low ? "low" : ""} ${product.active === false ? "inactive" : ""}">
-              <div class="item-line"><strong>${product.name}</strong><strong>${fmtMoneyPesos(product.price)}</strong></div>
-              <p class="muted">
-                ${product.category || "Sin categoría"} · ${product.um} · Costo ${fmtMoneyPesos(product.cost)}
-                · Stock ${stock ? fmtQtySafe(stock.stock) : "—"} (mín ${stock ? fmtQtySafe(stock.min_stock) : "—"})
-              </p>
+      const row = (product: Product) => {
+        const stock = stockRowFor(product.id);
+        const qty = stock?.stock ?? 0;
+        const low = qty <= (stock?.min_stock ?? 0);
+        const supplier = product.supplier_id ? suppliers.get(product.supplier_id) : undefined;
+        const group = detectSaleGroup(product);
+        return html`
+          <details class="row-item ${product.active === false ? "inactive" : ""}" data-product="${product.id}" ${openRows.has(product.id) ? "open" : null}>
+            <summary>
+              <span class="row-title"><strong>${product.name}</strong><small class="muted">${product.um}${product.barcode ? ` · ${product.barcode}` : ""}${product.active === false ? " · Oculto" : ""}</small></span>
+              <span class="row-price">${fmtMoneyPesos(product.price)}</span>
+              <span class="stock-pill" data-tone="${qty <= 0 ? "coral" : low ? "amber" : "green"}">${stock ? fmtQtySafe(qty) : "—"}</span>
+            </summary>
+            <div class="row-body">
+              <p class="muted">${product.category || "Sin categoría"} · Costo ${fmtMoneyPesos(product.cost)} · Mínimo ${stock ? fmtQtySafe(stock.min_stock) : "—"}</p>
               <div class="tag-row">
                 ${supplier ? html`<span class="tag">${supplierCode(supplier)} ${supplier.name}</span>` : html``}
-                ${product.pack_size ? html`<span class="tag">Caja de ${product.pack_size}</span>` : html``}
+                ${product.pack_size ? html`<span class="tag">Caja de ${product.pack_size}${product.pack_price ? ` · ${fmtMoneyPesos(product.pack_price)}` : ""}</span>` : html``}
                 ${group !== "general" ? html`<span class="tag tag-accent">${SALE_GROUP_LABELS[group]}</span>` : html``}
-                ${product.barcode ? html`<span class="tag">${iconFor("barcode")} ${product.barcode}</span>` : html``}
-                ${product.active === false ? html`<span class="tag tag-off">Oculto</span>` : html``}
               </div>
               <div class="actions">
                 <button class="ghost" type="button" data-edit="${product.id}">${iconFor("edit")} Editar</button>
@@ -220,6 +255,40 @@ export const productosTab: TabModule = {
                 <button class="ghost danger" type="button" data-delete="${product.id}">${iconFor("trash")} Eliminar</button>
               </div>
             </div>
+          </details>
+        `;
+      };
+      if (filtering) {
+        // Con búsqueda o filtro: resultados directos, de 10 en 10
+        const page = paginate(products, pages.get("all") ?? 0, PAGE_SEARCH);
+        setHtml(list, html`<div class="list">${page.items.map(row)}</div>${pagerMarkup("all", page)}`);
+        return;
+      }
+      // Sin búsqueda: agrupados por categoría, plegados; solo se dibujan los abiertos
+      const groups = new Map<string, Product[]>();
+      for (const product of products) {
+        const key = product.category?.trim() || "Sin categoría";
+        groups.set(key, [...(groups.get(key) ?? []), product]);
+      }
+      const ordered = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"));
+      setHtml(
+        list,
+        html`${ordered.map(([name, items]) => {
+          const lowCount = items.filter((p) => {
+            const stock = stockRowFor(p.id);
+            return (stock?.stock ?? 0) <= (stock?.min_stock ?? 0);
+          }).length;
+          const open = openGroups.has(name);
+          const page = open ? paginate(items, pages.get(`g:${name}`) ?? 0, PAGE_GROUP) : null;
+          return html`
+            <details class="group-box" data-group="${name}" ${open ? "open" : null}>
+              <summary>
+                <strong>${name}</strong>
+                <span class="tag">${items.length}</span>
+                ${lowCount ? html`<span class="count-badge" data-tone="amber" title="Productos en o bajo el mínimo">${lowCount} ${lowCount === 1 ? "bajo" : "bajos"}</span>` : html``}
+              </summary>
+              ${page ? html`<div class="list">${page.items.map(row)}</div>${pagerMarkup(`g:${name}`, page)}` : html``}
+            </details>
           `;
         })}`
       );
@@ -242,6 +311,11 @@ export const productosTab: TabModule = {
         return;
       }
       const packSize = Math.round(normalizeQty(packInput.value));
+      const packPrice = Math.round(Math.max(0, Number(packPriceInput.value || 0)) * 100) / 100;
+      if (packPrice > 0 && packSize <= 1) {
+        ctx.toast("Para vender por caja indica cuántas piezas trae la caja");
+        return;
+      }
       const product: Product = {
         // Conserva campos que este formulario no edita
         ...(existing && !existing.deleted ? existing : {}),
@@ -254,6 +328,7 @@ export const productosTab: TabModule = {
         barcode: barcode || undefined,
         supplier_id: supplierInput.value || undefined,
         pack_size: packSize > 1 ? packSize : undefined,
+        pack_price: packSize > 1 && packPrice > 0 ? packPrice : undefined,
         sale_group: (groupInput.value as SaleGroup) || undefined,
         active: existing?.active !== false,
         deleted: false,
@@ -265,22 +340,79 @@ export const productosTab: TabModule = {
       // Al editar, la existencia solo se reescribe si el usuario la cambió:
       // así no se pierden las ventas hechas mientras el formulario estaba abierto.
       const stockChanged = stockAtEdit === null || stockInput.value !== stockAtEdit;
+      const minValue = normalizeQty(minInput.value);
+      // Sin cambios en existencia ni mínimo no se reescribe la fila: subirla
+      // pisaría ventas recientes que el servidor aún no ha descontado.
+      if (current && !stockChanged && normalizeQty(current.min_stock) === minValue) {
+        resetForm();
+        if (existing) {
+          formBox.open = false;
+          sections.show("lista");
+        }
+        ctx.toast(existing ? "Producto actualizado" : "Producto guardado");
+        return;
+      }
       ctx.repos.stocks.upsert({
         id: current?.id ?? `${id}:${ctx.branches.operationalId()}`,
         product_id: id,
         branch_id: ctx.branches.operationalId(),
         stock: stockChanged || !current ? normalizeQty(stockInput.value) : current.stock,
-        min_stock: normalizeQty(minInput.value),
+        min_stock: minValue,
         updated_at: ts
       });
       resetForm();
+      if (existing) {
+        formBox.open = false;
+        sections.show("lista");
+      }
       ctx.toast(existing ? "Producto actualizado" : "Producto guardado");
     });
 
-    cancelEdit.addEventListener("click", resetForm);
+    cancelEdit.addEventListener("click", () => {
+      resetForm();
+      formBox.open = false;
+      sections.show("lista");
+    });
+
+    list.addEventListener("toggle", (event) => {
+      const box = event.target as HTMLDetailsElement;
+      if (box.dataset?.group !== undefined) {
+        if (box.open) {
+          // Solo una categoría abierta: abrir otra cierra la anterior
+          openGroups.clear();
+          openGroups.add(box.dataset.group);
+          list.querySelectorAll<HTMLDetailsElement>("details.group-box[open]").forEach((other) => {
+            if (other !== box) other.open = false;
+          });
+        } else openGroups.delete(box.dataset.group);
+        // El contenido de la categoría se dibuja al abrirla
+        if (box.open && !box.querySelector(".list")) render();
+      } else if (box.dataset?.product) {
+        if (box.open) openRows.add(box.dataset.product);
+        else openRows.delete(box.dataset.product);
+      }
+    }, true);
+
+    root.querySelector<HTMLButtonElement>("#newProductToggle")!.addEventListener("click", () => {
+      if (idInput.value) resetForm();
+      sections.show("nuevo");
+      formBox.open = true;
+      formBox.scrollIntoView({ behavior: "smooth", block: "start" });
+      nameInput.focus({ preventScroll: true });
+    });
 
     list.addEventListener("click", async (event) => {
       const target = event.target as HTMLElement;
+      const paging = pagerClick(event);
+      if (paging) {
+        pages.set(paging.key, paging.page);
+        openRows.clear();
+        render();
+        // Al cambiar de página se vuelve al inicio de esa lista
+        const anchor = paging.key === "all" ? list : list.querySelector<HTMLElement>(`details.group-box[open]`);
+        anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const editButton = target.closest<HTMLElement>("[data-edit]");
       if (editButton) {
         const product = ctx.repos.products.byId(editButton.dataset.edit!);
@@ -294,6 +426,7 @@ export const productosTab: TabModule = {
         renderSupplierOptions();
         supplierInput.value = product.supplier_id && ctx.repos.suppliers.byId(product.supplier_id) ? product.supplier_id : "";
         packInput.value = product.pack_size ? String(product.pack_size) : "";
+        packPriceInput.value = product.pack_price ? String(product.pack_price) : "";
         groupInput.value = product.sale_group ?? "";
         const stock = stockRowFor(product.id);
         stockInput.value = String(stock?.stock ?? 0);
@@ -302,7 +435,9 @@ export const productosTab: TabModule = {
         barcodeInput.value = product.barcode ?? "";
         cancelEdit.hidden = false;
         formTitle.textContent = `Editando: ${product.name}`;
-        form.scrollIntoView({ behavior: "smooth", block: "start" });
+        sections.show("nuevo");
+        formBox.open = true;
+        formBox.scrollIntoView({ behavior: "smooth", block: "start" });
         nameInput.focus({ preventScroll: true });
         return;
       }
@@ -339,77 +474,19 @@ export const productosTab: TabModule = {
     });
 
     listSearch.addEventListener("input", () => {
+      pages.set("all", 0);
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(render, 180);
     });
-    listSupplier.addEventListener("change", render);
 
-    root.querySelector<HTMLButtonElement>("#downloadTemplate")!.addEventListener("click", () => {
-      const rows = [
-        ["nombre", "categoria", "um", "costo", "precio", "existencia", "minimo", "codigo", "piezas_caja"],
-        ["Coca Cola 600 ml", "Refrescos", "Pza", "13", "18", "12", "4", "7501055300075", "24"],
-        ["Azúcar", "Abarrotes", "Kg", "22", "30", "25.500", "5", "", ""],
-        ["Arroz", "Abarrotes", "Kg", "24", "34", "18.250", "4", "", ""]
-      ];
-      const tableRows = rows
-        .map((row) => `<Row>${row.map((cell) => `<Cell><Data ss:Type="String">${cell}</Data></Cell>`).join("")}</Row>`)
-        .join("");
-      const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Productos"><Table>${tableRows}</Table></Worksheet></Workbook>`;
-      downloadText("plantilla-productos.xls", xml, "application/vnd.ms-excel;charset=utf-8");
-    });
+    root.querySelector<HTMLButtonElement>("#downloadTemplate")!.addEventListener("click", () => exportProducts(ctx, "xls"));
 
     root.querySelector<HTMLInputElement>("#importProducts")!.addEventListener("change", async (event) => {
       const input = event.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
-      const text = await file.text();
-      const dataLines = text.trim().startsWith("<?xml") || file.name.toLowerCase().endsWith(".xls")
-        ? parseSpreadsheetRows(text).slice(1)
-        : text.split(/\r?\n/).filter(Boolean).slice(1).map(parseCsvLine);
-      let imported = 0;
-      const branchId = ctx.branches.operationalId();
-      const ts = nowISO();
-      for (const row of dataLines) {
-        const [name, category, third, fourth, fifth, sixth, seventh, eighth, ninth] = row;
-        if (!name?.trim()) continue;
-        const hasUnit = UNITS.some((unit) => unit.toLowerCase() === (third ?? "").trim().toLowerCase());
-        const um = hasUnit ? (UNITS.find((unit) => unit.toLowerCase() === (third ?? "").trim().toLowerCase()) ?? "Pza") : "Pza";
-        const cost = Number((hasUnit ? fourth : third) || 0);
-        const price = Number((hasUnit ? fifth : fourth) || 0);
-        const stock = normalizeQty(hasUnit ? sixth : fifth);
-        const minStock = normalizeQty(hasUnit ? seventh : sixth);
-        const barcode = (hasUnit ? eighth : seventh)?.trim();
-        const packSize = Math.round(normalizeQty(hasUnit ? ninth : eighth));
-        const cleanName = name.trim();
-        const existing = ctx.repos.products.list().find((p) => p.name.toLowerCase() === cleanName.toLowerCase());
-        const product: Product = {
-          // Conserva proveedor, código y demás datos del producto existente
-          ...existing,
-          id: existing?.id ?? uid(),
-          name: cleanName,
-          category: (category ?? "Abarrotes").trim(),
-          um,
-          cost: Number.isFinite(cost) ? Math.max(0, cost) : 0,
-          price: Number.isFinite(price) ? Math.max(0, price) : 0,
-          barcode: barcode || existing?.barcode,
-          pack_size: packSize > 1 ? packSize : existing?.pack_size,
-          active: true,
-          created_at: existing?.created_at ?? ts,
-          updated_at: ts
-        };
-        ctx.repos.products.upsert(product);
-        ctx.repos.stocks.upsert({
-          id: `${product.id}:${branchId}`,
-          product_id: product.id,
-          branch_id: branchId,
-          stock,
-          min_stock: minStock,
-          updated_at: ts
-        });
-        imported += 1;
-      }
+      await importProducts(ctx, file);
       input.value = "";
-      ctx.toast(`${imported} productos importados a ${ctx.branches.name(branchId)}`);
     });
 
     ctx.store.watch((s) => s.suppliers, () => {

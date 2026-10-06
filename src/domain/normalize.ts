@@ -101,6 +101,7 @@ const productSchema = z.object({
   barcode: z.string().optional(),
   supplier_id: optionalString,
   pack_size: optionalPositive,
+  pack_price: optionalPositive,
   sale_group: saleGroupSchema,
   active: bool,
   seed_example: bool.optional(),
@@ -149,7 +150,8 @@ const saleItemSchema = z.object({
   cost: num,
   um: unitSchema,
   group: saleGroupSchema,
-  regular_price: optionalPositive
+  regular_price: optionalPositive,
+  pack_size: optionalPositive
 });
 
 const saleSchema = z.object({
@@ -161,6 +163,7 @@ const saleSchema = z.object({
   profit: num,
   payment: z.enum(PAYMENT_METHODS as unknown as [string, ...string[]]).catch("efectivo"),
   customer_id: z.string().nullable().catch(null),
+  stock_by_server: bool.optional(),
   created_at: iso,
   updated_at: iso,
   deleted: bool.optional()
@@ -190,6 +193,8 @@ const purchaseSchema = z.object({
   total: num,
   packs: optionalPositive,
   pack_size: optionalPositive,
+  paid_from: z.enum(["caja", "aparte"]).optional().catch(undefined),
+  stock_by_server: bool.optional(),
   created_at: iso,
   updated_at: iso,
   deleted: bool.optional()
@@ -257,6 +262,7 @@ const mermaSchema = z.object({
   reason: z.enum(MERMA_REASONS).catch("Otro"),
   note: z.string().catch(""),
   cost_impact: num,
+  stock_by_server: bool.optional(),
   created_at: iso,
   updated_at: iso,
   deleted: bool.optional()
@@ -277,7 +283,7 @@ const appStateSchema = z.object({
   month_closings: z.array(monthClosingSchema).catch([]),
   inventory_counts: z.array(inventoryCountSchema).catch([]),
   cart: z
-    .array(z.object({ productId: z.string().min(1), qty: num, promoPrice: optionalPositive }))
+    .array(z.object({ productId: z.string().min(1), qty: num, promoPrice: optionalPositive, unit: z.enum(["pza", "caja"]).optional().catch(undefined) }))
     .catch([]),
   currentBranchId: z.string().catch(""),
   viewBranchId: z.string().catch(VIEW_ALL),
@@ -285,6 +291,7 @@ const appStateSchema = z.object({
     .object({
       lastPulledAt: z.record(z.string()).catch({}),
       syncCursors: z.record(z.string()).catch({}),
+      serverStock: bool.optional(),
       lastSyncAt: iso.nullable().catch(null),
       error: z.string().nullable().catch(null),
       pending: z.coerce.number().catch(0),

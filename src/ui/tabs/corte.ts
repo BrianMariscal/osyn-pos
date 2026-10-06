@@ -6,6 +6,7 @@ import { confirmDialog } from "../components/modal";
 import { openModal } from "../components/modal";
 import { openWhatsapp } from "../whatsapp";
 import type { Shift } from "../../core/types";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 export const corteTab: TabModule = {
@@ -52,6 +53,13 @@ export const corteTab: TabModule = {
       `
     );
 
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "corte", label: "Corte de caja", el: articles[0] ?? null },
+      { id: "historial", label: "Historial", el: articles[1] ?? null }
+    ]);
+
     const opening = root.querySelector<HTMLInputElement>("#openingCash")!;
     const counted = root.querySelector<HTMLInputElement>("#cashCounted")!;
     const withdrawn = root.querySelector<HTMLInputElement>("#cashWithdrawn")!;
@@ -83,7 +91,8 @@ export const corteTab: TabModule = {
         ["Fiado", fmtMoneyPesos(summary.fiado)],
         ["Consumo interno (a costo, no es venta)", fmtMoneyPesos(summary.interno ?? 0)],
         ["Gastos extra (de caja)", fmtMoneyPesos(summary.gastos)],
-        ["Proveedores", fmtMoneyPesos(summary.proveedores)],
+        ["Proveedores (pagado de caja)", fmtMoneyPesos(summary.proveedores)],
+        ["Compras pagadas aparte (no salen de caja)", fmtMoneyPesos(summary.proveedoresAparte ?? 0)],
         ["Mermas", fmtMoneyPesos(summary.mermas)],
         ["Ganancia estimada", fmtMoneyPesos(summary.ganancia)],
         ["Efectivo esperado con base", fmtMoneyPesos(expectedWithBase), "strong"],
@@ -160,7 +169,8 @@ export const corteTab: TabModule = {
         `Fiado: ${fmtMoneyPesos(s.fiado)}`,
         `Consumo interno (a costo): ${fmtMoneyPesos(s.interno ?? 0)}`,
         `Gastos extra: ${fmtMoneyPesos(s.gastos)}`,
-        `Proveedores: ${fmtMoneyPesos(s.proveedores)}`,
+        `Proveedores (de caja): ${fmtMoneyPesos(s.proveedores)}`,
+        ...(s.proveedoresAparte ? [`Compras pagadas aparte: ${fmtMoneyPesos(s.proveedoresAparte)}`] : []),
         `Mermas: ${fmtMoneyPesos(s.mermas)}`,
         `Ganancia estimada: ${fmtMoneyPesos(s.ganancia)}`,
         `Efectivo esperado con base: ${fmtMoneyPesos(shift.expected_cash_with_base)}`,

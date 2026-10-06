@@ -13,7 +13,7 @@ function fakeAdminAuth(): AuthService {
   return {
     isAdmin: () => true,
     isOwner: () => true,
-    employeeBranchId: () => null
+    assignedBranchId: () => null
   } as unknown as AuthService;
 }
 
@@ -52,6 +52,32 @@ describe("sale-service", () => {
     }
     expect(sales.stockOf("p1")).toBe(8);
     expect(sales.cart()).toHaveLength(0);
+  });
+
+  it("guarda con cuánto pagó, el cambio y quién cobró", () => {
+    sales.addToCart("p1", 2);
+    const result = sales.completeSale({ payment: "efectivo", customerId: null, cashReceived: 50, cashier: "Ana" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.sale.cash_received).toBe(50);
+      expect(result.sale.change).toBe(14);
+      expect(result.sale.cashier).toBe("Ana");
+    }
+  });
+
+  it("no cobra si el efectivo no alcanza y deja el carrito intacto", () => {
+    sales.addToCart("p1", 2);
+    const result = sales.completeSale({ payment: "efectivo", customerId: null, cashReceived: 20 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("$16.00");
+    expect(sales.cart()).toHaveLength(1);
+    expect(sales.stockOf("p1")).toBe(10);
+  });
+
+  it("sin efectivo no guarda cambio", () => {
+    sales.addToCart("p1", 1);
+    const result = sales.completeSale({ payment: "tarjeta", customerId: null, cashReceived: 100 });
+    expect(result.ok && result.sale.cash_received).toBeFalsy();
   });
 
   it("permite agregar varios productos distintos y más cantidad del mismo", () => {

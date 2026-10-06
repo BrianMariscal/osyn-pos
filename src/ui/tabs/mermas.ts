@@ -4,6 +4,9 @@ import { fmtMoneyPesos, sumCents, toCents, toPesos } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import { MERMA_REASONS, type MermaReason } from "../../core/types";
 import { iconFor } from "../icons";
+import { searchProducts } from "../../domain/catalog";
+import { mountSections } from "../sections";
+import { scanButtonMarkup, wireScanToSearch } from "../scan-field";
 import type { TabModule } from "./tab-module";
 
 export const mermasTab: TabModule = {
@@ -18,6 +21,10 @@ export const mermasTab: TabModule = {
             <p class="hint">Producto caducado, dañado o roto: descuenta la existencia de esta sucursal y queda registrado con su impacto a costo.</p>
             <form id="mermaForm" class="form">
               <label class="form-field">Producto
+                <span class="search-row">
+                  <input id="mermaSearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off">
+                  ${scanButtonMarkup("mermaScan")}
+                </span>
                 <select id="mermaProduct" class="input"></select>
               </label>
               <div class="row">
@@ -50,8 +57,18 @@ export const mermasTab: TabModule = {
       `
     );
 
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "registrar", label: "Registrar merma", el: articles[0] ?? null },
+      { id: "historial", label: "Historial", el: articles[1] ?? null }
+    ]);
+
     const form = root.querySelector<HTMLFormElement>("#mermaForm")!;
     const productSelect = root.querySelector<HTMLSelectElement>("#mermaProduct")!;
+    const productSearch = root.querySelector<HTMLInputElement>("#mermaSearch")!;
+    // Escaneado: queda elegido el producto y el cursor pasa a la cantidad
+    wireScanToSearch(ctx, root.querySelector<HTMLElement>("#mermaScan")!, productSearch, () => qtyInput.focus());
     const qtyInput = root.querySelector<HTMLInputElement>("#mermaQty")!;
     const reasonSelect = root.querySelector<HTMLSelectElement>("#mermaReason")!;
     const noteInput = root.querySelector<HTMLInputElement>("#mermaNote")!;
@@ -60,12 +77,23 @@ export const mermasTab: TabModule = {
     const monthTotalEl = root.querySelector<HTMLElement>("#mermaMonthTotal")!;
     const monthCountEl = root.querySelector<HTMLElement>("#mermaMonthCount")!;
 
+    const renderProducts = (): void => {
+      const selected = productSelect.value;
+      const products = searchProducts(ctx.repos.products.list().filter((p) => p.active !== false), productSearch.value);
+      setHtml(
+        productSelect,
+        products.length
+          ? html`${products.map((p) => html`<option value="${p.id}" ${p.id === selected ? "selected" : null}>${p.name} (${p.um})</option>`)}`
+          : html`<option value="">Ningún producto coincide</option>`
+      );
+    };
+    productSearch.addEventListener("input", renderProducts);
+
     const render = (): void => {
       const branchId = ctx.branches.operationalId();
       branchEl.textContent = `Sucursal: ${ctx.branches.name(branchId)}`;
 
-      const products = ctx.repos.products.list().filter((p) => p.active !== false);
-      setHtml(productSelect, html`${products.map((p) => html`<option value="${p.id}">${p.name} (${p.um})</option>`)}`);
+      renderProducts();
 
       const history = ctx.repos.mermas
         .list()

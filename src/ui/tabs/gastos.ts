@@ -5,6 +5,7 @@ import { EXPENSE_CATEGORIES, type Expense, type ExpensePeriod } from "../../core
 import { daysInMonth, expensePeriod } from "../../domain/expense-service";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 /** Categorías sugeridas para costos fijos mensuales. */
@@ -36,7 +37,7 @@ export const gastosTab: TabModule = {
               </label>
               <label class="form-field">Categoría
                 <select id="fixedCategory" class="input">
-                  ${FIXED_CATEGORIES.map((category) => html`<option>${category}</option>`)}
+                  ${FIXED_CATEGORIES.map((category) => html`<option value="${category}">${category === "Sueldos" ? "Sueldos (nómina)" : category}</option>`)}
                 </select>
               </label>
               <button class="primary" type="submit">${iconFor("plus")} Agregar</button>
@@ -63,11 +64,22 @@ export const gastosTab: TabModule = {
       `
     );
 
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "fijos", label: "Costos fijos", el: articles[0] ?? null },
+      { id: "extra", label: "Gastos del día", el: articles[1] ?? null }
+    ]);
+
     const fixedForm = root.querySelector<HTMLFormElement>("#fixedForm")!;
     const fixedConcept = root.querySelector<HTMLInputElement>("#fixedConcept")!;
     const fixedAmount = root.querySelector<HTMLInputElement>("#fixedAmount")!;
     const fixedCategory = root.querySelector<HTMLSelectElement>("#fixedCategory")!;
     const fixedPeriod = root.querySelector<HTMLSelectElement>("#fixedPeriod")!;
+    // La nómina se paga por semana: al elegir Sueldos se sugiere "Semanal"
+    fixedCategory.addEventListener("change", () => {
+      if (fixedCategory.value === "Sueldos") fixedPeriod.value = "semanal";
+    });
     const fixedList = root.querySelector<HTMLElement>("#fixedList")!;
     const fixedTarget = root.querySelector<HTMLElement>("#fixedTarget")!;
     const form = root.querySelector<HTMLFormElement>("#expenseForm")!;
@@ -77,7 +89,7 @@ export const gastosTab: TabModule = {
     const list = root.querySelector<HTMLElement>("#expensesList")!;
 
     const expenseRow = (expense: Expense, fixed: boolean) => html`
-      <div class="list-item item-line">
+      <div class="list-item item-line expense-row">
         <div>
           <strong>${expense.concept}</strong>
           <p class="muted">${fixed ? `${expensePeriod(expense) === "semanal" ? "Semanal" : "Mensual"} · ` : ""}${expense.category} | ${fixed ? `Desde ${fmtDate(expense.created_at)}` : fmtDateTime(expense.created_at)}</p>

@@ -4,12 +4,18 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import type { Supplier } from "../../core/types";
-import { assignMissingSupplierNumbers, nextSupplierNumber, productMatches, supplierCode, supplierLabel } from "../../domain/catalog";
+import { assignMissingSupplierNumbers, nextSupplierNumber, plainText, searchProducts, supplierCode, supplierLabel } from "../../domain/catalog";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { mountPurchaseLines } from "../purchase-lines";
 import { openNewProductModal } from "./inventario";
+import { exportSuppliers, importSuppliers } from "../product-transfer-ui";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
+
+const CENTRAL_ID = "__central__";
+const CENTRAL_NAME = "Central de Abastos";
 
 export const proveedoresTab: TabModule = {
   id: "proveedores",
@@ -18,28 +24,48 @@ export const proveedoresTab: TabModule = {
       root,
       html`
         <div class="split">
-          <article class="card">
-            <div class="section-title">
-              <h2>Proveedores</h2>
-              <button id="addSupplier" class="primary" type="button">${iconFor("plus")} Agregar</button>
-            </div>
-            <p class="hint">Tu catálogo: Central de Abastos, distribuidoras, etc. Cada proveedor recibe un número automático y puedes asociarle los productos que surte.</p>
-            <div id="suppliersList" class="list"></div>
-
+          <article class="card" id="supPurchase">
             <h2>Registrar compra</h2>
             <form id="purchaseForm" class="form">
-              <label class="form-field">Proveedor
-                <select id="purchaseSupplier" class="input"></select>
-              </label>
+              <div class="row">
+                <label class="form-field">Proveedor
+                  <select id="purchaseSupplier" class="input"></select>
+                </label>
+                <label class="form-field">¿Con qué se pagó?
+                  <select id="purchasePaidFrom" class="input">
+                    <option value="caja">Dinero de la caja (se resta en el corte)</option>
+                    <option value="aparte">Dinero aparte (no sale de la caja)</option>
+                  </select>
+                </label>
+              </div>
               <div class="section-title"><h3>Productos de la compra</h3><button id="addPurchaseLine" class="ghost" type="button">${iconFor("plus")} Agregar producto</button></div>
               <div id="purchaseLines" class="purchase-lines"></div>
               <button class="primary" type="submit">Registrar compra completa</button>
             </form>
           </article>
 
-          <article class="card">
-            <h2>Compras registradas</h2>
+          <article class="card" id="supHistory">
+            <div class="section-title">
+              <h2>Compras registradas</h2>
+              <span class="hint" id="purchasesCount"></span>
+            </div>
             <div id="purchasesList" class="list"></div>
+          </article>
+
+          <article class="card" id="supDirectory">
+            <div class="section-title">
+              <h2>Proveedores <span class="count-badge" data-tone="violet" id="suppliersCount"></span></h2>
+              <button id="addSupplier" class="primary" type="button">${iconFor("plus")} Agregar</button>
+            </div>
+            <p class="hint">Cada proveedor recibe un número automático. Toca uno para ver sus datos, productos y opciones.</p>
+            <input id="supplierSearch" class="input" type="search" placeholder="Buscar proveedor, giro o número (#3)" autocomplete="off">
+            <div id="suppliersList" class="list collapsible-list"></div>
+            <div class="actions wrap-actions">
+              <button id="downloadSuppliersXls" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
+              <label class="import-label" id="importSuppliersLabel">${iconFor("upload")} Importar
+                <input id="importSuppliers" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
+              </label>
+            </div>
           </article>
         </div>
       `
@@ -49,12 +75,40 @@ export const proveedoresTab: TabModule = {
     const suppliersList = root.querySelector<HTMLElement>("#suppliersList")!;
     const purchaseForm = root.querySelector<HTMLFormElement>("#purchaseForm")!;
     const purchaseSupplier = root.querySelector<HTMLSelectElement>("#purchaseSupplier")!;
+    const purchasePaidFrom = root.querySelector<HTMLSelectElement>("#purchasePaidFrom")!;
     const purchaseLinesEl = root.querySelector<HTMLElement>("#purchaseLines")!;
     const list = root.querySelector<HTMLElement>("#purchasesList")!;
+    const supplierSearch = root.querySelector<HTMLInputElement>("#supplierSearch")!;
+    const suppliersCount = root.querySelector<HTMLElement>("#suppliersCount")!;
+    const purchasesCount = root.querySelector<HTMLElement>("#purchasesCount")!;
+    /** Proveedores expandidos (se conservan al redibujar por sync). */
+    const openSuppliers = new Set<string>();
+    let supplierPage = 0;
+    let purchasePage = 0;
+    mountSections(root, [
+      { id: "compra", label: "Registrar compra", el: root.querySelector<HTMLElement>("#supPurchase") },
+      { id: "proveedores", label: "Proveedores", el: root.querySelector<HTMLElement>("#supDirectory") },
+      { id: "compras", label: "Compras", el: root.querySelector<HTMLElement>("#supHistory") }
+    ], { always: true });
 
-    const lines = mountPurchaseLines(purchaseLinesEl, ctx, { requireTotal: true, supplierId: () => purchaseSupplier.value });
+    // "Central de Abastos" no es un proveedor del catálogo: compra local en
+    // varios puestos, normalmente con dinero aparte. Ofrece todos los productos.
+    const lines = mountPurchaseLines(purchaseLinesEl, ctx, {
+      requireTotal: true,
+      supplierId: () => (purchaseSupplier.value === CENTRAL_ID ? "" : purchaseSupplier.value)
+    });
     // Solo dueño/administrador editan el catálogo (así lo exige la base de datos).
     const canManage = (): boolean => ctx.auth.isAdmin();
+
+    root.querySelector<HTMLButtonElement>("#downloadSuppliersXls")!.addEventListener("click", () => exportSuppliers(ctx, "xls"));
+    root.querySelector<HTMLElement>("#importSuppliersLabel")!.hidden = !canManage();
+    root.querySelector<HTMLInputElement>("#importSuppliers")!.addEventListener("change", async (event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (!file) return;
+      await importSuppliers(ctx, file);
+      input.value = "";
+    });
 
     const sortedSuppliers = (): Supplier[] =>
       ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
@@ -68,38 +122,52 @@ export const proveedoresTab: TabModule = {
       const selected = purchaseSupplier.value;
       setHtml(
         purchaseSupplier,
-        html`<option value="">Elige proveedor…</option>${suppliers.map(
+        html`<option value="">Elige proveedor…</option>
+          <option value="${CENTRAL_ID}" ${selected === CENTRAL_ID ? "selected" : null}>Central de Abastos (compra local)</option>${suppliers.map(
           (supplier) => html`<option value="${supplier.id}" ${supplier.id === selected ? "selected" : null}>${supplierLabel(supplier)}</option>`
         )}`
       );
+      suppliersCount.textContent = suppliers.length ? String(suppliers.length) : "";
+      supplierSearch.classList.toggle("hidden", suppliers.length < 6);
       if (!suppliers.length) {
-        setHtml(suppliersList, html`<p class="muted">Agrega tu primer proveedor: Central de Abastos, una distribuidora…</p>`);
+        setHtml(suppliersList, html`<p class="muted">Agrega tu primer proveedor: una distribuidora, la tienda de la esquina…</p>`);
         return;
       }
+      const q = plainText(supplierSearch.value);
+      const byNumber = /^#?(\d+)$/.exec(q);
+      const matches = suppliers.filter((supplier) =>
+        !q ||
+        (byNumber ? Number(supplier.number) === Number(byNumber[1]) : q.split(/\s+/).every((word) => plainText(`${supplier.name} ${supplier.type ?? ""} ${supplier.phone}`).includes(word)))
+      );
+      const page = paginate(matches, supplierPage, 8);
+      const shown = page.items;
       setHtml(
         suppliersList,
-        html`${suppliers.map((supplier) => {
-          const count = productCount(supplier.id);
-          return html`
-            <div class="list-item">
-              <div class="item-line">
-                <div class="supplier-head">
-                  ${supplierCode(supplier) ? html`<span class="supplier-num">${supplierCode(supplier)}</span>` : html``}
-                  <strong>${supplier.name}</strong>
-                </div>
-                <span class="tag">${count} ${count === 1 ? "producto" : "productos"}</span>
-              </div>
-              <p class="muted">${supplier.type ? `${supplier.type} · ` : ""}${supplier.phone || "Sin teléfono"}${supplier.notes ? ` · ${supplier.notes}` : ""}</p>
-              <div class="actions">
-                <button class="ghost" type="button" data-products-supplier="${supplier.id}">${iconFor("box")} Productos</button>
-                ${canManage()
-                  ? html`<button class="ghost" type="button" data-edit-supplier="${supplier.id}">Editar</button>
-                      <button class="ghost danger" type="button" data-delete-supplier="${supplier.id}">Eliminar</button>`
-                  : html``}
-              </div>
-            </div>
-          `;
-        })}`
+        matches.length
+          ? html`${shown.map((supplier) => {
+              const count = productCount(supplier.id);
+              return html`
+                <details class="row-item" data-supplier="${supplier.id}" ${openSuppliers.has(supplier.id) ? "open" : null}>
+                  <summary>
+                    ${supplierCode(supplier) ? html`<span class="supplier-num">${supplierCode(supplier)}</span>` : html``}
+                    <span class="row-title"><strong>${supplier.name}</strong><small class="muted">${supplier.type || "Sin giro"}</small></span>
+                    <span class="tag">${count} ${count === 1 ? "producto" : "productos"}</span>
+                  </summary>
+                  <div class="row-body">
+                    <p class="muted">${supplier.phone ? html`Tel. <a href="tel:${supplier.phone}">${supplier.phone}</a>` : "Sin teléfono"}${supplier.notes ? ` · ${supplier.notes}` : ""}</p>
+                    <div class="actions">
+                      <button class="ghost" type="button" data-products-supplier="${supplier.id}">${iconFor("box")} Productos</button>
+                      ${canManage()
+                        ? html`<button class="ghost" type="button" data-edit-supplier="${supplier.id}">${iconFor("edit")} Editar</button>
+                            <button class="ghost danger" type="button" data-delete-supplier="${supplier.id}">${iconFor("trash")} Eliminar</button>`
+                        : html``}
+                    </div>
+                  </div>
+                </details>
+              `;
+            })}
+            ${pagerMarkup("suppliers", page)}`
+          : html`<p class="muted">Ningún proveedor coincide.</p>`
       );
     };
 
@@ -159,7 +227,7 @@ export const proveedoresTab: TabModule = {
       const all = ctx.repos.products.list().filter((product) => product.active !== false).sort((a, b) => a.name.localeCompare(b.name));
       const selected = new Set(all.filter((product) => product.supplier_id === supplier.id).map((product) => product.id));
       const renderRows = (listEl: HTMLElement, query: string): void => {
-        const rows = all.filter((product) => productMatches(product, query) && (editable || selected.has(product.id)));
+        const rows = searchProducts(all, query).filter((product) => editable || selected.has(product.id));
         setHtml(
           listEl,
           rows.length
@@ -179,7 +247,7 @@ export const proveedoresTab: TabModule = {
         title: `Productos de ${supplierLabel(supplier)}`,
         content: html`
           <p class="muted">${editable ? "Marca los productos que surte este proveedor. En Venta y en Compras podrás filtrarlos por proveedor." : "Productos que surte este proveedor."}</p>
-          <input id="spSearch" class="input" placeholder="Buscar producto" autocomplete="off">
+          <input id="spSearch" class="input" type="search" placeholder="Buscar producto o código" autocomplete="off">
           <div id="spList" class="check-list"></div>
           ${editable ? html`<button id="spNew" class="ghost" type="button">${iconFor("plus")} Crear producto nuevo para este proveedor</button>` : html``}
         `,
@@ -233,6 +301,13 @@ export const proveedoresTab: TabModule = {
 
     suppliersList.addEventListener("click", async (event) => {
       const target = event.target as HTMLElement;
+      const paging = pagerClick(event);
+      if (paging) {
+        supplierPage = paging.page;
+        openSuppliers.clear();
+        renderSuppliers();
+        return;
+      }
       const productsButton = target.closest<HTMLElement>("[data-products-supplier]");
       if (productsButton) {
         const supplier = ctx.repos.suppliers.byId(productsButton.dataset.productsSupplier!);
@@ -267,38 +342,65 @@ export const proveedoresTab: TabModule = {
       }
     });
 
+    const purchasesPage = <T,>(rows: T[]) => paginate(rows, purchasePage, 10);
+
     const renderPurchases = (): void => {
       const branchId = ctx.branches.operationalId();
       const purchases = ctx.repos.purchases
         .list()
         .filter((purchase) => purchase.branch_id === branchId)
-        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-        .slice(0, 30);
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+      purchasesCount.textContent = purchases.length ? `${purchases.length} en esta sucursal` : "";
       setHtml(
         list,
         purchases.length
-          ? html`${purchases.map(
+          ? html`${purchasesPage(purchases).items.map(
               (purchase) => html`
                 <div class="list-item">
                   <div class="item-line">
                     <strong>${purchase.supplier}</strong>
                     <strong>${fmtMoneyPesos(purchase.total)}</strong>
                   </div>
+                  ${purchase.paid_from === "aparte" ? html`<span class="tag">Pagada aparte</span>` : html``}
                   <p class="muted">${purchase.product_name} | ${fmtQty(purchase.qty)} ${purchase.um ?? "Pza"}${purchase.packs ? ` (${fmtQty(purchase.packs)} ${purchase.packs === 1 ? "caja" : "cajas"} de ${fmtQty(purchase.pack_size ?? 0)})` : ""} | ${fmtDateTime(purchase.created_at)}</p>
                 </div>
               `
-            )}`
+            )}${pagerMarkup("purchases", purchasesPage(purchases))}`
           : html`<p class="muted">Sin compras registradas.</p>`
       );
     };
 
+    list.addEventListener("click", (event) => {
+      const paging = pagerClick(event);
+      if (!paging) return;
+      purchasePage = paging.page;
+      renderPurchases();
+    });
+    supplierSearch.addEventListener("input", () => {
+      supplierPage = 0;
+      renderSuppliers();
+    });
+    // Recuerda qué proveedores están abiertos para no cerrarlos al sincronizar
+    suppliersList.addEventListener("toggle", (event) => {
+      const row = event.target as HTMLDetailsElement;
+      const id = row.dataset?.supplier;
+      if (!id) return;
+      if (row.open) openSuppliers.add(id);
+      else openSuppliers.delete(id);
+    }, true);
+
     root.querySelector<HTMLButtonElement>("#addPurchaseLine")!.addEventListener("click", () => lines.addLine());
-    purchaseSupplier.addEventListener("change", () => lines.render());
+    purchaseSupplier.addEventListener("change", () => {
+      // La Central de Abastos casi siempre se paga con dinero aparte.
+      purchasePaidFrom.value = purchaseSupplier.value === CENTRAL_ID ? "aparte" : "caja";
+      lines.render();
+    });
 
     purchaseForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      const supplier = ctx.repos.suppliers.byId(purchaseSupplier.value);
-      if (!supplier || supplier.deleted) {
+      const central = purchaseSupplier.value === CENTRAL_ID;
+      const supplier = central ? undefined : ctx.repos.suppliers.byId(purchaseSupplier.value);
+      if (!central && (!supplier || supplier.deleted)) {
         ctx.toast("Elige el proveedor de la compra");
         return;
       }
@@ -307,7 +409,8 @@ export const proveedoresTab: TabModule = {
         ctx.toast(read.error);
         return;
       }
-      const result = ctx.inventory.receiveStockMany(read.items, supplier.name);
+      const paidFrom = purchasePaidFrom.value === "aparte" ? "aparte" : "caja";
+      const result = ctx.inventory.receiveStockMany(read.items, supplier?.name ?? CENTRAL_NAME, paidFrom);
       if (!result.ok) {
         ctx.toast(result.error);
         return;

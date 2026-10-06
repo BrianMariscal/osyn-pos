@@ -56,13 +56,15 @@ export default async function handler(req, res) {
       res.status(400).json({ error: "Falta texto o voice_id" });
       return;
     }
-    const tts = await fetch(`${EL_BASE}/text-to-speech/${encodeURIComponent(vid)}?output_format=mp3_44100_128`, {
+    // Flash v2.5: el modelo de menor latencia de ElevenLabs (habla español);
+    // audio ligero para que llegue y suene más rápido.
+    const tts = await fetch(`${EL_BASE}/text-to-speech/${encodeURIComponent(vid)}/stream?output_format=mp3_22050_32&optimize_streaming_latency=3`, {
       method: "POST",
       headers: elHeaders,
       body: JSON.stringify({
         text: phrase,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3 }
+        model_id: "eleven_flash_v2_5",
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
       })
     });
     if (!tts.ok) {
@@ -70,10 +72,12 @@ export default async function handler(req, res) {
       res.status(502).json({ error: `ElevenLabs: ${detail.slice(0, 200)}` });
       return;
     }
-    const audio = Buffer.from(await tts.arrayBuffer());
+    // Se reenvía el audio conforme llega (sin esperar el archivo completo)
     res.status(200);
     res.setHeader("Content-Type", "audio/mpeg");
-    res.send(audio);
+    res.setHeader("Cache-Control", "no-store");
+    for await (const chunk of tts.body) res.write(chunk);
+    res.end();
   } catch (error) {
     res.status(500).json({ error: error.message || "Error generando voz" });
   }

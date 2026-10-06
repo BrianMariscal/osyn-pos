@@ -35,27 +35,42 @@ export default async function handler(req, res) {
   const serviceHeaders = { apikey: service, Authorization: `Bearer ${service}`, "Content-Type": "application/json" };
 
   try {
-    const role = await fetchProfileRole(base, serviceHeaders, auth.user.id);
+    const caller = await fetchProfile(base, serviceHeaders, auth.user.id);
+    const role = caller ? caller.role : null;
     if (!role || (role !== "dueno" && role !== "admin")) {
       res.status(403).json({ error: "Solo el dueño o un administrador gestiona usuarios" });
       return;
     }
     const isOwner = role === "dueno";
+    // Administrador asignado a una sucursal: solo gestiona vendedores de ESA sucursal.
+    const callerBranch = !isOwner && caller.branch_id ? String(caller.branch_id) : null;
 
-    if (req.method === "GET") return await listUsers(res, base, serviceHeaders, isOwner);
-    if (req.method === "POST") return await createUser(res, base, serviceHeaders, isOwner, req.body || {});
-    if (req.method === "PATCH") return await updateUser(res, base, serviceHeaders, isOwner, auth, req.body || {});
-    if (req.method === "DELETE") return await deleteUser(res, base, serviceHeaders, isOwner, auth, req.body || {});
+    if (req.method === "GET") return await listUsers(res, base, serviceHeaders, isOwner, callerBranch);
+    if (req.method === "POST") return await createUser(res, base, serviceHeaders, isOwner, callerBranch, req.body || {});
+    if (req.method === "PATCH") return await updateUser(res, base, serviceHeaders, isOwner, callerBranch, auth, req.body || {});
+    if (req.method === "DELETE") return await deleteUser(res, base, serviceHeaders, isOwner, callerBranch, auth, req.body || {});
   } catch (error) {
     res.status(500).json({ error: error.message || "Error gestionando usuarios" });
   }
 };
 
-async function fetchProfileRole(base, headers, userId) {
-  const res = await fetch(`${base}/rest/v1/profiles?user_id=eq.${encodeURIComponent(userId)}&select=role`, { headers });
+async function fetchProfile(base, headers, userId) {
+  const res = await fetch(`${base}/rest/v1/profiles?user_id=eq.${encodeURIComponent(userId)}&select=role,branch_id`, { headers });
   if (!res.ok) return null;
   const row = (await res.json())[0];
-  return row ? row.role : null;
+  return row ? { role: row.role, branch_id: row.branch_id ?? null } : null;
+}
+
+async function fetchProfileRole(base, headers, userId) {
+  const profile = await fetchProfile(base, headers, userId);
+  return profile ? profile.role : null;
+}
+
+/** Un admin de sucursal solo toca vendedores de su sucursal. */
+async function outsideCallerBranch(base, headers, callerBranch, userId) {
+  if (!callerBranch) return false;
+  const target = await fetchProfile(base, headers, userId);
+  return !target || target.branch_id !== callerBranch;
 }
 
 function normalizeRole(role, isOwner) {
@@ -65,15 +80,18 @@ function normalizeRole(role, isOwner) {
   return "empleado";
 }
 
-async function listUsers(res, base, serviceHeaders, isOwner) {
-  const authRes = await fetch(`${base}/auth/v1/admin/users?per_page=200`, { headers: serviceHeaders });
+async function listUsers(res, base, serviceHeaders, isOwner, callerBranch) {
+  // Ambas consultas a la vez (antes una tras otra)
+  const [authRes, profilesRes] = await Promise.all([
+    fetch(`${base}/auth/v1/admin/users?per_page=200`, { headers: serviceHeaders }),
+    fetch(`${base}/rest/v1/profiles?select=user_id,name,role,branch_id`, { headers: serviceHeaders })
+  ]);
   if (!authRes.ok) {
     res.status(502).json({ error: "No se pudieron leer los usuarios" });
     return;
   }
   const body = await authRes.json();
   const authUsers = body.users || [];
-  const profilesRes = await fetch(`${base}/rest/v1/profiles?select=user_id,name,role,branch_id`, { headers: serviceHeaders });
   const profiles = profilesRes.ok ? await profilesRes.json() : [];
   const byId = new Map(profiles.map((p) => [p.user_id, p]));
   let users = authUsers
@@ -88,11 +106,12 @@ async function listUsers(res, base, serviceHeaders, isOwner) {
     }));
   // El administrador solo ve y administra vendedores.
   if (!isOwner) users = users.filter((user) => user.role === "empleado");
+  if (callerBranch) users = users.filter((user) => user.branch_id === callerBranch);
   users.sort((a, b) => a.name.localeCompare(b.name));
   res.status(200).json({ users });
 }
 
-async function createUser(res, base, serviceHeaders, isOwner, body) {
+async function createUser(res, base, serviceHeaders, isOwner, callerBranch, body) {
   const { email, password, name, role, branch_id } = body || {};
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email))) {
     res.status(400).json({ error: "Correo invalido" });
@@ -104,7 +123,7 @@ async function createUser(res, base, serviceHeaders, isOwner, body) {
   }
   const normalizedRole = normalizeRole(role, isOwner);
   const safeName = typeof name === "string" ? name.trim().slice(0, 80) : "";
-  const safeBranch = branch_id === null || branch_id === undefined ? null : String(branch_id).slice(0, 80) || null;
+  const safeBranch = callerBranch || (branch_id === null || branch_id === undefined ? null : String(branch_id).slice(0, 80) || null);
 
   const createRes = await fetch(`${base}/auth/v1/admin/users`, {
     method: "POST",
@@ -121,7 +140,7 @@ async function createUser(res, base, serviceHeaders, isOwner, body) {
   res.status(200).json({ ok: true, user_id: user.id });
 }
 
-async function updateUser(res, base, serviceHeaders, isOwner, auth, body) {
+async function updateUser(res, base, serviceHeaders, isOwner, callerBranch, auth, body) {
   const { user_id, name, role, branch_id, password } = body || {};
   if (!user_id || typeof user_id !== "string") {
     res.status(400).json({ error: "Falta user_id" });
@@ -135,6 +154,10 @@ async function updateUser(res, base, serviceHeaders, isOwner, auth, body) {
     const targetRole = await fetchProfileRole(base, serviceHeaders, user_id);
     if (targetRole !== "empleado") {
       res.status(403).json({ error: "Un administrador solo puede editar vendedores" });
+      return;
+    }
+    if (await outsideCallerBranch(base, serviceHeaders, callerBranch, user_id)) {
+      res.status(403).json({ error: "Ese vendedor es de otra sucursal" });
       return;
     }
   }
@@ -156,7 +179,8 @@ async function updateUser(res, base, serviceHeaders, isOwner, auth, body) {
   const patch = {};
   if (typeof name === "string") patch.name = name.trim().slice(0, 80);
   if (role !== undefined) patch.role = normalizeRole(role, isOwner);
-  if (branch_id !== undefined) patch.branch_id = branch_id === null || branch_id === undefined ? null : String(branch_id).slice(0, 80) || null;
+  if (callerBranch) patch.branch_id = callerBranch;
+  else if (branch_id !== undefined) patch.branch_id = branch_id === null || branch_id === undefined ? null : String(branch_id).slice(0, 80) || null;
   if (Object.keys(patch).length) {
     patch.updated_at = new Date().toISOString();
     const profileRes = await fetch(`${base}/rest/v1/profiles?user_id=eq.${encodeURIComponent(user_id)}`, {
@@ -172,7 +196,7 @@ async function updateUser(res, base, serviceHeaders, isOwner, auth, body) {
   res.status(200).json({ ok: true });
 }
 
-async function deleteUser(res, base, serviceHeaders, isOwner, auth, body) {
+async function deleteUser(res, base, serviceHeaders, isOwner, callerBranch, auth, body) {
   const { user_id } = body || {};
   if (!user_id || typeof user_id !== "string") {
     res.status(400).json({ error: "Falta user_id" });
@@ -186,6 +210,10 @@ async function deleteUser(res, base, serviceHeaders, isOwner, auth, body) {
     const targetRole = await fetchProfileRole(base, serviceHeaders, user_id);
     if (targetRole !== "empleado") {
       res.status(403).json({ error: "Un administrador solo puede eliminar vendedores" });
+      return;
+    }
+    if (await outsideCallerBranch(base, serviceHeaders, callerBranch, user_id)) {
+      res.status(403).json({ error: "Ese vendedor es de otra sucursal" });
       return;
     }
   }

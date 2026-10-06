@@ -1,8 +1,18 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Versión de la compilación: fecha y hora (hora de México). Se usa en el menú
+// de cuenta y en /version.json para saber si hay una versión nueva.
+const APP_VERSION = new Date().toLocaleString("sv-SE", { timeZone: "America/Mexico_City" }).slice(0, 16).replace(" ", " · ");
+
 export default defineConfig({
   plugins: [
+    {
+      name: "version-json",
+      generateBundle() {
+        this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ version: APP_VERSION }) });
+      }
+    },
     VitePWA({
       registerType: "prompt",
       includeAssets: ["config.js", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png"],
@@ -53,13 +63,31 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,woff2}"],
-        navigateFallback: "index.html",
+        // index.html NO se precachea: con internet la página se pide al servidor
+        // (siempre la versión actual); sin internet se usa la última copia.
+        globPatterns: ["**/*.{js,css,svg,woff2}"],
+        navigateFallback: null,
         cleanupOutdatedCaches: true,
-        navigateFallbackDenylist: [/^\/api\//]
+        skipWaiting: true,
+        clientsClaim: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) => request.mode === "navigate" && !url.pathname.startsWith("/api/"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "paginas",
+              networkTimeoutSeconds: 4,
+              expiration: { maxEntries: 5 }
+            }
+          }
+        ]
       }
     })
   ],
+  define: {
+    // Versión visible en el menú de cuenta: fecha y hora de la compilación (hora de México)
+    __APP_VERSION__: JSON.stringify(APP_VERSION)
+  },
   build: {
     target: "es2020"
   },

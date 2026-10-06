@@ -1,3 +1,4 @@
+import { iconFor } from "../icons";
 import { html, setHtml } from "../../core/html";
 import { VENDOR_CONFIGURABLE_TABS, ROLE_LABELS, TAB_LABELS, ALL_TABS, type Role, type TabId, type Branch } from "../../core/types";
 import { normalizeManagerTabs } from "../../domain/normalize";
@@ -7,6 +8,7 @@ import { confirmDialog, openModal } from "../components/modal";
 import { downloadText } from "./download";
 import { mountVoiceSettings } from "../voice-settings";
 import type { ManagedUser } from "../../domain/user-admin-service";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 export const ajustesTab: TabModule = {
@@ -17,77 +19,105 @@ export const ajustesTab: TabModule = {
       html`
         <div class="split">
           <article class="card">
-            <h2>Tienda</h2>
-            <p class="hint" id="storeOwnerHint" hidden>Solo el dueño puede modificar el nombre, el logo y el WhatsApp de la tienda.</p>
-            <form id="settingsForm" class="form">
-              <label class="form-field">Nombre
-                <input id="storeName" class="input" placeholder="Mi tienda">
-              </label>
-              <label class="form-field">Logo
-                <input id="logoFile" type="file" accept="image/*">
-              </label>
-              <button id="removeLogo" class="ghost danger" type="button">Quitar logo</button>
-              <label class="form-field">WhatsApp para cortes (con lada)
-                <input id="whatsappNumber" class="input" placeholder="5215512345678">
-              </label>
-              <div class="row">
-                <label class="form-field">WhatsApp adicional 2
-                  <input id="whatsapp2" class="input" placeholder="Opcional">
-                </label>
-                <label class="form-field">WhatsApp adicional 3
-                  <input id="whatsapp3" class="input" placeholder="Opcional">
-                </label>
+            <section class="card-section">
+              <div class="section-head">
+                <h2>Tienda</h2>
+                <p class="hint" id="storeOwnerHint" hidden>Solo el dueño puede modificar el nombre, el logo y el WhatsApp de la tienda.</p>
               </div>
-              <img id="logoPreview" class="login-logo hidden" alt="Logo actual">
-              <button id="saveStore" class="primary" type="submit">Guardar</button>
-            </form>
+              <form id="settingsForm" class="form">
+                <label class="form-field">Nombre
+                  <input id="storeName" class="input" placeholder="Mi tienda">
+                </label>
+                <div class="form-field">Logo
+                  <div class="logo-field">
+                    <img id="logoPreview" class="logo-thumb hidden" alt="Logo actual">
+                    <label class="import-label" id="logoPick">${iconFor("upload")} Elegir imagen
+                      <input id="logoFile" type="file" accept="image/*" aria-label="Elegir logo">
+                    </label>
+                    <button id="removeLogo" class="ghost danger" type="button">Quitar logo</button>
+                  </div>
+                </div>
+                <label class="form-field">WhatsApp para cortes (con lada)
+                  <input id="whatsappNumber" class="input" placeholder="5215512345678">
+                </label>
+                <div class="row">
+                  <label class="form-field">WhatsApp adicional 2
+                    <input id="whatsapp2" class="input" placeholder="Opcional">
+                  </label>
+                  <label class="form-field">WhatsApp adicional 3
+                    <input id="whatsapp3" class="input" placeholder="Opcional">
+                  </label>
+                </div>
+                <button id="saveStore" class="primary" type="submit">Guardar</button>
+              </form>
+            </section>
 
-            <div id="panelsWrap">
-              <h2>Pantallas del vendedor</h2>
-              <p class="hint">Elige qué ve el usuario vendedor.</p>
-              <div id="vendorTabsSettings" class="checkbox-grid"></div>
+            <section id="panelsWrap" class="card-section">
+              <div class="section-block">
+                <div class="section-head">
+                  <h2>Pantallas del vendedor</h2>
+                  <p class="hint">Elige qué ve el usuario vendedor.</p>
+                </div>
+                <div id="vendorTabsSettings" class="checkbox-grid"></div>
+              </div>
 
-              <div id="adminTabsWrap">
-                <h2>Pantallas del administrador</h2>
-                <p class="hint">Elige qué ve el administrador. El dueño siempre ve todo.</p>
+              <div id="adminTabsWrap" class="section-block">
+                <div class="section-head">
+                  <h2>Pantallas del administrador</h2>
+                  <p class="hint">Elige qué ve el administrador. El dueño siempre ve todo.</p>
+                </div>
                 <div id="adminTabsSettings" class="checkbox-grid"></div>
               </div>
-            </div>
-            <p class="hint" style="margin-top: var(--sp-3);">La voz del asistente se activa desde el menú de tu usuario (arriba a la derecha).</p>
-            <div id="voiceSettingsHost" style="margin-top: var(--sp-3);"></div>
-            <button id="savePanels" class="primary" type="submit" form="settingsForm" style="margin-top: var(--sp-3);">Guardar</button>
+            </section>
+
+            <section class="card-section">
+              <p class="hint">La voz del asistente se activa desde el menú de tu usuario (arriba a la derecha).</p>
+              <div id="voiceSettingsHost"></div>
+              <button id="savePanels" class="primary" type="submit" form="settingsForm">Guardar</button>
+            </section>
           </article>
 
           <article class="card">
-            <div id="usersSection">
+            <section id="usersSection" class="card-section">
               <div class="section-title">
                 <h2>Usuarios</h2>
                 <button id="addUser" class="primary" type="button">Agregar</button>
               </div>
               <div id="usersList" class="list"></div>
-            </div>
+            </section>
 
-            <div id="branchesSection">
+            <section id="branchesSection" class="card-section">
               <div class="section-title">
                 <h2>Sucursales</h2>
                 <button id="addBranch" class="primary" type="button">Agregar</button>
               </div>
               <p class="hint" id="branchesHint"></p>
               <div id="branchesList" class="list"></div>
-            </div>
+            </section>
 
-            <h2>Respaldo</h2>
-            <p class="hint" id="syncInfo"></p>
-            <div class="actions wrap-actions">
-              <button id="syncNow" class="ghost" type="button">Sincronizar ahora</button>
-              <button id="copySetupLink" class="ghost" type="button">Enlazar otro dispositivo</button>
-              <button id="exportData" class="ghost" type="button">Exportar respaldo</button>
-              <label class="import-label">Importar respaldo<input id="importData" type="file" accept="application/json"></label>
-            </div>
+            <section class="card-section">
+              <div class="section-head">
+                <h2>Respaldo</h2>
+                <p class="hint" id="syncInfo"></p>
+              </div>
+              <div class="backup-actions">
+                <button id="syncNow" class="ghost" type="button">Sincronizar ahora</button>
+                <button id="copySetupLink" class="ghost" type="button">Enlazar otro dispositivo</button>
+                <button id="exportData" class="ghost" type="button">Exportar respaldo</button>
+                <label class="import-label">Importar respaldo<input id="importData" type="file" accept="application/json"></label>
+              </div>
+            </section>
           </article>
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "tienda", label: "Tienda", el: articles[0] ?? null },
+      { id: "usuarios", label: "Usuarios y sucursales", el: articles[1] ?? null }
+    ]);
 
     const form = root.querySelector<HTMLFormElement>("#settingsForm")!;
     const storeName = root.querySelector<HTMLInputElement>("#storeName")!;
@@ -125,6 +155,7 @@ export const ajustesTab: TabModule = {
       });
       logoFile.disabled = !owner;
       removeLogo.disabled = !owner;
+      removeLogo.hidden = !settings.logo;
       storeName.value = settings.storeName || "";
       whatsapp.value = settings.whatsappNumber || "";
       whatsapp2.value = settings.whatsapp2 ?? "";
@@ -166,7 +197,54 @@ export const ajustesTab: TabModule = {
     };
 
     // ---- Gestor de usuarios: el dueño administra todos, el admin solo vendedores ----
-    const renderUsers = async (): Promise<void> => {
+    // Lista de usuarios: se muestra al instante con la última copia guardada y
+    // se actualiza en segundo plano (antes se borraba y esperaba al servidor).
+    const usersCacheKey = (): string => `pos-users-cache:${ctx.auth.session?.user?.id ?? "x"}`;
+    const readUsersCache = (): ManagedUser[] | null => {
+      try {
+        const raw = localStorage.getItem(usersCacheKey());
+        return raw ? (JSON.parse(raw) as ManagedUser[]) : null;
+      } catch {
+        return null;
+      }
+    };
+    const writeUsersCache = (users: ManagedUser[]): void => {
+      try {
+        localStorage.setItem(usersCacheKey(), JSON.stringify(users));
+      } catch {
+        /* sin espacio: solo se pierde la copia rápida */
+      }
+    };
+    const paintUsers = (users: ManagedUser[]): void => {
+      cachedUsers = users;
+      if (!users.length) {
+        setHtml(usersList, html`<p class="muted">Sin usuarios.</p>`);
+        return;
+      }
+      setHtml(
+        usersList,
+        html`${users.map(
+          (user) => html`
+            <div class="list-item item-line">
+              <div>
+                <strong>${user.name}</strong>
+                <p class="muted">
+                  ${user.email} · ${ROLE_LABELS[user.role] ?? user.role}${user.branch_id ? ` · ${ctx.branches.name(user.branch_id)}` : user.role === "admin" ? " · Todas las sucursales" : ""}
+                </p>
+              </div>
+              <div class="actions">
+                <button class="ghost" type="button" data-edit-user="${user.user_id}">Editar</button>
+                <button class="ghost danger" type="button" data-delete-user="${user.user_id}">Eliminar</button>
+              </div>
+            </div>
+          `
+        )}`
+      );
+    };
+    let usersLoading: Promise<void> | null = null;
+    let usersLoadedAt = 0;
+
+    const renderUsers = async (force = false): Promise<void> => {
       if (!ctx.auth.isAdmin()) {
         usersSection.hidden = true;
         return;
@@ -175,35 +253,25 @@ export const ajustesTab: TabModule = {
       const owner = ctx.auth.isOwner();
       usersTitle.textContent = owner ? "Usuarios" : "Vendedores";
       addUser.textContent = owner ? "Agregar" : "Agregar vendedor";
-      setHtml(usersList, html`<p class="muted">Cargando…</p>`);
-      try {
-        cachedUsers = await ctx.userAdmin.list();
-        if (!cachedUsers.length) {
-          setHtml(usersList, html`<p class="muted">Sin usuarios.</p>`);
-          return;
+      const cached = cachedUsers.length ? cachedUsers : readUsersCache();
+      if (cached) paintUsers(cached);
+      else setHtml(usersList, html`<p class="muted">Cargando usuarios…</p>`);
+      // Se revisa con el servidor como máximo cada 20 s (o al guardar cambios)
+      if (!force && Date.now() - usersLoadedAt < 20_000) return;
+      if (usersLoading) return usersLoading;
+      usersLoading = (async () => {
+        try {
+          const fresh = await ctx.userAdmin.list();
+          usersLoadedAt = Date.now();
+          writeUsersCache(fresh);
+          paintUsers(fresh);
+        } catch (error) {
+          if (!cached) setHtml(usersList, html`<p class="muted">${error instanceof Error ? error.message : "No se pudieron cargar los usuarios"}</p>`);
+        } finally {
+          usersLoading = null;
         }
-        setHtml(
-          usersList,
-          html`${cachedUsers.map(
-            (user) => html`
-              <div class="list-item item-line">
-                <div>
-                  <strong>${user.name}</strong>
-                  <p class="muted">
-                    ${user.email} · ${ROLE_LABELS[user.role] ?? user.role}${user.branch_id ? ` · ${ctx.branches.name(user.branch_id)}` : ""}
-                  </p>
-                </div>
-                <div class="actions">
-                  <button class="ghost" type="button" data-edit-user="${user.user_id}">Editar</button>
-                  <button class="ghost danger" type="button" data-delete-user="${user.user_id}">Eliminar</button>
-                </div>
-              </div>
-            `
-          )}`
-        );
-      } catch (error) {
-        setHtml(usersList, html`<p class="muted">${error instanceof Error ? error.message : "No se pudieron cargar los usuarios"}</p>`);
-      }
+      })();
+      return usersLoading;
     };
 
     const field = (id: string): HTMLInputElement | HTMLSelectElement =>
@@ -212,7 +280,9 @@ export const ajustesTab: TabModule = {
     const openUserForm = (user?: ManagedUser): void => {
       const isOwner = ctx.auth.isOwner();
       const branches = ctx.branches.list();
-      const isEmployeeOnly = !isOwner || user?.role === "empleado";
+      // Admin con sucursal: sus vendedores quedan en esa sucursal (el servidor lo exige igual)
+      const myBranch = isOwner ? null : ctx.auth.assignedBranchId();
+      const initialRole: Role = isOwner ? (user?.role ?? "empleado") : "empleado";
       openModal({
         title: user ? (isOwner ? "Editar usuario" : "Editar vendedor") : isOwner ? "Nuevo usuario" : "Nuevo vendedor",
         content: html`
@@ -241,14 +311,15 @@ export const ajustesTab: TabModule = {
                 </select>
               </label>`
             : html``}
-          ${isEmployeeOnly
-            ? html`<label class="form-field">Sucursal del vendedor
+          ${myBranch
+            ? html`<p class="hint">Sucursal: <b>${ctx.branches.name(myBranch)}</b> (la tuya).</p>`
+            : html`<label class="form-field ${initialRole === "dueno" ? "hidden" : ""}" id="uBranchField"><span id="uBranchLabel">${initialRole === "admin" ? "Sucursal que administra" : "Sucursal del vendedor"}</span>
                 <select id="uBranch" class="input">
-                  <option value="">Sin sucursal</option>
+                  <option value="" id="uBranchNone">${initialRole === "admin" ? "Todas las sucursales" : "Sin sucursal"}</option>
                   ${branches.map((branch) => html`<option value="${branch.id}" ${user?.branch_id === branch.id ? "selected" : null}>${branch.name}</option>`)}
                 </select>
-              </label>`
-            : html``}
+                <small class="hint" id="uBranchHint">${initialRole === "admin" ? "Con una sucursal, solo ve y opera esa sucursal. \"Todas\" puede cambiar entre sucursales y ver el consolidado." : ""}</small>
+              </label>`}
           ${user ? html`<label class="form-field">Nueva contraseña (opcional)
             <span class="pass-field">
               <input id="uPass" class="input" type="password" autocomplete="new-password">
@@ -256,6 +327,24 @@ export const ajustesTab: TabModule = {
             </span>
           </label>` : html``}
         `,
+        onOpen: (modalRoot) => {
+          // Al cambiar el rol se ajusta el campo de sucursal
+          const roleSelect = modalRoot.querySelector<HTMLSelectElement>("#uRole");
+          roleSelect?.addEventListener("change", () => {
+            const role = roleSelect.value as Role;
+            modalRoot.querySelector("#uBranchField")?.classList.toggle("hidden", role === "dueno");
+            const label = modalRoot.querySelector("#uBranchLabel");
+            const none = modalRoot.querySelector("#uBranchNone");
+            const hint = modalRoot.querySelector("#uBranchHint");
+            if (label) label.textContent = role === "admin" ? "Sucursal que administra" : "Sucursal del vendedor";
+            if (none) none.textContent = role === "admin" ? "Todas las sucursales" : "Sin sucursal";
+            if (hint) {
+              hint.textContent = role === "admin"
+                ? "Con una sucursal, solo ve y opera esa sucursal. \"Todas\" puede cambiar entre sucursales y ver el consolidado."
+                : "";
+            }
+          });
+        },
         actions: [
           { label: "Cancelar", kind: "ghost", onClick: (close) => close() },
           {
@@ -266,7 +355,8 @@ export const ajustesTab: TabModule = {
               const roleSelect = field("uRole") as HTMLSelectElement | null;
               const role: Role = roleSelect ? (roleSelect.value as Role) : "empleado";
               const branchField = field("uBranch") as HTMLSelectElement | null;
-              const branchId = branchField ? branchField.value || null : null;
+              // El dueño no lleva sucursal; vendedor y administrador sí (admin vacío = todas)
+              const branchId = role === "dueno" ? null : myBranch ?? (branchField ? branchField.value || null : null);
               const pass = (document.getElementById("uPass") as HTMLInputElement | null)?.value ?? "";
               void (async () => {
                 try {
@@ -275,7 +365,7 @@ export const ajustesTab: TabModule = {
                       user_id: user.user_id,
                       name,
                       role,
-                      branch_id: role === "empleado" ? branchId : null,
+                      branch_id: branchId,
                       password: pass || undefined
                     });
                     ctx.toast("Usuario actualizado");
@@ -285,11 +375,11 @@ export const ajustesTab: TabModule = {
                       ctx.toast("Escribe un correo y una contraseña de al menos 6 caracteres");
                       return;
                     }
-                    await ctx.userAdmin.create({ email, password: pass, name: name || email, role, branch_id: role === "empleado" ? branchId : null });
+                    await ctx.userAdmin.create({ email, password: pass, name: name || email, role, branch_id: branchId });
                     ctx.toast("Usuario creado");
                   }
                   close();
-                  void renderUsers();
+                  void renderUsers(true);
                 } catch (error) {
                   ctx.toast(error instanceof Error ? error.message : "No se pudo guardar");
                 }
@@ -325,7 +415,7 @@ export const ajustesTab: TabModule = {
         try {
           await ctx.userAdmin.remove(user.user_id);
           ctx.toast("Usuario eliminado");
-          void renderUsers();
+          void renderUsers(true);
         } catch (error) {
           ctx.toast(error instanceof Error ? error.message : "No se pudo eliminar");
         }

@@ -22,7 +22,7 @@ export function expensePeriod(expense: Pick<Expense, "period">): ExpensePeriod {
 }
 
 /** Lunes 00:00 local de la semana de `d`. */
-function weekStart(d: Date): Date {
+export function weekStart(d: Date): Date {
   const day = (d.getDay() + 6) % 7;
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
 }
@@ -63,6 +63,43 @@ export function fixedCostsForRange(expenses: readonly Expense[], start: string, 
     }
   }
   return Math.round(total);
+}
+
+/** ¿Es un pago de nómina (sueldos, salarios)? Por categoría o concepto. */
+export function isPayroll(expense: Pick<Expense, "category" | "concept">): boolean {
+  const text = `${expense.category} ${expense.concept}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /sueldo|nomina|salario|raya|pago de empleados|empleado/.test(text);
+}
+
+/** Monto semanal de un costo fijo: el semanal tal cual; el mensual × 12 ÷ 52. */
+export function weeklyCents(expense: Pick<Expense, "amount" | "period">): Cents {
+  const cents = toCents(expense.amount);
+  return expensePeriod(expense) === "semanal" ? cents : Math.round((cents * 12) / 52);
+}
+
+/**
+ * Meta de nómina de la semana (lunes a domingo): cuánta ganancia hace falta
+ * para pagar sueldos y cuánto por día en lo que queda de la semana.
+ */
+export function payrollProgress(weeklyPayrollCents: Cents, earnedCents: Cents, now = new Date()): {
+  goal: Cents;
+  earned: Cents;
+  missing: Cents;
+  progress: number;
+  daysLeft: number;
+  perDay: Cents;
+} {
+  const dayIndex = (now.getDay() + 6) % 7; // lunes = 0
+  const daysLeft = 7 - dayIndex; // incluye hoy
+  const missing = Math.max(0, weeklyPayrollCents - earnedCents);
+  return {
+    goal: weeklyPayrollCents,
+    earned: earnedCents,
+    missing,
+    progress: weeklyPayrollCents > 0 ? Math.max(0, Math.min(100, Math.round((earnedCents / weeklyPayrollCents) * 100))) : 0,
+    daysLeft,
+    perDay: missing > 0 ? Math.ceil(missing / daysLeft) : 0
+  };
 }
 
 /** Monto diario para cubrir costos mensuales (÷ días del mes) y semanales (÷ 7). */
@@ -110,6 +147,12 @@ export class ExpenseService {
   monthlyFixedCents(scope: string = this.branches.operationalId(), date = new Date()): Cents {
     const { monthly, weekly } = this.fixedBreakdown(scope);
     return Math.round(monthly + (weekly * daysInMonth(date)) / 7);
+  }
+
+  /** Nómina de la semana: costos fijos de sueldos (los mensuales se pasan a semana). */
+  payroll(scope: string = this.branches.operationalId()): { weekly: Cents; items: Expense[] } {
+    const items = this.fixedCosts(scope).filter(isPayroll);
+    return { weekly: sumCents(items.map(weeklyCents)), items };
   }
 
   dailyTargetCents(scope: string = this.branches.operationalId(), date = new Date()): Cents {

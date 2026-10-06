@@ -31,7 +31,10 @@ export const ICONS = {
   arrowDown: icon('<path d="M12 5v13M6.5 12.5 12 18l5.5-5.5"/>'),
   arrowUp: icon('<path d="M12 19V6M6.5 11.5 12 6l5.5 5.5"/>'),
   mic: icon('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>'),
-  search: icon('<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>')
+  search: icon('<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>'),
+  card: icon('<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>'),
+  transfer: icon('<path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"/>'),
+  user: icon('<circle cx="12" cy="8.2" r="3.4"/><path d="M5.2 19c1.5-3.1 4-4.7 6.8-4.7s5.3 1.6 6.8 4.7"/>')
 };
 
 /** Icono por pestaña (el id de pestaña no coincide con el nombre del icono). */

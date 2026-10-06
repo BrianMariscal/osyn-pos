@@ -1,17 +1,15 @@
 import { html, setHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
 import { fmtQty } from "../../core/qty";
-import { PAYMENT_LABELS, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
-import { matchOrdersToProducts } from "../../domain/voice/product-matcher";
-import { parseVoiceSale } from "../../domain/voice/voice-parser";
-import { lowStockProducts, productMatches, resolveScannedCode, suggestOffers, supplierCode, supplierLabel, topSellers } from "../../domain/catalog";
-import { mountCarousels } from "../carousel";
-import { parseSaleWithAi, type AiSaleItem } from "../../ai/assistant-client";
+import { type CartUnit, type PaymentMethod, type Product, type Supplier } from "../../core/types";
+import { resolveScannedCode, searchProducts } from "../../domain/catalog";
 import { scanBarcode } from "../scanner";
-import { openModal } from "../components/modal";
 import { iconFor } from "../icons";
-import { listenOnce, speak, speechSupported, vibrate, isVoiceEnabled } from "../voice-recognition";
+import { speak, vibrate, isVoiceEnabled } from "../voice-recognition";
 import { openNewProductModal } from "./inventario";
+import { cashChange, quickCashOptions } from "../../domain/ticket";
+import { openTicket } from "../ticket";
+import { openModal } from "../components/modal";
 import type { TabModule } from "./tab-module";
 
 /** Paso del stepper según la unidad: piezas enteras, medio litro/kilo, 50 gramos. */
@@ -22,87 +20,99 @@ function qtyStep(um: string): number {
 }
 
 const NEW_CUSTOMER = "__nuevo__";
+const MAX_RESULTS = 8;
 
+/**
+ * Punto de venta. Izquierda: buscar/escanear y los renglones de la venta.
+ * Derecha: el cobro (total, forma de pago, recibido y cambio). En celular todo
+ * va en una columna y una barra fija abajo muestra el total y "Cobrar".
+ */
 export const ventaTab: TabModule = {
   id: "venta",
   render(root, ctx) {
     setHtml(
       root,
       html`
-        <div class="split">
-          <article class="card">
-            <div class="search-row">
-              <input id="productSearch" class="input" type="search" placeholder="Buscar producto, código o proveedor (#3)" autocomplete="off" enterkeyhint="search" aria-label="Buscar producto">
-              <button id="scanButton" class="ghost" type="button" title="Escanear código de barras o QR">${iconFor("barcode")} <span class="hide-sm">Escanear</span></button>
+        <div class="pos">
+          <section class="card pos-main">
+            <div class="pos-search">
+              <label class="search-field">
+                ${iconFor("search")}
+                <input id="productSearch" type="search" placeholder="Escribe el producto o escanea el código" autocomplete="off" enterkeyhint="search" aria-label="Buscar producto">
+              </label>
+              <button id="scanButton" class="primary" type="button" title="Escanear con la cámara">${iconFor("barcode")}<span class="hide-sm">Escanear</span></button>
             </div>
-            <div class="filter-row">
-              <select id="supplierFilter" class="input" aria-label="Filtrar por proveedor"></select>
+            <p class="kbd-hint"><kbd>F2</kbd> buscar · <kbd>Enter</kbd> agregar · <kbd>3*</kbd> cantidad · <kbd>F4</kbd> recibido · <kbd>F9</kbd> cobrar · <button type="button" class="link-btn" id="showShortcuts"><kbd>F1</kbd> todos los atajos</button></p>
+            <div id="searchResults" class="search-results hidden" role="listbox" aria-label="Resultados"></div>
+
+            <div class="pos-lines-head">
+              <h2>Productos de la venta <span class="count-badge" data-tone="blue" id="cartBadge"></span></h2>
+              <button id="clearCart" class="ghost danger small-btn" type="button">${iconFor("trash")} Vaciar</button>
             </div>
-            <div class="voice-sale-box">
-              <button id="voiceSaleButton" class="primary" type="button">${iconFor("mic")} Hablar venta</button>
-              <p id="voiceSaleText" class="hint">Di: "dos cocas, una leche y tres panes".</p>
+            <div class="pos-lines-cols" aria-hidden="true"><span>Producto</span><span>Cantidad</span><span>Importe</span><span></span></div>
+            <div id="cartItems" class="pos-lines"></div>
+          </section>
+
+          <aside class="card pos-pay" id="payPanel">
+            <div class="pay-total">
+              <span id="cartTotalLabel">Total a cobrar</span>
+              <strong id="cartTotal">$0.00</strong>
             </div>
-            <div id="saleHighlights" class="highlights"></div>
-            <div id="catalogBar" class="catalog-bar hidden">
-              <span class="hint" id="catalogInfo"></span>
-              <button id="closeCatalog" class="ghost" type="button">Ocultar catálogo</button>
+            <p class="micro">Forma de pago</p>
+            <div class="pay-methods" id="payMethods" role="radiogroup" aria-label="Forma de pago">
+              <button type="button" role="radio" data-pay="efectivo">${iconFor("wallet")}<span>Efectivo</span></button>
+              <button type="button" role="radio" data-pay="transferencia">${iconFor("transfer")}<span>Transferencia</span></button>
+              <button type="button" role="radio" data-pay="tarjeta">${iconFor("card")}<span>Tarjeta</span></button>
+              <button type="button" role="radio" data-pay="fiado">${iconFor("user")}<span>Fiado</span></button>
+              <button type="button" role="radio" data-pay="interno">${iconFor("box")}<span>Uso interno</span></button>
             </div>
-            <div id="productGrid" class="product-grid"></div>
-          </article>
-          <article class="card cart-card" id="cartCard">
-            <button class="cart-toggle" id="cartToggle" type="button" aria-expanded="false" aria-controls="cartBody">
-              <span>Carrito <span id="cartCount" class="muted"></span></span>
-              <strong id="cartToggleTotal">$0.00</strong>
-            </button>
-            <div class="cart-body" id="cartBody">
-              <div id="cartItems" class="list cart-items"><p class="muted">Sin productos</p></div>
-              <div class="cart-pay">
-                <div class="total-row"><span id="cartTotalLabel">Total</span><strong id="cartTotal">$0.00</strong></div>
-                <label class="form-field">Forma de pago
-                  <select id="paymentType" class="input">
-                    <option value="efectivo">Efectivo</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="tarjeta">Tarjeta</option>
-                    <option value="fiado">Fiado (a cuenta del cliente)</option>
-                    <option value="interno">Venta interna (uso de la tienda)</option>
-                  </select>
+            <select id="paymentType" class="hidden" aria-hidden="true" tabindex="-1">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="fiado">Fiado</option>
+              <option value="interno">Uso interno</option>
+            </select>
+            <div id="cashBox" class="cash-box">
+              <div class="cash-grid">
+                <label class="cash-field">
+                  <span>Recibido</span>
+                  <input id="cashReceived" class="input cash-input" type="number" step="0.5" min="0" inputmode="decimal" placeholder="$0.00">
                 </label>
-                <div id="creditBox" class="credit-box hidden">
-                  <label class="form-field">Cliente
-                    <select id="creditCustomer" class="input"></select>
-                  </label>
-                  <div id="newCustomerFields" class="form hidden">
-                    <input id="ncName" class="input" placeholder="Nombre del cliente" aria-label="Nombre del cliente" autocomplete="off">
-                    <input id="ncPhone" class="input" type="tel" placeholder="Teléfono (opcional)" aria-label="Teléfono">
-                    <input id="ncNotes" class="input" placeholder="Domicilio / referencias (opcional)" aria-label="Domicilio o referencias">
-                  </div>
-                  <p class="hint" id="creditHint"></p>
-                </div>
-                <p id="internalHint" class="hint notice hidden">Se descuenta del inventario pero no suma a las ventas del día. Se registra a costo para el control.</p>
-                <div class="actions">
-                  <button id="completeSale" class="primary grow">Cobrar</button>
-                  <button id="clearCart" class="ghost danger">Vaciar</button>
-                </div>
+                <div class="cash-change empty" id="cashChange" aria-live="polite"><span>Cambio</span><strong>—</strong></div>
               </div>
+              <div class="cash-quick" id="cashQuick"></div>
             </div>
-          </article>
+            <div id="creditBox" class="credit-box hidden">
+              <label class="form-field">Cliente
+                <select id="creditCustomer" class="input"></select>
+              </label>
+              <div id="newCustomerFields" class="form hidden">
+                <input id="ncName" class="input" placeholder="Nombre del cliente" aria-label="Nombre del cliente" autocomplete="off">
+                <input id="ncPhone" class="input" type="tel" placeholder="Teléfono (opcional)" aria-label="Teléfono">
+                <input id="ncNotes" class="input" placeholder="Domicilio / referencias (opcional)" aria-label="Domicilio o referencias">
+              </div>
+              <p class="hint" id="creditHint"></p>
+            </div>
+            <p id="internalHint" class="hint notice hidden">Se descuenta del inventario pero no suma a las ventas del día. Se registra a costo para el control.</p>
+            <button id="completeSale" class="primary pay-button" type="button">Cobrar</button>
+          </aside>
+        </div>
+        <div class="pos-bar" id="posBar">
+          <div class="pos-bar-total"><span id="posBarCount"></span><strong id="posBarTotal">$0.00</strong></div>
+          <button id="posBarPay" class="pay-button" type="button">Cobrar</button>
         </div>
       `
     );
 
     const search = root.querySelector<HTMLInputElement>("#productSearch")!;
-    const supplierFilter = root.querySelector<HTMLSelectElement>("#supplierFilter")!;
-    const grid = root.querySelector<HTMLElement>("#productGrid")!;
-    const highlights = root.querySelector<HTMLElement>("#saleHighlights")!;
-    const catalogBar = root.querySelector<HTMLElement>("#catalogBar")!;
-    const catalogInfo = root.querySelector<HTMLElement>("#catalogInfo")!;
-    /** Catálogo completo abierto a mano (sin buscar ni filtrar). */
-    let showAll = false;
-    const carousels = mountCarousels(highlights, () => root.classList.contains("active"));
+    const resultsEl = root.querySelector<HTMLElement>("#searchResults")!;
     const items = root.querySelector<HTMLElement>("#cartItems")!;
+    const cartBadge = root.querySelector<HTMLElement>("#cartBadge")!;
+    const payPanel = root.querySelector<HTMLElement>("#payPanel")!;
+    const payMethods = root.querySelector<HTMLElement>("#payMethods")!;
     const totalEl = root.querySelector<HTMLElement>("#cartTotal")!;
     const totalLabelEl = root.querySelector<HTMLElement>("#cartTotalLabel")!;
-    const toggleTotalEl = root.querySelector<HTMLElement>("#cartToggleTotal")!;
     const payment = root.querySelector<HTMLSelectElement>("#paymentType")!;
     const creditBox = root.querySelector<HTMLElement>("#creditBox")!;
     const customer = root.querySelector<HTMLSelectElement>("#creditCustomer")!;
@@ -113,154 +123,225 @@ export const ventaTab: TabModule = {
     const creditHint = root.querySelector<HTMLElement>("#creditHint")!;
     const internalHint = root.querySelector<HTMLElement>("#internalHint")!;
     const completeButton = root.querySelector<HTMLButtonElement>("#completeSale")!;
-    const voiceButton = root.querySelector<HTMLButtonElement>("#voiceSaleButton")!;
-    const voiceText = root.querySelector<HTMLElement>("#voiceSaleText")!;
-    const cartCard = root.querySelector<HTMLElement>("#cartCard")!;
+    const cashBox = root.querySelector<HTMLElement>("#cashBox")!;
+    const cashInput = root.querySelector<HTMLInputElement>("#cashReceived")!;
+    const cashQuick = root.querySelector<HTMLElement>("#cashQuick")!;
+    const cashChangeEl = root.querySelector<HTMLElement>("#cashChange")!;
+    const posBar = root.querySelector<HTMLElement>("#posBar")!;
+    const posBarTotal = root.querySelector<HTMLElement>("#posBarTotal")!;
+    const posBarCount = root.querySelector<HTMLElement>("#posBarCount")!;
+    const posBarPay = root.querySelector<HTMLButtonElement>("#posBarPay")!;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
     const voiceEnabled = isVoiceEnabled;
-
-    // iPhone: sin dictado — se oculta el bloque de venta por voz
-    root.querySelector(".voice-sale-box")?.classList.toggle("hidden", !speechSupported());
-
+    const isMobile = (): boolean => Boolean(window.matchMedia?.("(max-width: 860px)").matches);
     const suppliersById = (): Map<string, Supplier> => new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
-
-    const filteredProducts = (): Product[] => {
-      const q = search.value.trim();
-      const supplierId = supplierFilter.value;
+    const sellable = (): Product[] => ctx.repos.products.list().filter((p) => p.active !== false);
+    const matchesFor = (query: string): Product[] => {
       const suppliers = suppliersById();
-      return ctx.repos.products
-        .list()
-        .filter((p) => p.active !== false)
-        .filter((p) => !supplierId || (supplierId === "none" ? !p.supplier_id || !suppliers.has(p.supplier_id) : p.supplier_id === supplierId))
-        .filter((p) => productMatches(p, q, p.supplier_id ? suppliers.get(p.supplier_id) : undefined))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      return searchProducts(sellable(), query, (p) => (p.supplier_id ? suppliers.get(p.supplier_id) : undefined));
     };
 
-    const renderSupplierFilter = (): void => {
-      const suppliers = ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
-      const selected = supplierFilter.value;
-      supplierFilter.closest(".filter-row")?.classList.toggle("hidden", !suppliers.length);
-      setHtml(
-        supplierFilter,
-        html`<option value="">Todos los proveedores</option>
-          ${suppliers.map((s) => html`<option value="${s.id}" ${s.id === selected ? "selected" : null}>${supplierLabel(s)}</option>`)}
-          <option value="none" ${selected === "none" ? "selected" : null}>Sin proveedor</option>`
-      );
-      if (selected && supplierFilter.value !== selected) supplierFilter.value = "";
+    // ---------------- Búsqueda: escribir o escanear agrega directo ----------------
+
+    /** "3*coca" o "3 x coca": cantidad antes del producto (como en las cajas registradoras). */
+    const parseQuery = (raw: string): { qty: number; text: string } => {
+      const match = /^\s*(\d+(?:[.,]\d+)?)\s*[*xX]\s*(.*)$/.exec(raw);
+      if (!match) return { qty: 1, text: raw.trim() };
+      const qty = Number(match[1]!.replace(",", "."));
+      return { qty: Number.isFinite(qty) && qty > 0 ? qty : 1, text: match[2]!.trim() };
     };
 
-    /**
-     * La cuadrícula solo aparece al buscar, filtrar por proveedor o abrir el
-     * catálogo; por defecto se ven los recuadros con movimiento.
-     */
-    const catalogMode = (): boolean => showAll || Boolean(search.value.trim()) || Boolean(supplierFilter.value);
+    let found: Product[] = [];
+    let activeIndex = 0;
 
-    const renderGrid = (): void => {
-      const browsing = catalogMode();
-      highlights.classList.toggle("hidden", browsing);
-      grid.classList.toggle("hidden", !browsing);
-      catalogBar.classList.toggle("hidden", !browsing);
-      if (!browsing) {
-        setHtml(grid, html``);
+    /** Lista corta de coincidencias bajo el buscador. Sin texto: no se muestra nada. */
+    const renderResults = (): void => {
+      const { text, qty } = parseQuery(search.value);
+      if (!text) {
+        found = [];
+        resultsEl.classList.add("hidden");
+        setHtml(resultsEl, html``);
         return;
       }
-      const products = filteredProducts();
-      catalogInfo.textContent = `${products.length} ${products.length === 1 ? "producto" : "productos"}`;
-      if (!products.length) {
-        const empty = !ctx.repos.products.list().length;
-        setHtml(grid, html`<p class="muted grid-empty">${empty ? "Agrega productos para vender." : "Ningún producto coincide con la búsqueda."}</p>`);
+      found = matchesFor(text).slice(0, MAX_RESULTS);
+      const total = found.length ? matchesFor(text).length : 0;
+      activeIndex = Math.min(activeIndex, Math.max(0, found.length - 1));
+      resultsEl.classList.remove("hidden");
+      if (!found.length) {
+        setHtml(resultsEl, html`<p class="search-empty">Ningún producto coincide con “${text}”.</p>`);
         return;
       }
-      const suppliers = suppliersById();
       setHtml(
-        grid,
-        html`${products.map((product) => {
+        resultsEl,
+        html`${found.map((product, index) => {
           const stock = ctx.sales.stockOf(product.id);
           const min = ctx.sales.minStockOf(product.id);
-          const out = stock <= 0;
-          const supplier = product.supplier_id ? suppliers.get(product.supplier_id) : undefined;
-          return html`<button
-            class="product-tile ${stock <= min ? "low" : ""} ${out ? "out" : ""}"
-            type="button"
-            data-add="${product.id}"
-            ${out ? "disabled" : null}
-          >
-            <strong>${product.name}</strong>
-            <span class="tile-cat">${product.category || "Sin categoría"}${supplier ? ` · ${supplierCode(supplier) || supplier.name}` : ""}</span>
-            <b>${fmtMoneyPesos(product.price)}</b>
-            <span class="tile-stock">${out ? "Agotado" : `Stock: ${fmtQty(stock)} ${product.um}`}</span>
-          </button>`;
-        })}`
+          return html`
+            <button class="result-row ${index === activeIndex ? "active" : ""}" type="button" role="option" aria-selected="${index === activeIndex ? "true" : "false"}" data-result="${product.id}" tabindex="-1">
+              <span class="row-title"><strong>${product.name}</strong><small class="muted">${product.category || "Sin categoría"}${product.barcode ? ` · ${product.barcode}` : ""}</small></span>
+              <span class="stock-pill" data-tone="${stock <= 0 ? "coral" : stock <= min ? "amber" : "green"}">${stock <= 0 ? "Agotado" : `${fmtQty(stock)} ${product.um}`}</span>
+              <strong class="row-price">${qty !== 1 ? html`<small class="muted">${fmtQty(qty)} × </small>` : html``}${fmtMoneyPesos(product.price)}</strong>
+            </button>
+          `;
+        })}${total > MAX_RESULTS ? html`<p class="search-more">${total - MAX_RESULTS} más: sigue escribiendo para afinar</p>` : html``}<p class="search-keys">↑ ↓ elegir · Enter agregar · Esc limpiar</p>`
       );
     };
 
-    /** Recuadros: más vendidos, por agotarse y ofertas que arroja el sistema. */
-    const renderHighlights = (): void => {
-      const products = ctx.repos.products.list();
-      const branchId = ctx.branches.operationalId();
-      const sales = ctx.repos.sales.list().filter((sale) => sale.branch_id === branchId);
-      const stockOf = (id: string): number => ctx.sales.stockOf(id);
-      const top = topSellers(products, sales);
-      const low = lowStockProducts(products, stockOf, (id) => ctx.sales.minStockOf(id));
-      const offers = suggestOffers(products, sales, stockOf);
-      carousels.render([
-        {
-          id: "top",
-          title: "Más vendidos",
-          subtitle: "Últimos 30 días",
-          empty: "Aún no hay ventas en los últimos 30 días.",
-          items: top.map(({ product, qty }, index) => ({
-            productId: product.id,
-            name: product.name,
-            price: fmtMoneyPesos(product.price),
-            badge: `#${index + 1}`,
-            detail: `${fmtQty(qty)} ${product.um} vendidos`,
-            disabled: stockOf(product.id) <= 0
-          }))
-        },
-        {
-          id: "low",
-          title: "Por agotarse",
-          subtitle: "Existencia en o bajo el mínimo",
-          empty: "Todo tiene buena existencia.",
-          items: low.map(({ product, stock, min }) => ({
-            productId: product.id,
-            name: product.name,
-            price: fmtMoneyPesos(product.price),
-            badge: stock <= 0 ? "Agotado" : "Quedan pocos",
-            detail: `Quedan ${fmtQty(stock)} ${product.um} · mín ${fmtQty(min)}`,
-            disabled: stock <= 0
-          }))
-        },
-        {
-          id: "offers",
-          title: "Ofertas sugeridas",
-          subtitle: "Sin venta en 30 días o más: tócala para venderla con descuento",
-          empty: "Sin ofertas: todo se ha vendido en el último mes.",
-          items: offers.map(({ product, idleDays, discountPct, offerPrice }) => ({
-            productId: product.id,
-            name: product.name,
-            price: fmtMoneyPesos(offerPrice),
-            was: fmtMoneyPesos(product.price),
-            promoPrice: offerPrice,
-            badge: `−${discountPct}%`,
-            detail: `${idleDays} días sin venta`,
-            disabled: false
-          }))
+    /** Deja la búsqueda como al inicio: sin texto ni resultados. */
+    const resetSearch = (focus = false): void => {
+      if (searchTimer) clearTimeout(searchTimer);
+      search.value = "";
+      activeIndex = 0;
+      renderResults();
+      if (focus && !isMobile()) search.focus({ preventScroll: true });
+    };
+
+    /** Agrega a la venta sin pasos extra y resalta el renglón. */
+    const addProduct = (product: Product, qty = 1): void => {
+      const result = ctx.sales.addToCart(product.id, qty);
+      if (!result.ok) {
+        ctx.toast(`${product.name}: ${result.error}`);
+        vibrate(120);
+        return;
+      }
+      vibrate(40);
+      resetSearch(true);
+      requestAnimationFrame(() => {
+        const row = items.querySelector<HTMLElement>(`[data-line="${CSS.escape(product.id)}"][data-unit="pza"]`);
+        if (!row) return;
+        row.classList.remove("flash");
+        void row.offsetWidth;
+        row.classList.add("flash");
+        row.scrollIntoView({ block: "nearest" });
+      });
+    };
+
+    /** Código leído (cámara, lector USB/Bluetooth o QR): se agrega, o alta rápida si no existe. */
+    const handleCode = (code: string, qty = 1): void => {
+      const product = resolveScannedCode(ctx.repos.products.list(), code);
+      if (product) {
+        addProduct(product, qty);
+        return;
+      }
+      const matches = matchesFor(code);
+      if (matches.length === 1) {
+        addProduct(matches[0]!, qty);
+        return;
+      }
+      if (!matches.length) {
+        resetSearch();
+        openNewProductModal(ctx, (created) => addProduct(created, qty), { barcode: code });
+        return;
+      }
+      search.value = code;
+      activeIndex = 0;
+      renderResults();
+    };
+
+    search.addEventListener("input", () => {
+      if (searchTimer) clearTimeout(searchTimer);
+      activeIndex = 0;
+      // Al borrar todo se restablece al instante
+      if (!parseQuery(search.value).text) {
+        renderResults();
+        return;
+      }
+      searchTimer = setTimeout(renderResults, 120);
+    });
+
+    // Enter: los lectores de código (USB/Bluetooth) "teclean" el código y Enter.
+    // Código exacto → se agrega. Si no, se agrega el resultado marcado (↑ ↓).
+    search.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        resetSearch(true);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        if (searchTimer) {
+          clearTimeout(searchTimer);
+          renderResults();
         }
-      ]);
+        if (!found.length) return;
+        event.preventDefault();
+        activeIndex = (activeIndex + (event.key === "ArrowDown" ? 1 : -1) + found.length) % found.length;
+        renderResults();
+        resultsEl.querySelector(".result-row.active")?.scrollIntoView({ block: "nearest" });
+        return;
+      }
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const { qty, text } = parseQuery(search.value);
+      if (!text) return;
+      if (searchTimer) clearTimeout(searchTimer);
+      const exact = resolveScannedCode(ctx.repos.products.list(), text);
+      if (exact) {
+        addProduct(exact, qty);
+        return;
+      }
+      const matches = matchesFor(text);
+      if (matches.length) addProduct(matches[Math.min(activeIndex, matches.length - 1)]!, qty);
+      else if (/^\d{6,}$/.test(text)) handleCode(text, qty);
+      else renderResults();
+    });
+
+    resultsEl.addEventListener("click", (event) => {
+      const row = (event.target as HTMLElement).closest<HTMLElement>("[data-result]");
+      const product = row && ctx.repos.products.byId(row.dataset.result!);
+      if (product) addProduct(product, parseQuery(search.value).qty);
+    });
+
+    // ---------------- Carrito y cobro ----------------
+
+    const cartTotalCents = (): number =>
+      sumCents(
+        ctx.sales.cart().map((line) => (ctx.repos.products.byId(line.productId) ? lineTotalCents(line.qty, ctx.sales.unitPrice(line)) : 0))
+      );
+
+    /** Efectivo: con cuánto paga y cuánto cambio se entrega. */
+    const renderCash = (): void => {
+      const cash = payment.value === "efectivo";
+      const total = cartTotalCents();
+      cashBox.classList.toggle("hidden", !cash || total <= 0);
+      if (!cash || total <= 0) return;
+      setHtml(
+        cashQuick,
+        html`<button type="button" class="chip-btn" data-cash="exact">Exacto</button>${quickCashOptions(total).map(
+          (bill) => html`<button type="button" class="chip-btn" data-cash="${bill}">$${bill}</button>`
+        )}`
+      );
+      const check = cashChange(total, cashInput.value);
+      cashChangeEl.className = `cash-change ${check.status}`;
+      setHtml(
+        cashChangeEl,
+        check.status === "ok"
+          ? html`<span>Cambio</span><strong>${fmtMoney(check.changeCents)}</strong>`
+          : check.status === "short"
+            ? html`<span>Faltan</span><strong>${fmtMoney(check.missingCents)}</strong>`
+            : html`<span>Cambio</span><strong>—</strong>`
+      );
     };
 
     const renderPaymentState = (): void => {
       const method = payment.value as PaymentMethod;
       const fiado = method === "fiado";
       const internal = method === "interno";
+      const total = cartTotalCents();
       creditBox.classList.toggle("hidden", !fiado);
       newCustomerFields.classList.toggle("hidden", !(fiado && customer.value === NEW_CUSTOMER));
       internalHint.classList.toggle("hidden", !internal);
-      completeButton.textContent = internal ? "Registrar uso interno" : fiado ? "Fiar" : "Cobrar";
-      totalLabelEl.textContent = internal ? "Total (a precio de venta)" : "Total";
+      const label = internal ? "Registrar uso interno" : fiado ? `Fiar ${fmtMoney(total)}` : `Cobrar ${fmtMoney(total)}`;
+      completeButton.textContent = label;
+      completeButton.disabled = total <= 0;
+      posBarPay.textContent = internal ? "Registrar" : fiado ? "Fiar" : "Cobrar";
+      totalLabelEl.textContent = internal ? "Total (a precio de venta)" : "Total a cobrar";
+      payMethods.querySelectorAll<HTMLElement>("[data-pay]").forEach((button) => {
+        const on = button.dataset.pay === method;
+        button.classList.toggle("active", on);
+        button.setAttribute("aria-checked", String(on));
+      });
+      renderCash();
       const selected = customer.value && customer.value !== NEW_CUSTOMER ? ctx.repos.customers.byId(customer.value) : undefined;
       creditHint.textContent = selected
         ? `Saldo actual: ${fmtMoneyPesos(selected.balance)}. La venta se suma a su cuenta en Fiado.`
@@ -272,21 +353,16 @@ export const ventaTab: TabModule = {
     const renderCart = (): void => {
       const cart = ctx.sales.cart();
       renderPaymentState();
-      cartCard.classList.toggle("cart-empty", cart.length === 0);
-      if (!cart.length) cartCard.classList.remove("cart-open");
-      const countLabel = root.querySelector<HTMLElement>("#cartCount");
-      if (countLabel) countLabel.textContent = cart.length ? `(${cart.length})` : "";
-      const totalCents = sumCents(
-        cart.map((line) => {
-          const product = ctx.repos.products.byId(line.productId);
-          return product ? lineTotalCents(line.qty, ctx.sales.unitPrice(line)) : 0;
-        })
-      );
-      const totalText = fmtMoney(totalCents);
-      totalEl.textContent = totalText;
-      toggleTotalEl.textContent = totalText;
+      root.classList.toggle("pos-empty", cart.length === 0);
+      const total = fmtMoney(cartTotalCents());
+      totalEl.textContent = total;
+      posBarTotal.textContent = total;
+      const pieces = cart.length;
+      cartBadge.textContent = pieces ? String(pieces) : "";
+      posBarCount.textContent = pieces ? `${pieces} ${pieces === 1 ? "producto" : "productos"}` : "";
+      posBar.classList.toggle("hidden", !pieces);
       if (!cart.length) {
-        setHtml(items, html`<p class="muted">Sin productos</p>`);
+        setHtml(items, html`<div class="cart-empty-note">${iconFor("cart")}<span>Aún no hay productos en la venta</span><small class="muted">Escribe el nombre o escanea el código para agregar</small></div>`);
         return;
       }
       setHtml(
@@ -294,25 +370,35 @@ export const ventaTab: TabModule = {
         html`${cart.map((line) => {
           const product = ctx.repos.products.byId(line.productId);
           if (!product) return html``;
+          const lineUnit: CartUnit = line.unit === "caja" ? "caja" : "pza";
+          const isBox = lineUnit === "caja";
           const unit = ctx.sales.unitPrice(line);
-          const onOffer = unit !== product.price;
-          const lineTotal = lineTotalCents(line.qty, unit);
-          const step = qtyStep(product.um);
+          const onOffer = !isBox && unit !== product.price;
+          const step = isBox ? 1 : qtyStep(product.um);
+          const byPack = ctx.sales.sellsByPack(product.id);
           return html`
-            <div class="list-item cart-item">
-              <div class="cart-item-info">
+            <div class="pos-line" data-line="${line.productId}" data-unit="${lineUnit}">
+              <div class="pos-line-info">
                 <strong>${product.name}</strong>
-                <p class="muted">${onOffer ? html`<s>${fmtMoneyPesos(product.price)}</s> <span class="offer-tag">Oferta ${fmtMoneyPesos(unit)}</span>` : fmtMoneyPesos(product.price)} por ${product.um}</p>
+                <span class="muted">${isBox
+                  ? `${fmtMoneyPesos(unit)} por caja de ${product.pack_size ?? 1}`
+                  : onOffer
+                    ? `Oferta ${fmtMoneyPesos(unit)} (antes ${fmtMoneyPesos(product.price)}) por ${product.um}`
+                    : `${fmtMoneyPesos(product.price)} por ${product.um}`}</span>
+                ${byPack
+                  ? html`<div class="unit-toggle" role="group" aria-label="Vender por">
+                      <button type="button" class="${isBox ? "" : "active"}" data-set-unit="pza" aria-pressed="${isBox ? "false" : "true"}">Pieza</button>
+                      <button type="button" class="${isBox ? "active" : ""}" data-set-unit="caja" aria-pressed="${isBox ? "true" : "false"}">Caja</button>
+                    </div>`
+                  : html``}
               </div>
               <div class="qty-stepper" data-step="${step}">
-                <button type="button" data-qty-dec="${line.productId}" aria-label="Menos cantidad">−</button>
-                <input class="input" type="number" min="0" max="${ctx.sales.stockOf(line.productId)}" step="${step}" value="${line.qty}" data-qty="${line.productId}" inputmode="decimal" aria-label="Cantidad de ${product.name}">
-                <button type="button" data-qty-inc="${line.productId}" aria-label="Más cantidad">+</button>
+                <button type="button" data-qty-dec aria-label="Menos cantidad">−</button>
+                <input class="input" type="number" min="0" max="${ctx.sales.availableFor(line.productId, lineUnit)}" step="${step}" value="${line.qty}" data-qty inputmode="decimal" aria-label="Cantidad de ${product.name}${isBox ? " en cajas" : ""}">
+                <button type="button" data-qty-inc aria-label="Más cantidad">+</button>
               </div>
-              <div class="cart-item-total">
-                <strong>${fmtMoney(lineTotal)}</strong>
-                <button class="ghost danger" type="button" data-remove="${line.productId}">Quitar</button>
-              </div>
+              <strong class="pos-line-total">${fmtMoney(lineTotalCents(line.qty, unit))}</strong>
+              <button class="icon-btn danger" type="button" data-remove aria-label="Quitar ${product.name}">${iconFor("trash")}</button>
             </div>
           `;
         })}`
@@ -337,156 +423,90 @@ export const ventaTab: TabModule = {
       renderPaymentState();
     };
 
-    const addProduct = (product: Product): void => {
-      const result = ctx.sales.addToCart(product.id);
-      if (result.ok) {
-        vibrate(40);
-        ctx.toast(`${product.name} agregado`);
-      } else {
-        ctx.toast(result.error);
-      }
+    /** Renglón del carrito (producto + unidad) al que pertenece un elemento. */
+    const lineOf = (el: HTMLElement): { productId: string; unit: CartUnit } | null => {
+      const row = el.closest<HTMLElement>("[data-line]");
+      if (!row) return null;
+      return { productId: row.dataset.line!, unit: row.dataset.unit === "caja" ? "caja" : "pza" };
     };
-
-    /** Código leído (cámara, lector USB/Bluetooth o QR): producto o alta rápida. */
-    const handleCode = (code: string): void => {
-      const product = resolveScannedCode(ctx.repos.products.list(), code);
-      if (product) {
-        addProduct(product);
-        return;
-      }
-      // Texto que no es un código (QR con nombre): se usa como búsqueda.
-      search.value = code;
-      renderGrid();
-      const matches = filteredProducts();
-      if (matches.length === 1) {
-        addProduct(matches[0]!);
-        search.value = "";
-        renderGrid();
-        return;
-      }
-      if (!matches.length) {
-        search.value = "";
-        renderGrid();
-        openNewProductModal(ctx, (created) => addProduct(created), { barcode: code });
-      }
-    };
-
-    search.addEventListener("input", () => {
-      if (searchTimer) clearTimeout(searchTimer);
-      searchTimer = setTimeout(renderGrid, 180);
-    });
-
-    // Enter en la búsqueda: los lectores de código (USB/Bluetooth) "teclean" el
-    // código y Enter. Código exacto o un solo resultado → al carrito.
-    search.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      const value = search.value.trim();
-      if (!value) return;
-      if (searchTimer) clearTimeout(searchTimer);
-      const exact = resolveScannedCode(ctx.repos.products.list(), value);
-      const matches = exact ? [exact] : filteredProducts();
-      if (matches.length === 1) {
-        addProduct(matches[0]!);
-        search.value = "";
-        renderGrid();
-      } else if (!matches.length && /^\d{6,}$/.test(value)) {
-        handleCode(value);
-      } else {
-        renderGrid();
-      }
-    });
-
-    supplierFilter.addEventListener("change", renderGrid);
-
-    grid.addEventListener("click", (event) => {
-      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-add]");
-      if (!button) return;
-      const result = ctx.sales.addToCart(button.dataset.add!);
-      if (!result.ok) ctx.toast(result.error);
-    });
-
-    highlights.addEventListener("click", (event) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("[data-show-catalog]")) {
-        showAll = true;
-        renderGrid();
-        return;
-      }
-      const button = target.closest<HTMLElement>("[data-add]");
-      if (!button) return;
-      const promo = button.dataset.promo ? Number(button.dataset.promo) : undefined;
-      const product = ctx.repos.products.byId(button.dataset.add!);
-      const result = ctx.sales.addToCart(button.dataset.add!, 1, promo);
-      if (!result.ok) ctx.toast(result.error);
-      else if (product) {
-        vibrate(40);
-        ctx.toast(promo ? `${product.name} en oferta: ${fmtMoneyPesos(promo)}` : `${product.name} agregado`);
-      }
-    });
-
-    root.querySelector<HTMLButtonElement>("#closeCatalog")!.addEventListener("click", () => {
-      showAll = false;
-      search.value = "";
-      supplierFilter.value = "";
-      renderGrid();
-    });
 
     items.addEventListener("change", (event) => {
       const input = (event.target as HTMLElement).closest<HTMLInputElement>("[data-qty]");
-      if (!input) return;
-      const result = ctx.sales.setCartQty(input.dataset.qty!, input.value);
+      const line = input && lineOf(input);
+      if (!input || !line) return;
+      const result = ctx.sales.setCartQty(line.productId, input.value, line.unit);
       if (!result.ok) ctx.toast(result.error);
     });
 
     items.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
-      const remove = target.closest<HTMLElement>("[data-remove]");
-      if (remove) {
-        ctx.sales.removeFromCart(remove.dataset.remove!);
+      const line = lineOf(target);
+      if (!line) return;
+      if (target.closest("[data-remove]")) {
+        ctx.sales.removeFromCart(line.productId, line.unit);
+        return;
+      }
+      const setUnit = target.closest<HTMLElement>("[data-set-unit]");
+      if (setUnit) {
+        const to: CartUnit = setUnit.dataset.setUnit === "caja" ? "caja" : "pza";
+        const result = ctx.sales.setLineUnit(line.productId, line.unit, to);
+        if (!result.ok) ctx.toast(result.error);
         return;
       }
       const inc = target.closest<HTMLElement>("[data-qty-inc]");
       const dec = target.closest<HTMLElement>("[data-qty-dec]");
       if (!inc && !dec) return;
-      const productId = inc ? inc.dataset.qtyInc! : dec!.dataset.qtyDec!;
-      const product = ctx.repos.products.byId(productId);
+      const product = ctx.repos.products.byId(line.productId);
       if (!product) return;
-      const step = qtyStep(product.um);
-      const current = ctx.sales.cart().find((line) => line.productId === productId)?.qty ?? 0;
-      const result = ctx.sales.setCartQty(productId, inc ? current + step : current - step);
+      const step = line.unit === "caja" ? 1 : qtyStep(product.um);
+      const current = ctx.sales.cart().find((l) => l.productId === line.productId && (l.unit === "caja" ? "caja" : "pza") === line.unit)?.qty ?? 0;
+      const result = ctx.sales.setCartQty(line.productId, inc ? current + step : current - step, line.unit);
       if (!result.ok) ctx.toast(result.error);
     });
 
     ctx.store.watch((s) => s.cart, renderCart);
     ctx.store.watch((s) => [s.customers, s.branches, s.currentBranchId] as const, renderCustomers);
-    ctx.store.watch((s) => s.suppliers, () => {
-      renderSupplierFilter();
-      renderGrid();
-    });
     ctx.store.watch(
       (s) => [s.products, s.product_stocks, s.branches, s.currentBranchId] as const,
       () => {
-        renderGrid();
+        renderResults();
         renderCart();
       }
     );
-    ctx.store.watch((s) => [s.products, s.product_stocks, s.sales, s.branches, s.currentBranchId] as const, renderHighlights);
 
+    payMethods.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-pay]");
+      if (!button) return;
+      payment.value = button.dataset.pay!;
+      payment.dispatchEvent(new Event("change"));
+      if (payment.value === "efectivo" && !isMobile()) cashInput.focus({ preventScroll: true });
+    });
     payment.addEventListener("change", renderPaymentState);
+    cashInput.addEventListener("input", renderCash);
+    cashQuick.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-cash]");
+      if (!button) return;
+      cashInput.value = button.dataset.cash === "exact" ? (cartTotalCents() / 100).toFixed(2) : button.dataset.cash!;
+      renderCash();
+    });
     customer.addEventListener("change", () => {
       renderPaymentState();
       if (customer.value === NEW_CUSTOMER) ncName.focus();
     });
 
-    root.querySelector<HTMLButtonElement>("#clearCart")!.addEventListener("click", () => ctx.sales.clearCart());
-
-    // En móvil el carrito es un cajón colapsable: el toggle abre/cierra el cuerpo
-    // para que la búsqueda y la cuadrícula de productos no queden tapadas.
-    root.querySelector<HTMLButtonElement>("#cartToggle")!.addEventListener("click", () => {
-      const open = cartCard.classList.toggle("cart-open");
-      root.querySelector<HTMLButtonElement>("#cartToggle")!.setAttribute("aria-expanded", String(open));
+    root.querySelector<HTMLButtonElement>("#clearCart")!.addEventListener("click", () => {
+      ctx.sales.clearCart();
+      cashInput.value = "";
     });
+
+    // Celular: la barra de abajo lleva al cobro
+    posBarPay.addEventListener("click", () => {
+      payPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    // …y se oculta cuando el botón de cobrar del panel ya está a la vista
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(([entry]) => posBar.classList.toggle("in-view", Boolean(entry?.isIntersecting)), { threshold: 0.6 }).observe(completeButton);
+    }
 
     completeButton.addEventListener("click", () => {
       const method = payment.value as PaymentMethod;
@@ -497,10 +517,13 @@ export const ventaTab: TabModule = {
         ncName.focus();
         return;
       }
+      const received = method === "efectivo" && cashInput.value.trim() ? Number(cashInput.value) : null;
       const result = ctx.sales.completeSale({
         payment: method,
         customerId,
-        newCustomer: isNew ? { name: ncName.value, phone: ncPhone.value, notes: ncNotes.value } : null
+        newCustomer: isNew ? { name: ncName.value, phone: ncPhone.value, notes: ncNotes.value } : null,
+        cashReceived: received,
+        cashier: ctx.auth.displayName() || undefined
       });
       if (!result.ok) {
         ctx.toast(result.error);
@@ -525,84 +548,102 @@ export const ventaTab: TabModule = {
         payment.value = "efectivo";
         customer.value = "";
       }
-      openReceipt(sale);
+      cashInput.value = "";
+      resetSearch();
+      openTicket(ctx, sale, { justSold: true });
+      if (sale.change) speak(`Cambio: ${speakPesos(sale.change)}.`, voiceEnabled());
       renderCart();
+      window.scrollTo({ top: 0 });
     });
 
-    const openReceipt = (sale: Sale): void => {
-      const totalCents = sumCents(sale.items.map((item) => lineTotalCents(item.qty, item.price)));
-      const customerName = sale.customer_id ? ctx.repos.customers.byId(sale.customer_id)?.name : undefined;
-      const internal = sale.payment === "interno";
+    // ---------------- Atajos de teclado (PC) ----------------
+
+    const SHORTCUTS: Array<[string, string]> = [
+      ["F2  o  Ctrl + B", "Ir al buscador"],
+      ["Enter", "Agregar el producto (código escaneado o resultado marcado)"],
+      ["↑  ↓", "Elegir entre los resultados"],
+      ["3*coca  o  3x coca", "Agregar 3 piezas de una vez (también antes de escanear)"],
+      ["+  /  −", "Con el buscador vacío: más o menos del último producto"],
+      ["Supr", "Con el buscador vacío: quitar el último producto"],
+      ["Ctrl + Supr", "Vaciar la venta"],
+      ["Esc", "Limpiar la búsqueda"],
+      ["F3", "Escanear con la cámara"],
+      ["F4", "Escribir con cuánto paga (efectivo)"],
+      ["Alt + 1 … 5", "Efectivo, Transferencia, Tarjeta, Fiado, Uso interno"],
+      ["F9  o  Ctrl + Enter", "Cobrar"],
+      ["Enter (en Recibido)", "Cobrar"],
+      ["Enter (en el ticket)", "Nueva venta"],
+      ["F1", "Ver esta lista"]
+    ];
+    const showShortcuts = (): void => {
       openModal({
-        title: internal ? "Uso interno registrado" : sale.payment === "fiado" ? "Venta fiada registrada" : "Venta registrada",
-        content: html`
-          <div class="receipt">
-            ${sale.items.map(
-              (item) => html`
-                <div class="item-line">
-                  <span>${fmtQty(item.qty)} ${item.um} · ${item.name}${item.regular_price ? html` <span class="offer-tag">Oferta</span>` : html``}</span>
-                  <strong>${fmtMoney(lineTotalCents(item.qty, item.price))}</strong>
-                </div>
-              `
-            )}
-            <div class="total-row receipt-total">
-              <span>Total</span>
-              <strong>${fmtMoney(totalCents)}</strong>
-            </div>
-            <p class="muted">${PAYMENT_LABELS[sale.payment]}${customerName ? ` · ${customerName}` : ""}</p>
-            ${internal ? html`<p class="hint">No suma a las ventas. Valor a costo: ${fmtMoneyPesos(sale.cost)}.</p>` : html``}
-            ${sale.payment === "fiado" ? html`<p class="hint">Quedó en la cuenta del cliente en Fiado.</p>` : html``}
-          </div>
-        `,
-        actions: [{ label: "Nueva venta", kind: "primary" }]
+        title: "Atajos de teclado",
+        content: html`<div class="shortcut-list">${SHORTCUTS.map(([keys, what]) => html`<div><kbd>${keys}</kbd><span>${what}</span></div>`)}</div>`,
+        actions: [{ label: "Entendido", kind: "primary" }]
       });
     };
+    root.querySelector<HTMLButtonElement>("#showShortcuts")!.addEventListener("click", showShortcuts);
 
-    const runVoice = async (): Promise<void> => {
-      if (!speechSupported()) {
-        ctx.toast("Tu navegador no soporta dictado por voz");
-        return;
-      }
-      voiceButton.disabled = true;
-      voiceButton.textContent = "Escuchando...";
-      try {
-        const transcript = await listenOnce();
-        voiceText.textContent = `Entendí: ${transcript}`;
-        const localOrders = parseVoiceSale(transcript);
-        let aiOrders: AiSaleItem[] = [];
-        try {
-          aiOrders = await parseSaleWithAi(ctx, transcript);
-        } catch {
-          /* sin IA disponible: vale el parser local */
-        }
-        const orders = aiOrders.length >= localOrders.length ? aiOrders : localOrders;
-        const { matched, notFound } = matchOrdersToProducts(orders, ctx.repos.products.list());
-        let added = 0;
-        const names: string[] = [];
-        matched.forEach(({ product, qty }) => {
-          const result = ctx.sales.addToCart(product.id, qty);
-          if (result.ok) {
-            added += 1;
-            names.push(`${fmtQty(qty)} ${product.um} ${product.name}`);
-          }
-        });
-        const messages = [`${added} producto(s) agregados`];
-        if (notFound.length) messages.push(`No encontré: ${notFound.join(", ")}`);
-        ctx.toast(messages.join(". "));
-        speak(
-          added
-            ? `Agregue ${names.join(", ")}. Revisa y presiona cobrar.`
-            : "No encontré productos para agregar al carrito.",
-          voiceEnabled()
-        );
-      } catch (error) {
-        ctx.toast(error instanceof Error ? error.message : "No se pudo interpretar la venta");
-      } finally {
-        voiceButton.disabled = false;
-        setHtml(voiceButton, html`${iconFor("mic")} Hablar venta`);
-      }
+    /** Último renglón de la venta (el más reciente). */
+    const lastLine = (): { productId: string; unit: CartUnit; qty: number } | null => {
+      const cart = ctx.sales.cart();
+      const line = cart[cart.length - 1];
+      return line ? { productId: line.productId, unit: line.unit === "caja" ? "caja" : "pza", qty: line.qty } : null;
     };
-    voiceButton.addEventListener("click", () => void runVoice());
+    const PAY_KEYS: PaymentMethod[] = ["efectivo", "transferencia", "tarjeta", "fiado", "interno"];
+
+    document.addEventListener("keydown", (event) => {
+      if (!root.classList.contains("active") || document.body.classList.contains("modal-open")) return;
+      const inSearch = event.target === search;
+      const searchEmpty = !search.value.trim();
+      const key = event.key;
+      const act = (fn: () => void): void => {
+        event.preventDefault();
+        fn();
+      };
+      if (key === "F1") return act(showShortcuts);
+      if (key === "F2" || (event.ctrlKey && key.toLowerCase() === "b")) return act(() => search.focus());
+      if (key === "F3") return act(() => root.querySelector<HTMLButtonElement>("#scanButton")!.click());
+      if (key === "F4") {
+        return act(() => {
+          if (payment.value !== "efectivo") {
+            payment.value = "efectivo";
+            payment.dispatchEvent(new Event("change"));
+          }
+          cashInput.focus();
+          cashInput.select();
+        });
+      }
+      if (key === "F9" || (event.ctrlKey && key === "Enter")) return act(() => completeButton.click());
+      if (event.altKey && /^[1-5]$/.test(key)) {
+        return act(() => {
+          payment.value = PAY_KEYS[Number(key) - 1]!;
+          payment.dispatchEvent(new Event("change"));
+        });
+      }
+      if (event.ctrlKey && key === "Delete") return act(() => root.querySelector<HTMLButtonElement>("#clearCart")!.click());
+      // + / − / Supr sobre el último producto: solo con el buscador vacío (o fuera de campos)
+      const typing = (event.target as HTMLElement).matches?.("input, textarea, select") && !(inSearch && searchEmpty);
+      if (typing) return;
+      const line = lastLine();
+      if (!line) return;
+      if (key === "+" || key === "-") {
+        return act(() => {
+          const product = ctx.repos.products.byId(line.productId);
+          const step = line.unit === "caja" ? 1 : qtyStep(product?.um ?? "Pza");
+          const result = ctx.sales.setCartQty(line.productId, key === "+" ? line.qty + step : line.qty - step, line.unit);
+          if (!result.ok) ctx.toast(result.error);
+        });
+      }
+      if (key === "Delete") return act(() => ctx.sales.removeFromCart(line.productId, line.unit));
+    });
+
+    // En "Recibido", Enter cobra
+    cashInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      completeButton.click();
+    });
 
     // Escáner de cámara: código de barras o QR
     root.querySelector<HTMLButtonElement>("#scanButton")!.addEventListener("click", async () => {

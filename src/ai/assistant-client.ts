@@ -94,14 +94,31 @@ export function assistantContext(ctx: AppContext): Record<string, unknown> {
   };
 }
 
+/** La IA en línea no está configurada en el servidor: no se vuelve a intentar en esta sesión. */
+let aiUnavailable = false;
+
+export function isAiUnavailable(): boolean {
+  return aiUnavailable;
+}
+
 export async function runAssistant(ctx: AppContext, text: string): Promise<AssistantAction> {
-  const res = await fetch("/api/pos-assistant", {
-    method: "POST",
-    headers: authHeaders(ctx),
-    body: JSON.stringify({ text, context: assistantContext(ctx) })
-  });
-  if (!res.ok) throw new Error("Asistente IA no disponible");
-  return (await res.json()) as AssistantAction;
+  if (aiUnavailable) throw new Error("Asistente IA no disponible");
+  // Sin respuesta en 12 s se corta: el asistente contesta con lo que sabe la app
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 12_000);
+  try {
+    const res = await fetch("/api/pos-assistant", {
+      method: "POST",
+      headers: authHeaders(ctx),
+      body: JSON.stringify({ text, context: assistantContext(ctx) }),
+      signal: controller.signal
+    });
+    if (res.status === 501) aiUnavailable = true;
+    if (!res.ok) throw new Error("Asistente IA no disponible");
+    return (await res.json()) as AssistantAction;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 /**
