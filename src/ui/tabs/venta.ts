@@ -4,7 +4,7 @@ import { fmtQty } from "../../core/qty";
 import { PAYMENT_LABELS, type CartUnit, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
 import { matchOrdersToProducts } from "../../domain/voice/product-matcher";
 import { parseVoiceSale } from "../../domain/voice/voice-parser";
-import { lowStockProducts, productMatches, resolveScannedCode, suggestOffers, supplierCode, supplierLabel, topSellers } from "../../domain/catalog";
+import { lowStockProducts, resolveScannedCode, suggestOffers, supplierCode, topSellers } from "../../domain/catalog";
 import { mountCarousels } from "../carousel";
 import { parseSaleWithAi, type AiSaleItem } from "../../ai/assistant-client";
 import { scanBarcode } from "../scanner";
@@ -12,6 +12,7 @@ import { openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { listenOnce, speak, speechSupported, vibrate, isVoiceEnabled } from "../voice-recognition";
 import { openNewProductModal } from "./inventario";
+import { mountProductFilters, productFiltersMarkup } from "../product-filters";
 import type { TabModule } from "./tab-module";
 
 /** Paso del stepper según la unidad: piezas enteras, medio litro/kilo, 50 gramos. */
@@ -32,12 +33,10 @@ export const ventaTab: TabModule = {
         <div class="split">
           <article class="card">
             <div class="search-row">
-              <input id="productSearch" class="input" type="search" placeholder="Buscar producto, código o proveedor (#3)" autocomplete="off" enterkeyhint="search" aria-label="Buscar producto">
+              <input id="productSearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off" enterkeyhint="search" aria-label="Buscar producto">
               <button id="scanButton" class="ghost" type="button" title="Escanear código de barras o QR">${iconFor("barcode")} <span class="hide-sm">Escanear</span></button>
             </div>
-            <div class="filter-row">
-              <select id="supplierFilter" class="input" aria-label="Filtrar por proveedor"></select>
-            </div>
+            ${productFiltersMarkup("sale")}
             <div class="voice-sale-box">
               <button id="voiceSaleButton" class="primary" type="button">${iconFor("mic")} Hablar venta</button>
               <p id="voiceSaleText" class="hint">Di: "dos cocas, una leche y tres panes".</p>
@@ -91,7 +90,6 @@ export const ventaTab: TabModule = {
     );
 
     const search = root.querySelector<HTMLInputElement>("#productSearch")!;
-    const supplierFilter = root.querySelector<HTMLSelectElement>("#supplierFilter")!;
     const grid = root.querySelector<HTMLElement>("#productGrid")!;
     const highlights = root.querySelector<HTMLElement>("#saleHighlights")!;
     const catalogBar = root.querySelector<HTMLElement>("#catalogBar")!;
@@ -125,36 +123,16 @@ export const ventaTab: TabModule = {
 
     const suppliersById = (): Map<string, Supplier> => new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
 
-    const filteredProducts = (): Product[] => {
-      const q = search.value.trim();
-      const supplierId = supplierFilter.value;
-      const suppliers = suppliersById();
-      return ctx.repos.products
-        .list()
-        .filter((p) => p.active !== false)
-        .filter((p) => !supplierId || (supplierId === "none" ? !p.supplier_id || !suppliers.has(p.supplier_id) : p.supplier_id === supplierId))
-        .filter((p) => productMatches(p, q, p.supplier_id ? suppliers.get(p.supplier_id) : undefined))
-        .sort((a, b) => a.name.localeCompare(b.name));
-    };
+    const filters = mountProductFilters(root, "sale", ctx, () => renderGrid());
 
-    const renderSupplierFilter = (): void => {
-      const suppliers = ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
-      const selected = supplierFilter.value;
-      supplierFilter.closest(".filter-row")?.classList.toggle("hidden", !suppliers.length);
-      setHtml(
-        supplierFilter,
-        html`<option value="">Todos los proveedores</option>
-          ${suppliers.map((s) => html`<option value="${s.id}" ${s.id === selected ? "selected" : null}>${supplierLabel(s)}</option>`)}
-          <option value="none" ${selected === "none" ? "selected" : null}>Sin proveedor</option>`
-      );
-      if (selected && supplierFilter.value !== selected) supplierFilter.value = "";
-    };
+    const filteredProducts = (): Product[] =>
+      filters.apply(ctx.repos.products.list().filter((p) => p.active !== false), search.value);
 
     /**
      * La cuadrícula solo aparece al buscar, filtrar por proveedor o abrir el
      * catálogo; por defecto se ven los recuadros con movimiento.
      */
-    const catalogMode = (): boolean => showAll || Boolean(search.value.trim()) || Boolean(supplierFilter.value);
+    const catalogMode = (): boolean => showAll || Boolean(search.value.trim()) || filters.active();
 
     const renderGrid = (): void => {
       const browsing = catalogMode();
@@ -410,7 +388,6 @@ export const ventaTab: TabModule = {
       }
     });
 
-    supplierFilter.addEventListener("change", renderGrid);
 
     grid.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLElement>("[data-add]");
@@ -441,7 +418,7 @@ export const ventaTab: TabModule = {
     root.querySelector<HTMLButtonElement>("#closeCatalog")!.addEventListener("click", () => {
       showAll = false;
       search.value = "";
-      supplierFilter.value = "";
+      filters.clear();
       renderGrid();
     });
 
@@ -489,12 +466,13 @@ export const ventaTab: TabModule = {
     ctx.store.watch((s) => s.cart, renderCart);
     ctx.store.watch((s) => [s.customers, s.branches, s.currentBranchId] as const, renderCustomers);
     ctx.store.watch((s) => s.suppliers, () => {
-      renderSupplierFilter();
+      filters.refresh();
       renderGrid();
     });
     ctx.store.watch(
       (s) => [s.products, s.product_stocks, s.branches, s.currentBranchId] as const,
       () => {
+        filters.refresh();
         renderGrid();
         renderCart();
       }

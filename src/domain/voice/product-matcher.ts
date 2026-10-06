@@ -23,8 +23,9 @@ export function findProductByVoice(
   let best: Product | undefined;
   let bestScore = 0;
   for (const product of sellable) {
-    const haystack = normalizeVoiceText(`${product.name} ${product.category || ""}`);
-    const score = voiceMatchScore(needle, haystack);
+    // El nombre manda; la categoría solo desempata cuando el nombre no coincide.
+    const byName = voiceMatchScore(needle, normalizeVoiceText(product.name));
+    const score = byName > 0 ? byName * 2 : voiceMatchScore(needle, normalizeVoiceText(`${product.name} ${product.category || ""}`));
     if (score > bestScore) {
       best = product;
       bestScore = score;

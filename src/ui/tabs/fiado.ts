@@ -6,6 +6,7 @@ import { fmtDateTime } from "../../core/dates";
 import type { CustomerMovement } from "../../core/types";
 import { confirmDialog, openModal, promptDialog } from "../components/modal";
 import { openWhatsapp } from "../whatsapp";
+import { plainText } from "../../domain/catalog";
 import type { TabModule } from "./tab-module";
 
 export const fiadoTab: TabModule = {
@@ -48,9 +49,9 @@ export const fiadoTab: TabModule = {
       const all = ctx.repos.customers.list().filter((c) => c.branch_id === customersOfBranch());
       const owed = all.reduce((sum, c) => sum + Math.round(c.balance * 100), 0) / 100;
       totalEl.textContent = all.length ? `${all.filter((c) => c.balance > 0).length} clientes deben en total ${fmtMoneyPesos(owed)}` : "";
-      const q = searchInput.value.trim().toLowerCase();
+      const q = plainText(searchInput.value);
       const customers = all
-        .filter((c) => !q || c.name.toLowerCase().includes(q) || c.phone.includes(q))
+        .filter((c) => !q || q.split(/\s+/).every((word) => plainText(c.name).includes(word)) || c.phone.replace(/\D/g, "").includes(q.replace(/\D/g, "") || "\u0000"))
         .sort((a, b) => b.balance - a.balance || a.name.localeCompare(b.name));
       if (!customers.length) {
         setHtml(list, html`<p class="muted">${all.length ? "Ningún cliente coincide." : "Agrega clientes para manejar el fiado, o fía desde Venta eligiendo \"Cliente nuevo\"."}</p>`);

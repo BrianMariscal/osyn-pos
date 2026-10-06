@@ -10,7 +10,7 @@ import { fmtMoney, toCents } from "../core/money";
 import { fmtQty, normalizeQty } from "../core/qty";
 import type { Product } from "../core/types";
 import { unitsFromPacks, type StockReceipt } from "../domain/inventory-service";
-import { productsForSupplier } from "../domain/catalog";
+import { productsForSupplier, searchProducts } from "../domain/catalog";
 import type { AppContext } from "./context";
 
 type LineMode = "pza" | "caja";
@@ -20,6 +20,8 @@ interface LineState {
   mode: LineMode;
   qty: string;
   total: string;
+  /** Texto para filtrar la lista de productos de la línea. */
+  search: string;
 }
 
 export interface PurchaseLinesOptions {
@@ -42,7 +44,7 @@ function packSizeOf(product: Product | undefined): number {
 }
 
 export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, options: PurchaseLinesOptions): PurchaseLines {
-  const blank = (): LineState => ({ productId: "", mode: "pza", qty: "", total: "" });
+  const blank = (): LineState => ({ productId: "", mode: "pza", qty: "", total: "", search: "" });
   let lines: LineState[] = [blank()];
 
   const products = (): Product[] =>
@@ -71,19 +73,31 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     return parts.join(" · ");
   };
 
-  const lineMarkup = (line: LineState, index: number, list: Product[]) => {
+  const optionsMarkup = (line: LineState, list: Product[]) => {
     const supplierId = options.supplierId?.() ?? "";
+    if (!list.length) {
+      return html`<option value="" disabled selected>${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}</option>`;
+    }
+    // El producto elegido siempre se conserva aunque no coincida con la búsqueda.
+    const found = searchProducts(list, line.search);
+    const selected = list.find((p) => p.id === line.productId);
+    const shown = selected && !found.includes(selected) ? [selected, ...found] : found;
     const option = (p: Product) =>
       html`<option value="${p.id}" ${p.id === line.productId ? "selected" : null}>${p.name} (${p.um})</option>`;
+    return html`<option value="">${found.length ? "Elige producto…" : "Ningún producto coincide"}</option>${shown.map(option)}`;
+  };
+
+  const lineMarkup = (line: LineState, index: number, list: Product[]) => {
     const product = ctx.repos.products.byId(line.productId);
     const size = packSizeOf(product);
     return html`
       <div class="purchase-line" data-line="${index}">
-        <select class="input" data-f="productId" aria-label="Producto ${index + 1}">
-          ${list.length
-            ? html`<option value="">Elige producto…</option>${list.map(option)}`
-            : html`<option value="" disabled selected>${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}</option>`}
-        </select>
+        <div class="purchase-product">
+          ${list.length > 8
+            ? html`<input class="input" data-f="search" type="search" placeholder="Buscar producto o código" autocomplete="off" aria-label="Buscar producto ${index + 1}" value="${line.search}">`
+            : html``}
+          <select class="input" data-f="productId" aria-label="Producto ${index + 1}">${optionsMarkup(line, list)}</select>
+        </div>
         <div class="purchase-qty">
           <input class="input" data-f="qty" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
           ${size
@@ -134,6 +148,12 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     if (!field || !line) return;
     if (field.dataset.f === "qty") line.qty = field.value;
     if (field.dataset.f === "total") line.total = field.value;
+    if (field.dataset.f === "search") {
+      line.search = field.value;
+      const select = field.closest<HTMLElement>("[data-line]")?.querySelector<HTMLSelectElement>('[data-f="productId"]');
+      if (select) setHtml(select, optionsMarkup(line, productsForSupplier(products(), options.supplierId?.() ?? "")));
+      return;
+    }
     updateHint(index);
   });
 

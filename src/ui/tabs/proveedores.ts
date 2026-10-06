@@ -4,11 +4,12 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import type { Supplier } from "../../core/types";
-import { assignMissingSupplierNumbers, nextSupplierNumber, productMatches, supplierCode, supplierLabel } from "../../domain/catalog";
+import { assignMissingSupplierNumbers, nextSupplierNumber, searchProducts, supplierCode, supplierLabel } from "../../domain/catalog";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { mountPurchaseLines } from "../purchase-lines";
 import { openNewProductModal } from "./inventario";
+import { exportSuppliers, importSuppliers } from "../product-transfer-ui";
 import type { TabModule } from "./tab-module";
 
 const CENTRAL_ID = "__central__";
@@ -27,6 +28,13 @@ export const proveedoresTab: TabModule = {
               <button id="addSupplier" class="primary" type="button">${iconFor("plus")} Agregar</button>
             </div>
             <p class="hint">Tu catálogo: Central de Abastos, distribuidoras, etc. Cada proveedor recibe un número automático y puedes asociarle los productos que surte.</p>
+            <div class="actions wrap-actions">
+              <button id="downloadSuppliersXls" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
+              <button id="downloadSuppliersCsv" class="ghost" type="button">${iconFor("download")} Descargar CSV</button>
+              <label class="import-label" id="importSuppliersLabel">${iconFor("upload")} Importar
+                <input id="importSuppliers" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
+              </label>
+            </div>
             <div id="suppliersList" class="list"></div>
 
             <h2>Registrar compra</h2>
@@ -72,6 +80,17 @@ export const proveedoresTab: TabModule = {
     });
     // Solo dueño/administrador editan el catálogo (así lo exige la base de datos).
     const canManage = (): boolean => ctx.auth.isAdmin();
+
+    root.querySelector<HTMLButtonElement>("#downloadSuppliersXls")!.addEventListener("click", () => exportSuppliers(ctx, "xls"));
+    root.querySelector<HTMLButtonElement>("#downloadSuppliersCsv")!.addEventListener("click", () => exportSuppliers(ctx, "csv"));
+    root.querySelector<HTMLElement>("#importSuppliersLabel")!.hidden = !canManage();
+    root.querySelector<HTMLInputElement>("#importSuppliers")!.addEventListener("change", async (event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (!file) return;
+      await importSuppliers(ctx, file);
+      input.value = "";
+    });
 
     const sortedSuppliers = (): Supplier[] =>
       ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
@@ -177,7 +196,7 @@ export const proveedoresTab: TabModule = {
       const all = ctx.repos.products.list().filter((product) => product.active !== false).sort((a, b) => a.name.localeCompare(b.name));
       const selected = new Set(all.filter((product) => product.supplier_id === supplier.id).map((product) => product.id));
       const renderRows = (listEl: HTMLElement, query: string): void => {
-        const rows = all.filter((product) => productMatches(product, query) && (editable || selected.has(product.id)));
+        const rows = searchProducts(all, query).filter((product) => editable || selected.has(product.id));
         setHtml(
           listEl,
           rows.length
@@ -197,7 +216,7 @@ export const proveedoresTab: TabModule = {
         title: `Productos de ${supplierLabel(supplier)}`,
         content: html`
           <p class="muted">${editable ? "Marca los productos que surte este proveedor. En Venta y en Compras podrás filtrarlos por proveedor." : "Productos que surte este proveedor."}</p>
-          <input id="spSearch" class="input" placeholder="Buscar producto" autocomplete="off">
+          <input id="spSearch" class="input" type="search" placeholder="Buscar producto o código" autocomplete="off">
           <div id="spList" class="check-list"></div>
           ${editable ? html`<button id="spNew" class="ghost" type="button">${iconFor("plus")} Crear producto nuevo para este proveedor</button>` : html``}
         `,

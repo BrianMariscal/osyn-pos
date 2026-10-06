@@ -4,15 +4,15 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos } from "../../core/money";
 import { normalizeQty } from "../../core/qty";
 import { SALE_GROUP_LABELS, SALE_GROUPS, UNITS, type Product, type SaleGroup, type Unit } from "../../core/types";
-import { productMatches, productQrPayload, supplierCode, supplierLabel } from "../../domain/catalog";
+import { productQrPayload, supplierCode, supplierLabel } from "../../domain/catalog";
 import { detectSaleGroup } from "../../domain/sale-groups";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { scanBarcode } from "../scanner";
-import { parseCsvLine, parseSpreadsheetRows } from "./csv";
-import { downloadText } from "./download";
 import type { AppContext } from "../context";
 import { categoryFieldMarkup, mountCategoryField } from "../category-field";
+import { mountProductFilters, productFiltersMarkup } from "../product-filters";
+import { exportProducts, importProducts } from "../product-transfer-ui";
 import type { TabModule } from "./tab-module";
 
 export const productosTab: TabModule = {
@@ -25,10 +25,12 @@ export const productosTab: TabModule = {
           <article class="card">
             <h2 id="productFormTitle">Alta de producto</h2>
             <p class="hint" id="stockScopeHint"></p>
+            <p class="hint">La descarga incluye todos los datos (proveedor, categoría, código, piezas por caja, grupo del corte, existencia y mínimo) y se puede volver a importar para migrar.</p>
             <div class="actions wrap-actions">
-              <button id="downloadTemplate" class="ghost" type="button">${iconFor("download")} Plantilla Excel</button>
-              <label class="import-label">${iconFor("upload")} Importar productos
-                <input id="importProducts" type="file" accept=".csv,.xls,text/csv,application/vnd.ms-excel">
+              <button id="downloadTemplate" class="ghost" type="button">${iconFor("download")} Descargar Excel</button>
+              <button id="downloadProductsCsv" class="ghost" type="button">${iconFor("download")} Descargar CSV</button>
+              <label class="import-label">${iconFor("upload")} Importar Excel / CSV
+                <input id="importProducts" type="file" accept=".csv,.xls,.xml,.txt,text/csv,application/vnd.ms-excel">
               </label>
             </div>
             <form id="productForm" class="form">
@@ -92,10 +94,8 @@ export const productosTab: TabModule = {
           </article>
           <article class="card">
             <h2>Productos registrados</h2>
-            <div class="search-stack">
-              <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre, código o proveedor (#3)" autocomplete="off">
-              <select id="productsSupplierFilter" class="input" aria-label="Filtrar por proveedor"></select>
-            </div>
+            <input id="productsSearch" class="input" type="search" placeholder="Buscar por nombre o código de barras" autocomplete="off">
+            ${productFiltersMarkup("products")}
             <p class="hint" id="productsCount"></p>
             <div id="productsList" class="list"></div>
           </article>
@@ -122,11 +122,11 @@ export const productosTab: TabModule = {
     const list = root.querySelector<HTMLElement>("#productsList")!;
     const hint = root.querySelector<HTMLElement>("#stockScopeHint")!;
     const listSearch = root.querySelector<HTMLInputElement>("#productsSearch")!;
-    const listSupplier = root.querySelector<HTMLSelectElement>("#productsSupplierFilter")!;
     const countEl = root.querySelector<HTMLElement>("#productsCount")!;
     /** Existencia mostrada al empezar a editar: solo se guarda si el usuario la cambió. */
     let stockAtEdit: string | null = null;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
+    const filters = mountProductFilters(root, "products", ctx, () => render());
 
     const stockRowFor = (productId: string) =>
       ctx.repos.stocks.all().find(
@@ -139,20 +139,13 @@ export const productosTab: TabModule = {
     const renderSupplierOptions = (): void => {
       const suppliers = sortedSuppliers();
       const formValue = supplierInput.value;
-      const filterValue = listSupplier.value;
       setHtml(
         supplierInput,
         html`<option value="">Sin proveedor</option>${suppliers.map(
           (s) => html`<option value="${s.id}" ${s.id === formValue ? "selected" : null}>${supplierLabel(s)}</option>`
         )}`
       );
-      setHtml(
-        listSupplier,
-        html`<option value="">Todos los proveedores</option>${suppliers.map(
-          (s) => html`<option value="${s.id}" ${s.id === filterValue ? "selected" : null}>${supplierLabel(s)}</option>`
-        )}<option value="none" ${filterValue === "none" ? "selected" : null}>Sin proveedor</option>`
-      );
-      listSupplier.classList.toggle("hidden", !suppliers.length);
+      filters.refresh();
     };
 
     const resetForm = (): void => {
@@ -187,11 +180,8 @@ export const productosTab: TabModule = {
       const all = ctx.repos.products.list();
       category.refresh();
       const suppliers = new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
-      const supplierFilter = listSupplier.value;
-      const products = all
-        .filter((p) => !supplierFilter || (supplierFilter === "none" ? !p.supplier_id || !suppliers.has(p.supplier_id) : p.supplier_id === supplierFilter))
-        .filter((p) => productMatches(p, listSearch.value, p.supplier_id ? suppliers.get(p.supplier_id) : undefined))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      filters.refresh();
+      const products = filters.apply(all, listSearch.value);
       countEl.textContent = all.length ? `${products.length} de ${all.length} productos` : "";
       if (!products.length) {
         setHtml(list, html`<p class="muted">${all.length ? "Ningún producto coincide." : "Aún no hay productos."}</p>`);
@@ -362,74 +352,16 @@ export const productosTab: TabModule = {
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(render, 180);
     });
-    listSupplier.addEventListener("change", render);
 
-    root.querySelector<HTMLButtonElement>("#downloadTemplate")!.addEventListener("click", () => {
-      const rows = [
-        ["nombre", "categoria", "um", "costo", "precio", "existencia", "minimo", "codigo", "piezas_caja"],
-        ["Coca Cola 600 ml", "Refrescos", "Pza", "13", "18", "12", "4", "7501055300075", "24"],
-        ["Azúcar", "Abarrotes", "Kg", "22", "30", "25.500", "5", "", ""],
-        ["Arroz", "Abarrotes", "Kg", "24", "34", "18.250", "4", "", ""]
-      ];
-      const tableRows = rows
-        .map((row) => `<Row>${row.map((cell) => `<Cell><Data ss:Type="String">${cell}</Data></Cell>`).join("")}</Row>`)
-        .join("");
-      const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Productos"><Table>${tableRows}</Table></Worksheet></Workbook>`;
-      downloadText("plantilla-productos.xls", xml, "application/vnd.ms-excel;charset=utf-8");
-    });
+    root.querySelector<HTMLButtonElement>("#downloadTemplate")!.addEventListener("click", () => exportProducts(ctx, "xls"));
+    root.querySelector<HTMLButtonElement>("#downloadProductsCsv")!.addEventListener("click", () => exportProducts(ctx, "csv"));
 
     root.querySelector<HTMLInputElement>("#importProducts")!.addEventListener("change", async (event) => {
       const input = event.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
-      const text = await file.text();
-      const dataLines = text.trim().startsWith("<?xml") || file.name.toLowerCase().endsWith(".xls")
-        ? parseSpreadsheetRows(text).slice(1)
-        : text.split(/\r?\n/).filter(Boolean).slice(1).map(parseCsvLine);
-      let imported = 0;
-      const branchId = ctx.branches.operationalId();
-      const ts = nowISO();
-      for (const row of dataLines) {
-        const [name, category, third, fourth, fifth, sixth, seventh, eighth, ninth] = row;
-        if (!name?.trim()) continue;
-        const hasUnit = UNITS.some((unit) => unit.toLowerCase() === (third ?? "").trim().toLowerCase());
-        const um = hasUnit ? (UNITS.find((unit) => unit.toLowerCase() === (third ?? "").trim().toLowerCase()) ?? "Pza") : "Pza";
-        const cost = Number((hasUnit ? fourth : third) || 0);
-        const price = Number((hasUnit ? fifth : fourth) || 0);
-        const stock = normalizeQty(hasUnit ? sixth : fifth);
-        const minStock = normalizeQty(hasUnit ? seventh : sixth);
-        const barcode = (hasUnit ? eighth : seventh)?.trim();
-        const packSize = Math.round(normalizeQty(hasUnit ? ninth : eighth));
-        const cleanName = name.trim();
-        const existing = ctx.repos.products.list().find((p) => p.name.toLowerCase() === cleanName.toLowerCase());
-        const product: Product = {
-          // Conserva proveedor, código y demás datos del producto existente
-          ...existing,
-          id: existing?.id ?? uid(),
-          name: cleanName,
-          category: (category ?? "Abarrotes").trim(),
-          um,
-          cost: Number.isFinite(cost) ? Math.max(0, cost) : 0,
-          price: Number.isFinite(price) ? Math.max(0, price) : 0,
-          barcode: barcode || existing?.barcode,
-          pack_size: packSize > 1 ? packSize : existing?.pack_size,
-          active: true,
-          created_at: existing?.created_at ?? ts,
-          updated_at: ts
-        };
-        ctx.repos.products.upsert(product);
-        ctx.repos.stocks.upsert({
-          id: `${product.id}:${branchId}`,
-          product_id: product.id,
-          branch_id: branchId,
-          stock,
-          min_stock: minStock,
-          updated_at: ts
-        });
-        imported += 1;
-      }
+      await importProducts(ctx, file);
       input.value = "";
-      ctx.toast(`${imported} productos importados a ${ctx.branches.name(branchId)}`);
     });
 
     ctx.store.watch((s) => s.suppliers, () => {
