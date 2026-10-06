@@ -7,6 +7,7 @@ import { isRevenueSale } from "../../domain/sale-groups";
 import { fmtQty } from "../../core/qty";
 import { VIEW_ALL } from "../../domain/app-state";
 import { lazyRender } from "../lazy-render";
+import { syncAlert } from "../../domain/sync-health";
 import type { TabModule } from "./tab-module";
 
 type RankPeriod = "day" | "week" | "month";
@@ -34,6 +35,7 @@ export const inicioTab: TabModule = {
     setHtml(
       root,
       html`
+        <div id="syncAlert" class="notice sync-alert hidden" role="alert"></div>
         <header class="dash-head">
           <div id="greeting"></div>
           <div class="dash-actions"><div id="scopeChips"></div></div>
@@ -472,6 +474,22 @@ export const inicioTab: TabModule = {
     };
 
     const schedule = lazyRender(root, render);
+
+    const syncAlertEl = root.querySelector<HTMLElement>("#syncAlert")!;
+    const renderSyncAlert = (): void => {
+      const message = syncAlert(ctx.store.getState().sync);
+      syncAlertEl.classList.toggle("hidden", !message);
+      setHtml(syncAlertEl, message ? html`<span>${message}</span><button class="ghost" type="button" data-sync-now>Sincronizar ahora</button>` : html``);
+    };
+    syncAlertEl.addEventListener("click", (event) => {
+      if (!(event.target as HTMLElement).closest("[data-sync-now]")) return;
+      void ctx.sync.syncNow().then((result) => {
+        ctx.toast(result.ok ? "Sincronizado" : result.error ?? "No se pudo sincronizar");
+      });
+    });
+    ctx.store.watch((s) => [s.sync.pending, s.sync.error, s.sync.lastSyncAt] as const, renderSyncAlert);
+    // "Desde hace X" avanza con el reloj aunque nada cambie.
+    window.setInterval(renderSyncAlert, 60_000);
 
     rankPeriodEl.addEventListener("click", (event) => {
       const chip = (event.target as HTMLElement).closest<HTMLElement>("[data-rank]");

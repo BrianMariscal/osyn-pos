@@ -371,8 +371,8 @@ export const ajustesTab: TabModule = {
                     ctx.toast("Usuario actualizado");
                   } else {
                     const email = (field("uEmail") as HTMLInputElement).value.trim();
-                    if (!email || pass.length < 6) {
-                      ctx.toast("Escribe un correo y una contraseña de al menos 6 caracteres");
+                    if (!email || pass.length < 8) {
+                      ctx.toast("Escribe un correo y una contraseña de al menos 8 caracteres");
                       return;
                     }
                     await ctx.userAdmin.create({ email, password: pass, name: name || email, role, branch_id: branchId });

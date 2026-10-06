@@ -8,6 +8,7 @@ import type { ChangeTracker } from "./change-tracker";
 import type { Repositories, BaseRow } from "./repositories";
 import type { SupabaseClient } from "./supabase-client";
 import { toast } from "../ui/components/toast";
+import { reportIssue } from "../core/monitoring";
 
 const SYNC_TABLES: readonly SyncTableKey[] = [
   "branches",
@@ -78,6 +79,14 @@ function employeeTables(vendorTabs: readonly string[]): SyncTableKey[] {
     (TAB_TABLES[tab as keyof typeof TAB_TABLES] ?? []).forEach((table) => tables.add(table));
   });
   return SYNC_TABLES.filter((table) => tables.has(table));
+}
+
+/**
+ * Errores de PostgREST causados por el contenido de una fila (restricción
+ * check/FK/RLS, dato inválido). 401 (sesión) y 5xx (servidor) no lo son.
+ */
+function isRowRejection(status: number): boolean {
+  return status === 400 || status === 403 || status === 409 || status === 422;
 }
 
 /** Margen hacia atrás del pull incremental (tolera relojes desfasados entre dispositivos). */
@@ -174,14 +183,18 @@ export class SyncEngine {
         if (stale?.length) this.tracker.clear("product_stocks", stale);
       }
       const pushable = isAdmin ? tables : tables.filter((table) => !vendorBlocked.has(table));
+      // Una fila rechazada no frena las demás tablas: se sigue y se avisa al final.
+      const rejected: string[] = [];
       for (const table of pushable) {
-        await this.push(table, token);
+        const message = await this.push(table, token);
+        if (message) rejected.push(message);
       }
       if (conflicts.length) this.warnConflicts(conflicts);
+      const error = rejected.length ? rejected.join(" · ") : null;
       this.store.update((state) => {
-        state.sync = { ...state.sync, syncing: false, lastSyncAt: nowISO(), pending: this.tracker.pendingCount(), error: null };
+        state.sync = { ...state.sync, syncing: false, lastSyncAt: nowISO(), pending: this.tracker.pendingCount(), error };
       });
-      return { ok: true };
+      return error ? { ok: false, error } : { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error sincronizando";
       this.store.update((state) => {
@@ -389,9 +402,10 @@ export class SyncEngine {
     }
   }
 
-  private async push(table: SyncTableKey, token: string): Promise<void> {
+  /** Sube los cambios pendientes; devuelve un aviso si la nube rechazó filas. */
+  private async push(table: SyncTableKey, token: string): Promise<string | null> {
     const dirtyRaw = this.tracker.takeIds(table);
-    if (!dirtyRaw || !dirtyRaw.length) return;
+    if (!dirtyRaw || !dirtyRaw.length) return null;
     // La fila de ajustes (nombre/logo/WhatsApp) solo la sube el dueño. Si quedó
     // pendiente en un dispositivo de admin/vendedor (por un guardado anterior),
     // se descarta para no repetir errores de RLS (42501).
@@ -399,7 +413,7 @@ export class SyncEngine {
     const dirtyIds = isOwner ? dirtyRaw : dirtyRaw.filter((id) => id !== SETTINGS_ROW_ID);
     if (!dirtyIds.length) {
       this.tracker.clear(table, dirtyRaw);
-      return;
+      return null;
     }
     let sourceRows: Array<Record<string, unknown>>;
     if (table === "products") {
@@ -413,20 +427,41 @@ export class SyncEngine {
     const rows = sourceRows
       .filter((row) => dirtyIds.includes(String(row.id)))
       .map((row) => toSupabaseRow(table, row));
-    if (!rows.length) return;
-    const res = await this.client.rest(`${table}?on_conflict=id`, token, {
+    if (!rows.length) return null;
+    const res = await this.upsert(table, token, rows);
+    if (res.status === 404) {
+      // Tabla sin migrar: los cambios quedan pendientes y se reintentan
+      return null;
+    }
+    const rejectedIds = new Set<string>();
+    let firstError = "";
+    if (!res.ok) {
+      if (!isRowRejection(res.status)) throw new Error(`Error sincronizando ${table}: ${await res.text()}`);
+      // La base rechazó el lote (restricción o permiso): se sube fila por fila
+      // para que una sola fila inválida no deje sin subir todas las demás.
+      for (const row of rows) {
+        const one = await this.upsert(table, token, [row]);
+        if (one.ok) continue;
+        if (!isRowRejection(one.status)) throw new Error(`Error sincronizando ${table}: ${await one.text()}`);
+        rejectedIds.add(String(row.id));
+        if (!firstError) firstError = await one.text();
+      }
+    }
+    // Las rechazadas siguen pendientes (no se pierden) y se reintentan en cada sync.
+    this.tracker.clear(table, dirtyIds.filter((id) => !rejectedIds.has(id)));
+    this.store.update((state) => {
+      state.sync = { ...state.sync, pending: this.tracker.pendingCount() };
+    });
+    if (!rejectedIds.size) return null;
+    reportIssue(`Sync: la nube rechazó filas de ${table}`, { table, count: rejectedIds.size, error: firstError.slice(0, 500) });
+    return `${rejectedIds.size} cambio(s) de ${table} rechazado(s) por la nube: ${firstError.slice(0, 200)}`;
+  }
+
+  private upsert(table: SyncTableKey, token: string, rows: Array<Record<string, unknown>>): Promise<Response> {
+    return this.client.rest(`${table}?on_conflict=id`, token, {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
       body: JSON.stringify(rows)
-    });
-    if (res.status === 404) {
-      // Tabla sin migrar: los cambios quedan pendientes y se reintentan
-      return;
-    }
-    if (!res.ok) throw new Error(`Error sincronizando ${table}: ${await res.text()}`);
-    this.tracker.clear(table, dirtyIds);
-    this.store.update((state) => {
-      state.sync = { ...state.sync, pending: this.tracker.pendingCount() };
     });
   }
 }

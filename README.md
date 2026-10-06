@@ -76,6 +76,13 @@ supabase-*.sql  schema, migraciones multi-sucursal y endurecimiento de seguridad
     ejecuta `supabase-migracion-realtime.sql` en el SQL Editor (una sola vez).
     Sin este paso la app sincroniza igual, revisando cada pocos segundos.
 
+ 6. Ejecuta `supabase-migracion-guardias-fiado.sql` y
+    `supabase-migracion-precios-servidor.sql` (después de
+    `supabase-migracion-stock-servidor.sql`): un vendedor ya no puede alterar
+    saldos de fiado ni registrar ventas debajo del costo o con cantidades inválidas.
+ 7. Corre `supabase-verificacion.sql` (solo lectura): cada renglón debe decir
+    **OK**; si dice **FALTA**, indica qué archivo aplicar.
+
  > ¿Base ya existente con datos? Aplica `supabase-migracion-multisucursal.sql`
  > para pasar a esquema multi-sucursal sin perder información (respáldala antes).
  > Después aplica `supabase-migracion-endurecimiento.sql` para restringir el
@@ -109,6 +116,13 @@ Vercel detecta Vite automáticamente (`npm run build` → `dist/`).
 | `SUPABASE_ANON_KEY` | Ídem |
 | `SUPABASE_SERVICE_ROLE_KEY` | Crear/editar usuarios desde `api/*` (secreta) |
 | `NVIDIA_API_KEY` o `OPENAI_API_KEY` | Motor del asistente (voz y chat) |
+| `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN` | Opcional (Upstash gratis): límite de solicitudes compartido entre instancias. Sin ellas se cuenta en memoria |
+
+Monitoreo de errores (opcional, Sentry gratis): pon el DSN en `sentryDsn` de
+`public/config.js`. Sin DSN no se carga nada.
+
+Respaldos diarios y pruebas automáticas corren en GitHub Actions
+(`.github/workflows/`). Configuración y restauración en `docs/respaldos.md`.
 
 Sin esas llaves el resto de la app funciona normal; el asistente de IA responde
 con el parser local.

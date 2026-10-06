@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     res.status(auth.status).json(auth.body);
     return;
   }
-  if (!rateLimit(req)) {
+  if (!await rateLimit(req)) {
     res.status(429).json({ error: "Demasiadas solicitudes, espera un momento" });
     return;
   }

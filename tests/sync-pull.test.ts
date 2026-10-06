@@ -17,7 +17,7 @@ import type { SupabaseClient } from "../src/data/supabase-client";
 
 type Row = Record<string, unknown>;
 
-function makeServer({ migrated = true } = {}) {
+function makeServer({ migrated = true, reject = (_row: Row): boolean => false } = {}) {
   const tables = new Map<string, Map<string, Row>>();
   let clock = Date.parse("2026-10-03T12:00:00.000Z");
   const table = (name: string): Map<string, Row> => {
@@ -41,6 +41,10 @@ function makeServer({ migrated = true } = {}) {
       const store = table(tableName);
       if ((init.method ?? "GET").toUpperCase() === "POST") {
         const body = JSON.parse(String(init.body ?? "[]")) as Row[];
+        // Como Postgres: una fila que viola una restricción tumba todo el lote.
+        if (body.some(reject)) {
+          return response({ code: "23514", message: "violates check constraint" }, 400);
+        }
         for (const row of body) {
           const id = String(row.id);
           const next: Row = { ...store.get(id), ...row };
@@ -161,5 +165,25 @@ describe("pull incremental por synced_at", () => {
 
     expect(employee.store.getState().settings.logo).toBe(logo);
     expect(owner.store.getState().settings.logo).toBe(logo);
+  });
+});
+
+describe("push con filas rechazadas", () => {
+  it("una fila inválida no impide subir las demás y queda pendiente", async () => {
+    const server = makeServer({ reject: (row) => row.id === "malo" });
+    const a = makeDevice(server);
+    const b = makeDevice(server);
+    const now = new Date().toISOString();
+    a.repos.expenses.upsert(expense("e1", now) as never);
+    a.repos.expenses.upsert(expense("malo", now) as never);
+    a.repos.expenses.upsert(expense("e2", now) as never);
+
+    const result = await a.sync.syncNow();
+    expect(result.ok).toBe(false);
+    expect(a.store.getState().sync.error).toMatch(/1 cambio\(s\) de expenses rechazado/);
+    expect(a.tracker.takeIds("expenses")).toEqual(["malo"]);
+
+    await b.sync.syncNow();
+    expect(b.store.getState().expenses.map((row) => row.id).sort()).toEqual(["e1", "e2"]);
   });
 });

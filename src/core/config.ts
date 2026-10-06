@@ -1,6 +1,8 @@
 export interface PosConfig {
   supabaseUrl: string;
   supabaseKey: string;
+  /** DSN de Sentry (plan gratuito). Vacío = sin monitoreo de errores. */
+  sentryDsn: string;
 }
 
 /** Lee la config pública: public/config.js (window.POS_CONFIG) + enlace de setup por hash. */
@@ -11,7 +13,8 @@ export function readConfig(): PosConfig {
   const hashKey = params.get("supabaseKey") ?? "";
   return {
     supabaseUrl: hashUrl || fromWindow.supabaseUrl || "",
-    supabaseKey: hashKey || fromWindow.supabaseKey || ""
+    supabaseKey: hashKey || fromWindow.supabaseKey || "",
+    sentryDsn: fromWindow.sentryDsn || ""
   };
 }
 

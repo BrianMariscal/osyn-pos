@@ -1038,6 +1038,16 @@ body { animation: app-in var(--t-slow) var(--ease); }
   background: color-mix(in srgb, var(--accent) 9%, var(--card));
   color: var(--ink);
 }
+.sync-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 9%, var(--card));
+}
 .product-tile .tile-cat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Proveedores */

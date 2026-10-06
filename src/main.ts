@@ -3,6 +3,7 @@ import "./styles/base.css";
 import "./styles/components.css";
 
 import { readConfig } from "./core/config";
+import { initMonitoring, setMonitoringUser } from "./core/monitoring";
 import { Store } from "./domain/store";
 import { createInitialState, type AppState } from "./domain/app-state";
 import { normalizeState } from "./domain/normalize";
@@ -28,7 +29,11 @@ import { speak } from "./ui/voice-recognition";
 import type { AppContext } from "./ui/context";
 
 async function main(): Promise<void> {
+  // Pide al navegador no desalojar IndexedDB por falta de espacio: ahí viven
+  // las ventas offline que aún no suben a la nube.
+  void navigator.storage?.persist?.().catch(() => false);
   const config = readConfig();
+  initMonitoring(config.sentryDsn);
   const authSnapshot = loadAuthSession();
   const scope = authSnapshot?.user?.id || "guest";
   const snapshot = await loadSnapshot(scope);
@@ -84,6 +89,13 @@ async function main(): Promise<void> {
       toast(error instanceof Error ? error.message : "Sesión expirada");
     }
   }
+
+  const reportUser = (): void => {
+    const session = auth.session;
+    setMonitoringUser(session ? { id: session.user.id, role: session.role, branch: session.branch_id } : null);
+  };
+  reportUser();
+  auth.onSessionChange(reportUser);
 
   buildApp(ctx);
   applyTheme(ctx);

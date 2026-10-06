@@ -1,0 +1,56 @@
+# Respaldo diario de Supabase (gratis): pg_dump cifrado, guardado 90 días como
+# artifact del repositorio. Secretos requeridos (Settings > Secrets > Actions):
+#   SUPABASE_DB_URL     cadena "Session pooler" de Supabase (Connect > Session pooler),
+#                       con la contraseña de la base. GitHub no tiene IPv6: no uses
+#                       la "Direct connection".
+#   BACKUP_PASSPHRASE   frase larga para cifrar; guárdala fuera de GitHub.
+# Restaurar: ver docs/respaldos.md
+name: Respaldo diario
+
+on:
+  schedule:
+    - cron: "15 9 * * *" # 03:15 hora del centro de México
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Revisar secretos
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Faltan los secretos SUPABASE_DB_URL y/o BACKUP_PASSPHRASE"
+            exit 1
+          fi
+
+      - name: Volcar y cifrar la base
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y-%m-%d)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          # pg_dump 17 lee servidores Postgres 15 y 17 (los que usa Supabase).
+          docker run --rm -e DB_URL="$SUPABASE_DB_URL" postgres:17-alpine \
+            sh -c 'pg_dump "$DB_URL" --format=custom --no-owner --no-privileges --schema=public --schema=auth' \
+            > respaldo.dump
+          test -s respaldo.dump
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -pass env:BACKUP_PASSPHRASE -in respaldo.dump -out "respaldo-$STAMP.dump.enc"
+          rm respaldo.dump
+          ls -lh "respaldo-$STAMP.dump.enc"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-${{ env.STAMP }}
+          path: respaldo-*.dump.enc
+          retention-days: 90
+          if-no-files-found: error
