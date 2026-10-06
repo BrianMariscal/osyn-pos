@@ -2,8 +2,7 @@ import { html, setHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import { type CartUnit, type PaymentMethod, type Product, type Supplier } from "../../core/types";
-import { lowStockProducts, resolveScannedCode, suggestOffers, supplierCode, topSellers } from "../../domain/catalog";
-import { mountCarousels } from "../carousel";
+import { resolveScannedCode, supplierCode } from "../../domain/catalog";
 import { scanBarcode } from "../scanner";
 import { iconFor } from "../icons";
 import { speak, vibrate, isVoiceEnabled } from "../voice-recognition";
@@ -28,15 +27,20 @@ export const ventaTab: TabModule = {
     setHtml(
       root,
       html`
-        <div class="split">
-          <article class="card">
-            <div class="search-row">
-              <input id="productSearch" class="input" type="search" placeholder="Buscar producto o código de barras" autocomplete="off" enterkeyhint="search" aria-label="Buscar producto">
-              <button id="scanButton" class="ghost" type="button" title="Escanear código de barras o QR">${iconFor("barcode")} <span class="hide-sm">Escanear</span></button>
+        <div class="split sale-layout">
+          <article class="card sale-left">
+            <div class="search-row sale-search">
+              <input id="productSearch" class="input" type="search" placeholder="Busca o escanea un producto" autocomplete="off" enterkeyhint="search" aria-label="Buscar producto">
+              <button id="scanButton" class="primary" type="button" title="Escanear código de barras o QR">${iconFor("barcode")} <span class="hide-sm">Escanear</span></button>
             </div>
             ${productFiltersMarkup("sale")}
             <section id="productPreview" class="preview-card hidden" aria-live="polite"></section>
-            <div id="saleHighlights" class="highlights"></div>
+            <div id="saleIdle" class="sale-idle">
+              <span class="sale-idle-ico">${iconFor("barcode")}</span>
+              <strong>Escanea o escribe el nombre del producto</strong>
+              <span class="muted">El producto aparece aquí con su precio antes de agregarlo.</span>
+              <button id="showCatalog" class="ghost" type="button">Ver catálogo completo</button>
+            </div>
             <div id="catalogBar" class="catalog-bar hidden">
               <span class="hint" id="catalogInfo"></span>
               <button id="closeCatalog" class="ghost" type="button">Ocultar catálogo</button>
@@ -49,24 +53,39 @@ export const ventaTab: TabModule = {
               <strong id="cartToggleTotal">$0.00</strong>
             </button>
             <div class="cart-body" id="cartBody">
+              <div class="cart-head">
+                <h2>Carrito <span class="count-badge" data-tone="blue" id="cartBadge"></span></h2>
+                <button id="clearCart" class="ghost danger small-btn" type="button">${iconFor("trash")} Vaciar</button>
+              </div>
               <div id="cartItems" class="list cart-items"><p class="muted">Sin productos</p></div>
               <div class="cart-pay">
-                <div class="total-row"><span id="cartTotalLabel">Total</span><strong id="cartTotal">$0.00</strong></div>
-                <label class="form-field">Forma de pago
-                  <select id="paymentType" class="input">
-                    <option value="efectivo">Efectivo</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="tarjeta">Tarjeta</option>
-                    <option value="fiado">Fiado (a cuenta del cliente)</option>
-                    <option value="interno">Venta interna (uso de la tienda)</option>
-                  </select>
-                </label>
+                <div class="pay-total">
+                  <span id="cartTotalLabel">Total a cobrar</span>
+                  <strong id="cartTotal">$0.00</strong>
+                </div>
+                <div class="pay-methods" id="payMethods" role="radiogroup" aria-label="Forma de pago">
+                  <button type="button" role="radio" data-pay="efectivo">${iconFor("wallet")}<span>Efectivo</span></button>
+                  <button type="button" role="radio" data-pay="transferencia">${iconFor("transfer")}<span>Transferencia</span></button>
+                  <button type="button" role="radio" data-pay="tarjeta">${iconFor("card")}<span>Tarjeta</span></button>
+                  <button type="button" role="radio" data-pay="fiado">${iconFor("user")}<span>Fiado</span></button>
+                  <button type="button" role="radio" data-pay="interno">${iconFor("box")}<span>Uso interno</span></button>
+                </div>
+                <select id="paymentType" class="hidden" aria-hidden="true" tabindex="-1">
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                  <option value="fiado">Fiado</option>
+                  <option value="interno">Uso interno</option>
+                </select>
                 <div id="cashBox" class="cash-box">
-                  <label class="form-field">Paga con
-                    <input id="cashReceived" class="input cash-input" type="number" step="0.5" min="0" inputmode="decimal" placeholder="Opcional: con cuánto paga">
-                  </label>
+                  <div class="cash-grid">
+                    <label class="cash-field">
+                      <span>Recibido</span>
+                      <input id="cashReceived" class="input cash-input" type="number" step="0.5" min="0" inputmode="decimal" placeholder="$0.00">
+                    </label>
+                    <div class="cash-change empty" id="cashChange" aria-live="polite"><span>Cambio</span><strong>—</strong></div>
+                  </div>
                   <div class="cash-quick" id="cashQuick"></div>
-                  <div class="cash-change" id="cashChange" aria-live="polite"></div>
                 </div>
                 <div id="creditBox" class="credit-box hidden">
                   <label class="form-field">Cliente
@@ -80,10 +99,7 @@ export const ventaTab: TabModule = {
                   <p class="hint" id="creditHint"></p>
                 </div>
                 <p id="internalHint" class="hint notice hidden">Se descuenta del inventario pero no suma a las ventas del día. Se registra a costo para el control.</p>
-                <div class="actions">
-                  <button id="completeSale" class="primary grow">Cobrar</button>
-                  <button id="clearCart" class="ghost danger">Vaciar</button>
-                </div>
+                <button id="completeSale" class="primary pay-button" type="button">Cobrar</button>
               </div>
             </div>
           </article>
@@ -93,12 +109,13 @@ export const ventaTab: TabModule = {
 
     const search = root.querySelector<HTMLInputElement>("#productSearch")!;
     const grid = root.querySelector<HTMLElement>("#productGrid")!;
-    const highlights = root.querySelector<HTMLElement>("#saleHighlights")!;
+    const idle = root.querySelector<HTMLElement>("#saleIdle")!;
+    const payMethods = root.querySelector<HTMLElement>("#payMethods")!;
+    const cartBadge = root.querySelector<HTMLElement>("#cartBadge")!;
     const catalogBar = root.querySelector<HTMLElement>("#catalogBar")!;
     const catalogInfo = root.querySelector<HTMLElement>("#catalogInfo")!;
     /** Catálogo completo abierto a mano (sin buscar ni filtrar). */
     let showAll = false;
-    const carousels = mountCarousels(highlights, () => root.classList.contains("active"));
     const items = root.querySelector<HTMLElement>("#cartItems")!;
     const totalEl = root.querySelector<HTMLElement>("#cartTotal")!;
     const totalLabelEl = root.querySelector<HTMLElement>("#cartTotalLabel")!;
@@ -131,13 +148,13 @@ export const ventaTab: TabModule = {
 
     /**
      * La cuadrícula solo aparece al buscar, filtrar por proveedor o abrir el
-     * catálogo; por defecto se ven los recuadros con movimiento.
+     * catálogo; por defecto solo la búsqueda (la pantalla es para cobrar).
      */
     const catalogMode = (): boolean => showAll || Boolean(search.value.trim()) || filters.active();
 
     const renderGrid = (): void => {
       const browsing = catalogMode();
-      highlights.classList.toggle("hidden", browsing);
+      idle.classList.toggle("hidden", browsing || preview.length > 0);
       grid.classList.toggle("hidden", !browsing);
       catalogBar.classList.toggle("hidden", !browsing);
       if (!browsing) {
@@ -173,64 +190,6 @@ export const ventaTab: TabModule = {
       );
     };
 
-    /** Recuadros: más vendidos, por agotarse y ofertas que arroja el sistema. */
-    const renderHighlights = (): void => {
-      const products = ctx.repos.products.list();
-      const branchId = ctx.branches.operationalId();
-      const sales = ctx.repos.sales.list().filter((sale) => sale.branch_id === branchId);
-      const stockOf = (id: string): number => ctx.sales.stockOf(id);
-      const top = topSellers(products, sales);
-      const low = lowStockProducts(products, stockOf, (id) => ctx.sales.minStockOf(id));
-      const offers = suggestOffers(products, sales, stockOf);
-      carousels.render([
-        {
-          id: "top",
-          title: "Más vendidos",
-          subtitle: "Últimos 30 días",
-          empty: "Aún no hay ventas en los últimos 30 días.",
-          items: top.map(({ product, qty }, index) => ({
-            productId: product.id,
-            name: product.name,
-            price: fmtMoneyPesos(product.price),
-            badge: `#${index + 1}`,
-            detail: `${fmtQty(qty)} ${product.um} vendidos`,
-            // Tocar solo muestra el producto: también se puede consultar uno agotado
-            disabled: false
-          }))
-        },
-        {
-          id: "low",
-          title: "Por agotarse",
-          subtitle: "Existencia en o bajo el mínimo",
-          empty: "Todo tiene buena existencia.",
-          items: low.map(({ product, stock, min }) => ({
-            productId: product.id,
-            name: product.name,
-            price: fmtMoneyPesos(product.price),
-            badge: stock <= 0 ? "Agotado" : "Quedan pocos",
-            detail: `Quedan ${fmtQty(stock)} ${product.um} · mín ${fmtQty(min)}`,
-            disabled: false
-          }))
-        },
-        {
-          id: "offers",
-          title: "Ofertas sugeridas",
-          subtitle: "Sin venta en 30 días o más: tócala para venderla con descuento",
-          empty: "Sin ofertas: todo se ha vendido en el último mes.",
-          items: offers.map(({ product, idleDays, discountPct, offerPrice }) => ({
-            productId: product.id,
-            name: product.name,
-            price: fmtMoneyPesos(offerPrice),
-            was: fmtMoneyPesos(product.price),
-            promoPrice: offerPrice,
-            badge: `−${discountPct}%`,
-            detail: `${idleDays} días sin venta`,
-            disabled: false
-          }))
-        }
-      ]);
-    };
-
     const cartTotalCents = (): number =>
       sumCents(
         ctx.sales.cart().map((line) => (ctx.repos.products.byId(line.productId) ? lineTotalCents(line.qty, ctx.sales.unitPrice(line)) : 0))
@@ -256,7 +215,7 @@ export const ventaTab: TabModule = {
           ? html`<span>Cambio</span><strong>${fmtMoney(check.changeCents)}</strong>`
           : check.status === "short"
             ? html`<span>Faltan</span><strong>${fmtMoney(check.missingCents)}</strong>`
-            : html``
+            : html`<span>Cambio</span><strong>—</strong>`
       );
     };
 
@@ -267,8 +226,15 @@ export const ventaTab: TabModule = {
       creditBox.classList.toggle("hidden", !fiado);
       newCustomerFields.classList.toggle("hidden", !(fiado && customer.value === NEW_CUSTOMER));
       internalHint.classList.toggle("hidden", !internal);
-      completeButton.textContent = internal ? "Registrar uso interno" : fiado ? "Fiar" : "Cobrar";
-      totalLabelEl.textContent = internal ? "Total (a precio de venta)" : "Total";
+      const totalText = fmtMoney(cartTotalCents());
+      completeButton.textContent = internal ? "Registrar uso interno" : fiado ? `Fiar ${totalText}` : `Cobrar ${totalText}`;
+      completeButton.disabled = cartTotalCents() <= 0;
+      totalLabelEl.textContent = internal ? "Total (a precio de venta)" : "Total a cobrar";
+      payMethods.querySelectorAll<HTMLElement>("[data-pay]").forEach((button) => {
+        const on = button.dataset.pay === method;
+        button.classList.toggle("active", on);
+        button.setAttribute("aria-checked", String(on));
+      });
       renderCash();
       const selected = customer.value && customer.value !== NEW_CUSTOMER ? ctx.repos.customers.byId(customer.value) : undefined;
       creditHint.textContent = selected
@@ -285,6 +251,7 @@ export const ventaTab: TabModule = {
       if (!cart.length) cartCard.classList.remove("cart-open");
       const countLabel = root.querySelector<HTMLElement>("#cartCount");
       if (countLabel) countLabel.textContent = cart.length ? `(${cart.length})` : "";
+      cartBadge.textContent = cart.length ? String(cart.length) : "";
       const totalCents = sumCents(
         cart.map((line) => {
           const product = ctx.repos.products.byId(line.productId);
@@ -295,7 +262,7 @@ export const ventaTab: TabModule = {
       totalEl.textContent = totalText;
       toggleTotalEl.textContent = totalText;
       if (!cart.length) {
-        setHtml(items, html`<p class="muted">Sin productos</p>`);
+        setHtml(items, html`<div class="cart-empty-note">${iconFor("cart")}<span>El carrito está vacío</span><small class="muted">Escanea o busca productos para empezar</small></div>`);
         return;
       }
       setHtml(
@@ -377,6 +344,7 @@ export const ventaTab: TabModule = {
 
     const renderPreview = (): void => {
       previewEl.classList.toggle("hidden", !preview.length && !previewMissing.length);
+      idle.classList.toggle("hidden", preview.length > 0 || catalogMode());
       if (!preview.length && !previewMissing.length) {
         setHtml(previewEl, html``);
         return;
@@ -599,18 +567,16 @@ export const ventaTab: TabModule = {
       if (product) previewProduct(product);
     });
 
-    highlights.addEventListener("click", (event) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("[data-show-catalog]")) {
-        showAll = true;
-        renderGrid();
-        return;
-      }
-      const button = target.closest<HTMLElement>("[data-add]");
+    root.querySelector<HTMLButtonElement>("#showCatalog")!.addEventListener("click", () => {
+      showAll = true;
+      renderGrid();
+    });
+    payMethods.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-pay]");
       if (!button) return;
-      const promo = button.dataset.promo ? Number(button.dataset.promo) : undefined;
-      const product = ctx.repos.products.byId(button.dataset.add!);
-      if (product) previewProduct(product, promo);
+      payment.value = button.dataset.pay!;
+      payment.dispatchEvent(new Event("change"));
+      if (payment.value === "efectivo") cashInput.focus({ preventScroll: true });
     });
 
     root.querySelector<HTMLButtonElement>("#closeCatalog")!.addEventListener("click", () => {
@@ -679,7 +645,6 @@ export const ventaTab: TabModule = {
         }
       }
     );
-    ctx.store.watch((s) => [s.products, s.product_stocks, s.sales, s.branches, s.currentBranchId] as const, renderHighlights);
 
     payment.addEventListener("change", renderPaymentState);
     cashInput.addEventListener("input", renderCash);

@@ -1919,3 +1919,127 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
   .ticket-row .tag { margin-left: 58px; }
   .ticket-row .row-price { margin-left: auto; }
 }
+
+/* ==========================================================================
+   Venta: solo búsqueda + cobro, con total y cambio grandes
+   ========================================================================== */
+.sale-layout { grid-template-columns: minmax(0, 1fr) minmax(400px, 1.08fr); }
+.sale-search .input { font-size: var(--fs-lg); min-height: 54px; }
+.sale-search .primary { min-height: 54px; padding-inline: 1.1rem; }
+.sale-idle {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+  text-align: center;
+  margin-top: var(--sp-4);
+  padding: var(--sp-5) var(--sp-4);
+  border: 2px dashed var(--line-strong);
+  border-radius: var(--r);
+  color: var(--ink);
+}
+.sale-idle-ico { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 16px; background: var(--primary-soft); color: var(--primary); }
+.sale-idle-ico svg { width: 30px; height: 30px; }
+.sale-idle .ghost { margin-top: var(--sp-2); }
+.sale-idle.hidden { display: none; }
+
+/* Panel de cobro */
+@media (min-width: 861px) { .cart-card { top: 72px; } }
+.cart-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.cart-head h2 { font-size: var(--fs-lg); display: flex; align-items: center; gap: var(--sp-2); }
+.small-btn { min-height: 36px; padding: 0.3rem 0.7rem; font-size: var(--fs-xs); }
+.cart-items { max-height: 34vh; overflow-y: auto; margin-top: 0; }
+.cart-empty-note { display: grid; justify-items: center; gap: 4px; padding: var(--sp-5) var(--sp-3); text-align: center; color: var(--muted); }
+.cart-empty-note svg { width: 28px; height: 28px; }
+.cart-empty-note span { font-weight: 700; color: var(--ink); }
+.cart-item .cart-item-total strong { font-size: var(--fs-md); }
+
+.cart-pay { gap: var(--sp-3); margin-top: var(--sp-4); }
+.pay-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.pay-total span { font-weight: 700; font-size: var(--fs-md); opacity: 0.9; }
+.pay-total strong { font-size: 2.6rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+
+.pay-methods { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.pay-methods button {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-height: 62px;
+  padding: 0.45rem 0.2rem;
+  border: var(--line-w) solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+}
+.pay-methods button svg { width: 22px; height: 22px; }
+.pay-methods button:hover:not(.active) { color: var(--ink); border-color: var(--primary); }
+.pay-methods button.active { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+
+.cash-box { padding: var(--sp-3); gap: var(--sp-3); }
+.cash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); align-items: stretch; }
+.cash-field { display: grid; gap: 4px; }
+.cash-field span, .cash-change span { font-size: var(--fs-xs); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.cash-input { font-size: 1.9rem !important; font-weight: 800; min-height: 64px; text-align: right; padding-inline: var(--sp-3); }
+.cash-change {
+  display: grid;
+  align-content: center;
+  justify-items: end;
+  gap: 4px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border: var(--line-w) solid var(--line);
+  background: var(--card);
+}
+.cash-change strong { font-size: 2rem; line-height: 1.05; }
+.cash-change.empty strong { color: var(--muted); }
+.cash-change.ok { background: color-mix(in srgb, var(--c-green) 14%, var(--card)); border-color: color-mix(in srgb, var(--c-green) 45%, transparent); }
+.cash-change.ok span, .cash-change.ok strong { color: var(--c-green); }
+.cash-change.short { background: color-mix(in srgb, var(--c-coral) 12%, var(--card)); border-color: color-mix(in srgb, var(--c-coral) 45%, transparent); }
+.cash-change.short span, .cash-change.short strong { color: var(--c-coral); }
+.cash-quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 6px; }
+.cash-quick .chip-btn { min-height: 46px; border-radius: var(--r-sm); font-size: var(--fs-md); }
+
+.pay-button {
+  width: 100%;
+  min-height: 64px;
+  font-size: 1.3rem;
+  font-weight: 800;
+  border-radius: var(--r);
+  background: var(--c-green);
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+.pay-button:hover:not(:disabled) { background: color-mix(in srgb, var(--c-green) 85%, #000); }
+[data-theme="dark"] .pay-button { color: #0b1220; }
+
+@media (max-width: 1100px) {
+  .sale-layout { grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); }
+  .pay-methods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .sale-layout { grid-template-columns: 1fr; }
+  .cart-body { max-height: 84dvh; }
+  .cart-items { max-height: 30dvh; }
+  .pay-total strong { font-size: 2.1rem; }
+  .cash-input { font-size: 1.6rem !important; min-height: 58px; }
+  .cash-change strong { font-size: 1.7rem; }
+  .pay-methods { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .pay-methods button { min-height: 56px; font-size: 0.62rem; }
+}
+.count-badge:empty { display: none; }
+.cart-card.cart-empty #clearCart { visibility: hidden; }
+@media (max-width: 860px) {
+  .pay-methods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pay-methods button { font-size: var(--fs-2xs); }
+  .cart-head h2 { visibility: hidden; }
+}
