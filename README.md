@@ -80,6 +80,9 @@ supabase-*.sql  schema, migraciones multi-sucursal y endurecimiento de seguridad
  > para pasar a esquema multi-sucursal sin perder información (respáldala antes).
  > Después aplica `supabase-migracion-endurecimiento.sql` para restringir el
  > catálogo de proveedores y validar cantidades y montos no negativos.
+ > Para asignar administradores a una sucursal, aplica también
+ > `supabase-migracion-admin-sucursal.sql`: un administrador con sucursal solo
+ > ve y opera esa sucursal; sin sucursal sigue viendo todas.
 
 ## Sincronización y offline
 

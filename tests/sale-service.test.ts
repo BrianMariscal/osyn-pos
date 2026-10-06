@@ -13,7 +13,7 @@ function fakeAdminAuth(): AuthService {
   return {
     isAdmin: () => true,
     isOwner: () => true,
-    employeeBranchId: () => null
+    assignedBranchId: () => null
   } as unknown as AuthService;
 }
 

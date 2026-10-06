@@ -182,7 +182,7 @@ describe("4. gastos semanales y mensuales", () => {
   it("el servicio separa frecuencias y conserva el periodo al recargar", () => {
     const store = new Store<AppState>(createInitialState());
     const repos = new Repositories(store, new ChangeTracker());
-    const branches = new BranchService(store, { isAdmin: () => true, isOwner: () => true, employeeBranchId: () => null } as unknown as AuthService, repos);
+    const branches = new BranchService(store, { isAdmin: () => true, isOwner: () => true, assignedBranchId: () => null } as unknown as AuthService, repos);
     branches.ensureSeeded();
     const expenses = new ExpenseService(repos, branches);
     expenses.add("fijo", "Renta", 3100, "Renta", "mensual");
@@ -228,7 +228,7 @@ describe("5. recuadros de venta", () => {
   it("vender en oferta cobra el precio de oferta y guarda el normal", () => {
     const store = new Store<AppState>(createInitialState());
     const repos = new Repositories(store, new ChangeTracker());
-    const branches = new BranchService(store, { isAdmin: () => true, isOwner: () => true, employeeBranchId: () => null } as unknown as AuthService, repos);
+    const branches = new BranchService(store, { isAdmin: () => true, isOwner: () => true, assignedBranchId: () => null } as unknown as AuthService, repos);
     branches.ensureSeeded();
     const salesService = new SaleService(store, repos, branches);
     repos.products.upsert(product({ id: "p", price: 20, cost: 10 }));

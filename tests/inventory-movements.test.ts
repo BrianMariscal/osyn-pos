@@ -9,7 +9,7 @@ import type { AuthService } from "../src/domain/auth-service";
 import { nowISO } from "../src/core/dates";
 
 function fakeAdminAuth(): AuthService {
-  return { isAdmin: () => true, isOwner: () => true, employeeBranchId: () => null } as unknown as AuthService;
+  return { isAdmin: () => true, isOwner: () => true, assignedBranchId: () => null } as unknown as AuthService;
 }
 
 describe("entradas y mermas de inventario", () => {

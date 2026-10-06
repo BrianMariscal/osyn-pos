@@ -17,7 +17,7 @@ import type { AuthService } from "../src/domain/auth-service";
 import type { Expense, Product } from "../src/core/types";
 
 function fakeAdminAuth(): AuthService {
-  return { isAdmin: () => true, isOwner: () => true, employeeBranchId: () => null } as unknown as AuthService;
+  return { isAdmin: () => true, isOwner: () => true, assignedBranchId: () => null } as unknown as AuthService;
 }
 
 const ts = "2026-10-02T15:00:00.000Z";

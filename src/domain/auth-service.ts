@@ -55,9 +55,14 @@ export class AuthService {
     return role === "dueno" || role === "admin" ? role : "empleado";
   }
 
-  /** Sucursal fija del empleado (null para admins = todas). */
-  employeeBranchId(): string | null {
-    return this.session?.role === "empleado" ? (this.session.branch_id ?? null) : null;
+  /**
+   * Sucursal fija del usuario: la del vendedor, o la del administrador si el
+   * dueño le asignó una. null = puede ver y operar todas (dueño o admin general).
+   */
+  assignedBranchId(): string | null {
+    const role = this.session?.role;
+    if (role === "empleado" || role === "admin") return this.session?.branch_id ?? null;
+    return null;
   }
 
   async login(email: string, password: string): Promise<void> {

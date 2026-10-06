@@ -218,7 +218,7 @@ export const ajustesTab: TabModule = {
                 <div>
                   <strong>${user.name}</strong>
                   <p class="muted">
-                    ${user.email} · ${ROLE_LABELS[user.role] ?? user.role}${user.branch_id ? ` · ${ctx.branches.name(user.branch_id)}` : ""}
+                    ${user.email} · ${ROLE_LABELS[user.role] ?? user.role}${user.branch_id ? ` · ${ctx.branches.name(user.branch_id)}` : user.role === "admin" ? " · Todas las sucursales" : ""}
                   </p>
                 </div>
                 <div class="actions">
@@ -240,7 +240,9 @@ export const ajustesTab: TabModule = {
     const openUserForm = (user?: ManagedUser): void => {
       const isOwner = ctx.auth.isOwner();
       const branches = ctx.branches.list();
-      const isEmployeeOnly = !isOwner || user?.role === "empleado";
+      // Admin con sucursal: sus vendedores quedan en esa sucursal (el servidor lo exige igual)
+      const myBranch = isOwner ? null : ctx.auth.assignedBranchId();
+      const initialRole: Role = isOwner ? (user?.role ?? "empleado") : "empleado";
       openModal({
         title: user ? (isOwner ? "Editar usuario" : "Editar vendedor") : isOwner ? "Nuevo usuario" : "Nuevo vendedor",
         content: html`
@@ -269,14 +271,15 @@ export const ajustesTab: TabModule = {
                 </select>
               </label>`
             : html``}
-          ${isEmployeeOnly
-            ? html`<label class="form-field">Sucursal del vendedor
+          ${myBranch
+            ? html`<p class="hint">Sucursal: <b>${ctx.branches.name(myBranch)}</b> (la tuya).</p>`
+            : html`<label class="form-field ${initialRole === "dueno" ? "hidden" : ""}" id="uBranchField"><span id="uBranchLabel">${initialRole === "admin" ? "Sucursal que administra" : "Sucursal del vendedor"}</span>
                 <select id="uBranch" class="input">
-                  <option value="">Sin sucursal</option>
+                  <option value="" id="uBranchNone">${initialRole === "admin" ? "Todas las sucursales" : "Sin sucursal"}</option>
                   ${branches.map((branch) => html`<option value="${branch.id}" ${user?.branch_id === branch.id ? "selected" : null}>${branch.name}</option>`)}
                 </select>
-              </label>`
-            : html``}
+                <small class="hint" id="uBranchHint">${initialRole === "admin" ? "Con una sucursal, solo ve y opera esa sucursal. \"Todas\" puede cambiar entre sucursales y ver el consolidado." : ""}</small>
+              </label>`}
           ${user ? html`<label class="form-field">Nueva contraseña (opcional)
             <span class="pass-field">
               <input id="uPass" class="input" type="password" autocomplete="new-password">
@@ -284,6 +287,24 @@ export const ajustesTab: TabModule = {
             </span>
           </label>` : html``}
         `,
+        onOpen: (modalRoot) => {
+          // Al cambiar el rol se ajusta el campo de sucursal
+          const roleSelect = modalRoot.querySelector<HTMLSelectElement>("#uRole");
+          roleSelect?.addEventListener("change", () => {
+            const role = roleSelect.value as Role;
+            modalRoot.querySelector("#uBranchField")?.classList.toggle("hidden", role === "dueno");
+            const label = modalRoot.querySelector("#uBranchLabel");
+            const none = modalRoot.querySelector("#uBranchNone");
+            const hint = modalRoot.querySelector("#uBranchHint");
+            if (label) label.textContent = role === "admin" ? "Sucursal que administra" : "Sucursal del vendedor";
+            if (none) none.textContent = role === "admin" ? "Todas las sucursales" : "Sin sucursal";
+            if (hint) {
+              hint.textContent = role === "admin"
+                ? "Con una sucursal, solo ve y opera esa sucursal. \"Todas\" puede cambiar entre sucursales y ver el consolidado."
+                : "";
+            }
+          });
+        },
         actions: [
           { label: "Cancelar", kind: "ghost", onClick: (close) => close() },
           {
@@ -294,7 +315,8 @@ export const ajustesTab: TabModule = {
               const roleSelect = field("uRole") as HTMLSelectElement | null;
               const role: Role = roleSelect ? (roleSelect.value as Role) : "empleado";
               const branchField = field("uBranch") as HTMLSelectElement | null;
-              const branchId = branchField ? branchField.value || null : null;
+              // El dueño no lleva sucursal; vendedor y administrador sí (admin vacío = todas)
+              const branchId = role === "dueno" ? null : myBranch ?? (branchField ? branchField.value || null : null);
               const pass = (document.getElementById("uPass") as HTMLInputElement | null)?.value ?? "";
               void (async () => {
                 try {
@@ -303,7 +325,7 @@ export const ajustesTab: TabModule = {
                       user_id: user.user_id,
                       name,
                       role,
-                      branch_id: role === "empleado" ? branchId : null,
+                      branch_id: branchId,
                       password: pass || undefined
                     });
                     ctx.toast("Usuario actualizado");
@@ -313,7 +335,7 @@ export const ajustesTab: TabModule = {
                       ctx.toast("Escribe un correo y una contraseña de al menos 6 caracteres");
                       return;
                     }
-                    await ctx.userAdmin.create({ email, password: pass, name: name || email, role, branch_id: role === "empleado" ? branchId : null });
+                    await ctx.userAdmin.create({ email, password: pass, name: name || email, role, branch_id: branchId });
                     ctx.toast("Usuario creado");
                   }
                   close();

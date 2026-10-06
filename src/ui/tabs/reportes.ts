@@ -160,7 +160,7 @@ export const reportesTab: TabModule = {
     const currentScope = (): string => ctx.branches.viewScope();
 
     const renderChips = (): void => {
-      if (!ctx.auth.isAdmin() || !ctx.branches.isMultiBranch()) {
+      if (!ctx.auth.isAdmin() || !ctx.branches.canSwitch()) {
         setHtml(scopeChips, html``);
         return;
       }

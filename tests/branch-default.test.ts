@@ -12,7 +12,7 @@ function fakeAuth(role: Role): AuthService {
   return {
     isAdmin: () => role !== "empleado",
     isOwner: () => role === "dueno",
-    employeeBranchId: () => (role === "empleado" ? DEFAULT_BRANCH_ID : null)
+    assignedBranchId: () => (role === "empleado" ? DEFAULT_BRANCH_ID : null)
   } as unknown as AuthService;
 }
 
@@ -65,5 +65,29 @@ describe("branch-service (una sucursal por defecto)", () => {
     branches.ensureSeeded();
     expect(branches.list()).toHaveLength(1);
     expect(branches.list()[0]?.name).toBe("Sucursal A");
+  });
+});
+
+describe("administrador asignado a una sucursal", () => {
+  it("queda fijo en su sucursal, sin selector ni consolidado", () => {
+    const store = new Store<AppState>(createInitialState());
+    const repos = new Repositories(store, new ChangeTracker());
+    const ts = new Date().toISOString();
+    repos.branches.upsert({ id: "s1", name: "Sucursal 1", address: "", active: true, created_at: ts, updated_at: ts });
+    repos.branches.upsert({ id: "s2", name: "Sucursal 2", address: "", active: true, created_at: ts, updated_at: ts });
+    store.update((s) => {
+      s.currentBranchId = "s1";
+    });
+    const branchAdmin = { isAdmin: () => true, isOwner: () => false, assignedBranchId: () => "s2" } as unknown as AuthService;
+    const branches = new BranchService(store, branchAdmin, repos);
+    expect(branches.operationalId()).toBe("s2");
+    expect(branches.viewScope()).toBe("s2");
+    expect(branches.canSwitch()).toBe(false);
+
+    const generalAdmin = { isAdmin: () => true, isOwner: () => false, assignedBranchId: () => null } as unknown as AuthService;
+    const general = new BranchService(store, generalAdmin, repos);
+    expect(general.operationalId()).toBe("s1");
+    expect(general.viewScope()).toBe(VIEW_ALL);
+    expect(general.canSwitch()).toBe(true);
   });
 });

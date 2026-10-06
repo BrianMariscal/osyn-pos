@@ -18,7 +18,7 @@ function fakeAuth(admin: boolean): AuthService {
     session: { access_token: "t", refresh_token: "r", expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: "u", email: "a@b.c" }, role: admin ? "dueno" : "empleado", name: "x", branch_id: "sucursal-1" },
     isAdmin: () => admin,
     isOwner: () => admin,
-    employeeBranchId: () => (admin ? null : "sucursal-1"),
+    assignedBranchId: () => (admin ? null : "sucursal-1"),
     refreshIfNeeded: async () => undefined
   } as unknown as AuthService;
 }

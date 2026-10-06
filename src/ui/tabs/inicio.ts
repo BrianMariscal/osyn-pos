@@ -165,7 +165,7 @@ export const inicioTab: TabModule = {
 
       setHtml(
         scopeChips,
-        ctx.branches.isMultiBranch()
+        ctx.branches.canSwitch()
           ? html`<div class="chips">${[...ctx.branches.list().map((b) => ({ id: b.id, label: b.name })), { id: VIEW_ALL, label: "Consolidado" }].map(
               (chip) => html`<button class="chip ${scope === chip.id ? "chip-active" : ""}" type="button" data-scope="${chip.id}">${chip.label}</button>`
             )}</div>`

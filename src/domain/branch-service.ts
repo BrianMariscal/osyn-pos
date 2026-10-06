@@ -8,7 +8,8 @@ import type { Store } from "./store";
 
 /**
  * Contexto de sucursal:
- * - Empleado: sucursal fija desde su perfil (operationalId), sin vista consolidada.
+ * - Empleado, o administrador con sucursal asignada: sucursal fija desde su
+ *   perfil (operationalId), sin selector ni vista consolidada.
  * - Admin: sucursal operativa seleccionable (donde vende/corta caja) y un
  *   alcance de vista para dashboard/reportes (sucursal o "all" = consolidado).
  *
@@ -46,6 +47,11 @@ export class BranchService {
     return this.list().length > 1;
   }
 
+  /** Puede cambiar de sucursal y ver el consolidado (dueño o admin sin sucursal asignada). */
+  canSwitch(): boolean {
+    return this.isMultiBranch() && !this.auth.assignedBranchId();
+  }
+
   byId(id: string): Branch | undefined {
     return this.repos.branches.byId(id);
   }
@@ -56,7 +62,7 @@ export class BranchService {
 
   /** Sucursal concreta donde ocurren las operaciones (venta, corte, gastos). */
   operationalId(): string {
-    const employeeBranch = this.auth.employeeBranchId();
+    const employeeBranch = this.auth.assignedBranchId();
     if (employeeBranch) return employeeBranch;
     const state = this.store.getState();
     if (state.currentBranchId && this.byId(state.currentBranchId)?.active !== false && state.currentBranchId) {
@@ -67,7 +73,7 @@ export class BranchService {
 
   /** Alcance de dashboard/reportes: sucursal o "all" (consolidado, solo con varias). */
   viewScope(): string {
-    const employeeBranch = this.auth.employeeBranchId();
+    const employeeBranch = this.auth.assignedBranchId();
     if (employeeBranch) return employeeBranch;
     const branches = this.list();
     if (branches.length <= 1) return branches[0]?.id ?? DEFAULT_BRANCH_ID;

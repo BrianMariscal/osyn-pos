@@ -410,11 +410,13 @@ function wireTopbar(ctx: AppContext): void {
   ctx.store.watch(
     (s) => [s.branches, s.currentBranchId] as const,
     () => {
+      const assigned = ctx.auth.isAuthenticated ? ctx.auth.assignedBranchId() : null;
       const isAdmin = ctx.auth.isAuthenticated ? ctx.auth.isAdmin() : false;
       const badge = document.getElementById("branchBadge");
-      if (!isAdmin) {
+      // Vendedor o administrador asignado a una sucursal: solo la suya, sin selector
+      if (!isAdmin || assigned) {
         branchSelect.classList.add("hidden");
-        const branchId = ctx.auth.employeeBranchId();
+        const branchId = assigned;
         if (badge) {
           badge.textContent = branchId ? ctx.branches.name(branchId) : "Sin sucursal";
           badge.classList.remove("hidden");
