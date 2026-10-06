@@ -13,6 +13,8 @@ import { categoryFieldMarkup, mountCategoryField, type CategoryField } from "../
 import type { AppContext } from "../context";
 import { mountProductFilters, productFiltersMarkup } from "../product-filters";
 import { exportProducts, importProducts } from "../product-transfer-ui";
+import { mountSections } from "../sections";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
 import type { TabModule } from "./tab-module";
 
 export const inventarioTab: TabModule = {
@@ -55,13 +57,23 @@ export const inventarioTab: TabModule = {
       `
     );
 
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    const sections = mountSections(root, [
+      { id: "existencias", label: "Existencias", el: articles[1] ?? null },
+      { id: "resumen", label: "Resumen y conteo", el: articles[0] ?? null }
+    ]);
+
     const summaryEl = root.querySelector<HTMLElement>("#inventorySummary")!;
     const countSummaryEl = root.querySelector<HTMLElement>("#inventoryCountSummary")!;
     const listEl = root.querySelector<HTMLElement>("#inventoryList")!;
     const historyEl = root.querySelector<HTMLElement>("#inventoryCountsHistory")!;
     const search = root.querySelector<HTMLInputElement>("#inventorySearch")!;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
-    const filters = mountProductFilters(root, "inventory", ctx, () => renderList());
+    const filters = mountProductFilters(root, "inventory", ctx, () => {
+      listPage = 0;
+      renderList();
+    });
     let pendingListRender = false;
     const isTypingCount = (): boolean => {
       const focused = document.activeElement;
@@ -128,9 +140,11 @@ export const inventarioTab: TabModule = {
         setHtml(listEl, html`<p class="muted">${search.value.trim() || filters.active() ? "Ningún producto coincide." : "Sin productos en inventario."}</p>`);
         return;
       }
+      // Sin conteo: de 15 en 15. Durante el conteo se ven todos (Enter pasa al siguiente).
+      const page = paginate(rows, counting ? 0 : listPage, counting ? Math.max(rows.length, 1) : 15);
       setHtml(
         listEl,
-        html`${rows.map(({ row, product }) => {
+        html`${page.items.map(({ row, product }) => {
           const counted = counting ? ctx.inventory.countedValue(product!.id) : undefined;
           const diff =
             counted === undefined || counted === ""
@@ -155,7 +169,7 @@ export const inventarioTab: TabModule = {
                 : html``}
             </div>
           `;
-        })}`
+        })}${pagerMarkup("inventory", page)}`
       );
     };
 
@@ -184,7 +198,16 @@ export const inventarioTab: TabModule = {
       renderHistory();
     };
 
+    let listPage = 0;
+    listEl.addEventListener("click", (event) => {
+      const paging = pagerClick(event);
+      if (!paging) return;
+      listPage = paging.page;
+      renderList();
+      listEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     search.addEventListener("input", () => {
+      listPage = 0;
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(renderList, 180);
     });
@@ -267,7 +290,9 @@ export const inventarioTab: TabModule = {
       saveCount();
       renderCountSummary();
       renderList();
-      ctx.toast("Conteo físico iniciado");
+      // En celular las casillas de conteo están en Existencias
+      sections.show("existencias");
+      ctx.toast("Conteo físico iniciado: captura en Existencias");
     });
 
     root.querySelector<HTMLButtonElement>("#applyInventoryCount")!.addEventListener("click", async () => {

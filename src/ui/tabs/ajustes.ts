@@ -7,6 +7,7 @@ import { confirmDialog, openModal } from "../components/modal";
 import { downloadText } from "./download";
 import { mountVoiceSettings } from "../voice-settings";
 import type { ManagedUser } from "../../domain/user-admin-service";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 export const ajustesTab: TabModule = {
@@ -107,6 +108,13 @@ export const ajustesTab: TabModule = {
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "tienda", label: "Tienda", el: articles[0] ?? null },
+      { id: "usuarios", label: "Usuarios y sucursales", el: articles[1] ?? null }
+    ]);
 
     const form = root.querySelector<HTMLFormElement>("#settingsForm")!;
     const storeName = root.querySelector<HTMLInputElement>("#storeName")!;

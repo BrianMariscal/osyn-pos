@@ -4,6 +4,7 @@ import { fmtMoneyPesos } from "../../core/money";
 import { VIEW_ALL } from "../../domain/app-state";
 import { confirmDialog } from "../components/modal";
 import { openReportPdf } from "../pdf";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 export const reportesTab: TabModule = {
@@ -41,6 +42,13 @@ export const reportesTab: TabModule = {
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "reportes", label: "Reportes", el: articles[0] ?? null },
+      { id: "cierre", label: "Cierre mensual", el: articles[1] ?? null }
+    ]);
 
     const dateInput = root.querySelector<HTMLInputElement>("#reportDate")!;
     const monthInput = root.querySelector<HTMLInputElement>("#monthClose")!;

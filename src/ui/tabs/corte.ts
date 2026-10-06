@@ -6,6 +6,7 @@ import { confirmDialog } from "../components/modal";
 import { openModal } from "../components/modal";
 import { openWhatsapp } from "../whatsapp";
 import type { Shift } from "../../core/types";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 export const corteTab: TabModule = {
@@ -51,6 +52,13 @@ export const corteTab: TabModule = {
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "corte", label: "Corte de caja", el: articles[0] ?? null },
+      { id: "historial", label: "Historial", el: articles[1] ?? null }
+    ]);
 
     const opening = root.querySelector<HTMLInputElement>("#openingCash")!;
     const counted = root.querySelector<HTMLInputElement>("#cashCounted")!;

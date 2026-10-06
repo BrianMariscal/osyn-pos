@@ -2,15 +2,12 @@ import { html, setHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import { PAYMENT_LABELS, type CartUnit, type PaymentMethod, type Product, type Sale, type Supplier } from "../../core/types";
-import { matchOrdersToProducts } from "../../domain/voice/product-matcher";
-import { parseVoiceSale } from "../../domain/voice/voice-parser";
 import { lowStockProducts, resolveScannedCode, suggestOffers, supplierCode, topSellers } from "../../domain/catalog";
 import { mountCarousels } from "../carousel";
-import { parseSaleWithAi, type AiSaleItem } from "../../ai/assistant-client";
 import { scanBarcode } from "../scanner";
 import { openModal } from "../components/modal";
 import { iconFor } from "../icons";
-import { listenOnce, speak, speechSupported, vibrate, isVoiceEnabled } from "../voice-recognition";
+import { speak, vibrate, isVoiceEnabled } from "../voice-recognition";
 import { openNewProductModal } from "./inventario";
 import { mountProductFilters, productFiltersMarkup } from "../product-filters";
 import type { TabModule } from "./tab-module";
@@ -38,10 +35,6 @@ export const ventaTab: TabModule = {
             </div>
             ${productFiltersMarkup("sale")}
             <section id="productPreview" class="preview-card hidden" aria-live="polite"></section>
-            <div class="voice-sale-box">
-              <button id="voiceSaleButton" class="primary" type="button">${iconFor("mic")} Hablar venta</button>
-              <p id="voiceSaleText" class="hint">Di: "dos cocas, una leche y tres panes".</p>
-            </div>
             <div id="saleHighlights" class="highlights"></div>
             <div id="catalogBar" class="catalog-bar hidden">
               <span class="hint" id="catalogInfo"></span>
@@ -112,15 +105,10 @@ export const ventaTab: TabModule = {
     const creditHint = root.querySelector<HTMLElement>("#creditHint")!;
     const internalHint = root.querySelector<HTMLElement>("#internalHint")!;
     const completeButton = root.querySelector<HTMLButtonElement>("#completeSale")!;
-    const voiceButton = root.querySelector<HTMLButtonElement>("#voiceSaleButton")!;
-    const voiceText = root.querySelector<HTMLElement>("#voiceSaleText")!;
     const cartCard = root.querySelector<HTMLElement>("#cartCard")!;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
     const voiceEnabled = isVoiceEnabled;
-
-    // iPhone: sin dictado — se oculta el bloque de venta por voz
-    root.querySelector(".voice-sale-box")?.classList.toggle("hidden", !speechSupported());
 
     const suppliersById = (): Map<string, Supplier> => new Map(ctx.repos.suppliers.list().map((s) => [s.id, s]));
 
@@ -330,7 +318,7 @@ export const ventaTab: TabModule = {
     };
 
     /**
-     * Vista previa: lo escaneado, buscado, tocado o dictado se muestra primero
+     * Vista previa: lo escaneado, buscado o tocado se muestra primero
      * (precio y existencia) y solo entra al carrito al tocar "Agregar". Así se
      * puede consultar un precio sin tocar el carrito.
      */
@@ -738,47 +726,6 @@ export const ventaTab: TabModule = {
       });
     };
 
-    const runVoice = async (): Promise<void> => {
-      if (!speechSupported()) {
-        ctx.toast("Tu navegador no soporta dictado por voz");
-        return;
-      }
-      voiceButton.disabled = true;
-      voiceButton.textContent = "Escuchando...";
-      try {
-        const transcript = await listenOnce();
-        voiceText.textContent = `Entendí: ${transcript}`;
-        const localOrders = parseVoiceSale(transcript);
-        let aiOrders: AiSaleItem[] = [];
-        try {
-          aiOrders = await parseSaleWithAi(ctx, transcript);
-        } catch {
-          /* sin IA disponible: vale el parser local */
-        }
-        const orders = aiOrders.length >= localOrders.length ? aiOrders : localOrders;
-        const { matched, notFound } = matchOrdersToProducts(orders, ctx.repos.products.list());
-        // Se muestran primero (precio y existencia); se agregan al tocar "Agregar"
-        showPreview(matched.map(({ product, qty }) => ({ productId: product.id, qty, unit: "pza" as CartUnit })), notFound);
-        if (matched.length === 1) {
-          const { product } = matched[0]!;
-          speak(`${product.name}, ${speakPesos(product.price)}.`, voiceEnabled());
-        } else {
-          speak(
-            matched.length
-              ? `Encontré ${matched.map(({ product }) => product.name).join(", ")}. Toca agregar todo para pasarlos al carrito.`
-              : "No encontré productos.",
-            voiceEnabled()
-          );
-        }
-        if (!matched.length) ctx.toast(notFound.length ? `No encontré: ${notFound.join(", ")}` : "No encontré productos");
-      } catch (error) {
-        ctx.toast(error instanceof Error ? error.message : "No se pudo interpretar la venta");
-      } finally {
-        voiceButton.disabled = false;
-        setHtml(voiceButton, html`${iconFor("mic")} Hablar venta`);
-      }
-    };
-    voiceButton.addEventListener("click", () => void runVoice());
 
     // Escáner de cámara: código de barras o QR
     root.querySelector<HTMLButtonElement>("#scanButton")!.addEventListener("click", async () => {

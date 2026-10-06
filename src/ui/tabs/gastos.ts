@@ -5,6 +5,7 @@ import { EXPENSE_CATEGORIES, type Expense, type ExpensePeriod } from "../../core
 import { daysInMonth, expensePeriod } from "../../domain/expense-service";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 /** Categorías sugeridas para costos fijos mensuales. */
@@ -62,6 +63,13 @@ export const gastosTab: TabModule = {
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "fijos", label: "Costos fijos", el: articles[0] ?? null },
+      { id: "extra", label: "Gastos del día", el: articles[1] ?? null }
+    ]);
 
     const fixedForm = root.querySelector<HTMLFormElement>("#fixedForm")!;
     const fixedConcept = root.querySelector<HTMLInputElement>("#fixedConcept")!;

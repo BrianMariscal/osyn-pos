@@ -5,6 +5,7 @@ import { fmtQty } from "../../core/qty";
 import { supplierLabel } from "../../domain/catalog";
 import { iconFor } from "../icons";
 import { mountPurchaseLines } from "../purchase-lines";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 /** Entradas: recepción de mercancía (suma stock, registra compra). Para todo el personal. */
@@ -36,6 +37,13 @@ export const entradasTab: TabModule = {
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "recibir", label: "Recibir mercancía", el: articles[0] ?? null },
+      { id: "historial", label: "Últimas entradas", el: articles[1] ?? null }
+    ]);
 
     const form = root.querySelector<HTMLFormElement>("#receiveForm")!;
     const linesEl = root.querySelector<HTMLElement>("#receiveLines")!;

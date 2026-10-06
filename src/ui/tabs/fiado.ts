@@ -7,6 +7,8 @@ import type { CustomerMovement } from "../../core/types";
 import { confirmDialog, openModal, promptDialog } from "../components/modal";
 import { openWhatsapp } from "../whatsapp";
 import { plainText } from "../../domain/catalog";
+import { mountSections } from "../sections";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
 import type { TabModule } from "./tab-module";
 
 export const fiadoTab: TabModule = {
@@ -35,6 +37,13 @@ export const fiadoTab: TabModule = {
       `
     );
 
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "saldos", label: "Saldos", el: articles[1] ?? null },
+      { id: "nuevo", label: "Nuevo cliente", el: articles[0] ?? null }
+    ]);
+
     const form = root.querySelector<HTMLFormElement>("#customerForm")!;
     const nameInput = root.querySelector<HTMLInputElement>("#customerName")!;
     const phoneInput = root.querySelector<HTMLInputElement>("#customerPhone")!;
@@ -44,6 +53,7 @@ export const fiadoTab: TabModule = {
     const list = root.querySelector<HTMLElement>("#customersList")!;
 
     const customersOfBranch = (): string => ctx.branches.operationalId();
+    let customerPage = 0;
 
     const render = (): void => {
       const all = ctx.repos.customers.list().filter((c) => c.branch_id === customersOfBranch());
@@ -57,9 +67,10 @@ export const fiadoTab: TabModule = {
         setHtml(list, html`<p class="muted">${all.length ? "Ningún cliente coincide." : "Agrega clientes para manejar el fiado, o fía desde Venta eligiendo \"Cliente nuevo\"."}</p>`);
         return;
       }
+      const page = paginate(customers, customerPage, 10);
       setHtml(
         list,
-        html`${customers.map(
+        html`${page.items.map(
           (customer) => html`
             <div class="list-item ${customer.balance > 0 ? "" : "paid"}">
               <div class="item-line"><strong>${customer.name}</strong><strong>${fmtMoneyPesos(customer.balance)}</strong></div>
@@ -74,11 +85,14 @@ export const fiadoTab: TabModule = {
               </div>
             </div>
           `
-        )}`
+        )}${pagerMarkup("customers", page)}`
       );
     };
 
-    searchInput.addEventListener("input", render);
+    searchInput.addEventListener("input", () => {
+      customerPage = 0;
+      render();
+    });
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -117,6 +131,13 @@ export const fiadoTab: TabModule = {
     };
 
     list.addEventListener("click", async (event) => {
+      const paging = pagerClick(event);
+      if (paging) {
+        customerPage = paging.page;
+        render();
+        list.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const target = event.target as HTMLElement;
       const editCustomerButton = target.closest<HTMLElement>("[data-edit-customer]");
       if (editCustomerButton) {

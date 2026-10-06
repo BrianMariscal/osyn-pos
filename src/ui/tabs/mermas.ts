@@ -5,6 +5,7 @@ import { fmtQty } from "../../core/qty";
 import { MERMA_REASONS, type MermaReason } from "../../core/types";
 import { iconFor } from "../icons";
 import { searchProducts } from "../../domain/catalog";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 export const mermasTab: TabModule = {
@@ -51,6 +52,13 @@ export const mermasTab: TabModule = {
         </div>
       `
     );
+
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    mountSections(root, [
+      { id: "registrar", label: "Registrar merma", el: articles[0] ?? null },
+      { id: "historial", label: "Historial", el: articles[1] ?? null }
+    ]);
 
     const form = root.querySelector<HTMLFormElement>("#mermaForm")!;
     const productSelect = root.querySelector<HTMLSelectElement>("#mermaProduct")!;

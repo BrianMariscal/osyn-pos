@@ -252,6 +252,48 @@ function applyFavicon(logo: string): void {
   img.src = logo;
 }
 
+const BRAND_KEY = "pos-brand";
+
+function rememberBrand(name: string, logo: string): void {
+  try {
+    localStorage.setItem(BRAND_KEY, JSON.stringify({ name, logo }));
+  } catch {
+    /* sin espacio o almacenamiento bloqueado: el login usa la letra */
+  }
+}
+
+function rememberedBrand(name: string, logo: string): { name: string; logo: string } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BRAND_KEY) ?? "null") as { name?: string; logo?: string } | null;
+    return { name: name && name !== "Mi tienda" ? name : saved?.name || name, logo: logo || saved?.logo || "" };
+  } catch {
+    return { name, logo };
+  }
+}
+
+/** Logo o, si no hay o la imagen falla, la inicial de la tienda. */
+function showLogo(imgId: string, markId: string, logo: string, name: string): void {
+  const img = document.getElementById(imgId) as HTMLImageElement | null;
+  const mark = document.getElementById(markId);
+  if (mark) mark.textContent = name.trim().charAt(0).toUpperCase() || "A";
+  const fallback = (): void => {
+    img?.classList.add("hidden");
+    mark?.classList.remove("hidden");
+  };
+  if (!img || !logo) {
+    fallback();
+    return;
+  }
+  img.onerror = fallback;
+  img.onload = () => {
+    img.classList.remove("hidden");
+    mark?.classList.add("hidden");
+  };
+  img.alt = name;
+  if (img.getAttribute("src") !== logo) img.src = logo;
+  else if (img.complete && img.naturalWidth) img.onload(new Event("load"));
+}
+
 function wireThemeToggle(ctx: AppContext): void {
   document.addEventListener("click", (event) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>("[data-theme-toggle]");
@@ -307,36 +349,19 @@ function wireTopbar(ctx: AppContext): void {
   });
 
   ctx.store.watch((s) => s.settings, (settings) => {
-    document.title = settings.storeName || "Abarrotes POS";
+    // Con sesión se recuerda la marca en el dispositivo; sin sesión (login)
+    // se usa la recordada, porque los ajustes del invitado vienen vacíos.
+    if (ctx.auth.isAuthenticated) rememberBrand(settings.storeName, settings.logo);
+    const brand = ctx.auth.isAuthenticated ? { name: settings.storeName, logo: settings.logo } : rememberedBrand(settings.storeName, settings.logo);
+    const name = brand.name || "Abarrotes POS";
+    document.title = name;
     const title = document.getElementById("appTitle");
-    if (title) title.textContent = settings.storeName || "Abarrotes POS";
+    if (title) title.textContent = name;
     const loginTitle = document.getElementById("loginTitle");
-    if (loginTitle) loginTitle.textContent = settings.storeName || "Abarrotes POS";
-    const loginMark = document.getElementById("loginMark");
-    if (loginMark) {
-      loginMark.textContent = (settings.storeName || "Abarrotes").trim().charAt(0).toUpperCase();
-      // Con logo propio la letra sobra: se oculta igual que la marca del header
-      loginMark.classList.toggle("hidden", Boolean(settings.logo));
-    }
-    const loginLogo = document.getElementById("loginLogo") as HTMLImageElement | null;
-    if (loginLogo) {
-      loginLogo.classList.toggle("hidden", !settings.logo);
-      if (settings.logo) loginLogo.src = settings.logo;
-    }
-    const brandMark = document.getElementById("brandMark");
-    if (brandMark) {
-      brandMark.textContent = (settings.storeName || "A").trim().charAt(0).toUpperCase();
-      brandMark.classList.toggle("hidden", Boolean(settings.logo));
-    }
-    const logo = document.getElementById("storeLogo") as HTMLImageElement | null;
-    if (logo) {
-      logo.classList.toggle("hidden", !settings.logo);
-      if (settings.logo) {
-        logo.src = settings.logo;
-        logo.alt = settings.storeName || "Logo";
-      }
-    }
-    applyFavicon(settings.logo);
+    if (loginTitle) loginTitle.textContent = name;
+    showLogo("loginLogo", "loginMark", brand.logo, name);
+    showLogo("storeLogo", "brandMark", brand.logo, name);
+    applyFavicon(brand.logo);
     applyTheme(ctx);
     renderTabsNav(ctx);
   });

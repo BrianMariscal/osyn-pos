@@ -10,6 +10,8 @@ import { iconFor } from "../icons";
 import { mountPurchaseLines } from "../purchase-lines";
 import { openNewProductModal } from "./inventario";
 import { exportSuppliers, importSuppliers } from "../product-transfer-ui";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 const CENTRAL_ID = "__central__";
@@ -22,7 +24,7 @@ export const proveedoresTab: TabModule = {
       root,
       html`
         <div class="split">
-          <article class="card">
+          <article class="card" id="supPurchase">
             <h2>Registrar compra</h2>
             <form id="purchaseForm" class="form">
               <div class="row">
@@ -40,15 +42,17 @@ export const proveedoresTab: TabModule = {
               <div id="purchaseLines" class="purchase-lines"></div>
               <button class="primary" type="submit">Registrar compra completa</button>
             </form>
+          </article>
 
-            <div class="section-title section-gap">
+          <article class="card" id="supHistory">
+            <div class="section-title">
               <h2>Compras registradas</h2>
               <span class="hint" id="purchasesCount"></span>
             </div>
             <div id="purchasesList" class="list"></div>
           </article>
 
-          <article class="card">
+          <article class="card" id="supDirectory">
             <div class="section-title">
               <h2>Proveedores <span class="count-badge" data-tone="violet" id="suppliersCount"></span></h2>
               <button id="addSupplier" class="primary" type="button">${iconFor("plus")} Agregar</button>
@@ -79,9 +83,13 @@ export const proveedoresTab: TabModule = {
     const purchasesCount = root.querySelector<HTMLElement>("#purchasesCount")!;
     /** Proveedores expandidos (se conservan al redibujar por sync). */
     const openSuppliers = new Set<string>();
-    const PAGE = 15;
-    let supplierLimit = PAGE;
-    let purchaseLimit = 10;
+    let supplierPage = 0;
+    let purchasePage = 0;
+    mountSections(root, [
+      { id: "compra", label: "Registrar compra", el: root.querySelector<HTMLElement>("#supPurchase") },
+      { id: "proveedores", label: "Proveedores", el: root.querySelector<HTMLElement>("#supDirectory") },
+      { id: "compras", label: "Compras", el: root.querySelector<HTMLElement>("#supHistory") }
+    ], { always: true });
 
     // "Central de Abastos" no es un proveedor del catálogo: compra local en
     // varios puestos, normalmente con dinero aparte. Ofrece todos los productos.
@@ -131,7 +139,8 @@ export const proveedoresTab: TabModule = {
         !q ||
         (byNumber ? Number(supplier.number) === Number(byNumber[1]) : q.split(/\s+/).every((word) => plainText(`${supplier.name} ${supplier.type ?? ""} ${supplier.phone}`).includes(word)))
       );
-      const shown = matches.slice(0, supplierLimit);
+      const page = paginate(matches, supplierPage, 8);
+      const shown = page.items;
       setHtml(
         suppliersList,
         matches.length
@@ -157,9 +166,7 @@ export const proveedoresTab: TabModule = {
                 </details>
               `;
             })}
-            ${matches.length > shown.length
-              ? html`<button class="ghost block list-more" type="button" data-more-suppliers>Ver más (${matches.length - shown.length})</button>`
-              : html``}`
+            ${pagerMarkup("suppliers", page)}`
           : html`<p class="muted">Ningún proveedor coincide.</p>`
       );
     };
@@ -294,8 +301,10 @@ export const proveedoresTab: TabModule = {
 
     suppliersList.addEventListener("click", async (event) => {
       const target = event.target as HTMLElement;
-      if (target.closest("[data-more-suppliers]")) {
-        supplierLimit += PAGE;
+      const paging = pagerClick(event);
+      if (paging) {
+        supplierPage = paging.page;
+        openSuppliers.clear();
         renderSuppliers();
         return;
       }
@@ -333,6 +342,8 @@ export const proveedoresTab: TabModule = {
       }
     });
 
+    const purchasesPage = <T,>(rows: T[]) => paginate(rows, purchasePage, 10);
+
     const renderPurchases = (): void => {
       const branchId = ctx.branches.operationalId();
       const purchases = ctx.repos.purchases
@@ -343,7 +354,7 @@ export const proveedoresTab: TabModule = {
       setHtml(
         list,
         purchases.length
-          ? html`${purchases.slice(0, purchaseLimit).map(
+          ? html`${purchasesPage(purchases).items.map(
               (purchase) => html`
                 <div class="list-item">
                   <div class="item-line">
@@ -354,20 +365,19 @@ export const proveedoresTab: TabModule = {
                   <p class="muted">${purchase.product_name} | ${fmtQty(purchase.qty)} ${purchase.um ?? "Pza"}${purchase.packs ? ` (${fmtQty(purchase.packs)} ${purchase.packs === 1 ? "caja" : "cajas"} de ${fmtQty(purchase.pack_size ?? 0)})` : ""} | ${fmtDateTime(purchase.created_at)}</p>
                 </div>
               `
-            )}${purchases.length > purchaseLimit
-              ? html`<button class="ghost block list-more" type="button" data-more-purchases>Ver más (${purchases.length - purchaseLimit})</button>`
-              : html``}`
+            )}${pagerMarkup("purchases", purchasesPage(purchases))}`
           : html`<p class="muted">Sin compras registradas.</p>`
       );
     };
 
     list.addEventListener("click", (event) => {
-      if (!(event.target as HTMLElement).closest("[data-more-purchases]")) return;
-      purchaseLimit += 20;
+      const paging = pagerClick(event);
+      if (!paging) return;
+      purchasePage = paging.page;
       renderPurchases();
     });
     supplierSearch.addEventListener("input", () => {
-      supplierLimit = PAGE;
+      supplierPage = 0;
       renderSuppliers();
     });
     // Recuerda qué proveedores están abiertos para no cerrarlos al sincronizar

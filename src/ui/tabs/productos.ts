@@ -13,6 +13,8 @@ import type { AppContext } from "../context";
 import { categoryFieldMarkup, mountCategoryField } from "../category-field";
 import { mountProductFilters, productFiltersMarkup } from "../product-filters";
 import { exportProducts, importProducts } from "../product-transfer-ui";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
+import { mountSections } from "../sections";
 import type { TabModule } from "./tab-module";
 
 export const productosTab: TabModule = {
@@ -110,6 +112,18 @@ export const productosTab: TabModule = {
       `
     );
 
+    // En celular: una sección a la vez (en computadora van lado a lado)
+    const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
+    const sections = mountSections(root, [
+      { id: "lista", label: "Productos", el: articles[0] ?? null },
+      { id: "nuevo", label: "Nuevo producto", el: articles[1] ?? null }
+    ], {
+      // En celular la sección es el formulario: se abre directo
+      onShow: (id) => {
+        if (id === "nuevo") root.querySelector<HTMLDetailsElement>("#productFormBox")!.open = true;
+      }
+    });
+
     const form = root.querySelector<HTMLFormElement>("#productForm")!;
     const formTitle = root.querySelector<HTMLElement>("#productFormTitle")!;
     const idInput = root.querySelector<HTMLInputElement>("#productId")!;
@@ -135,12 +149,17 @@ export const productosTab: TabModule = {
     /** Categorías y productos abiertos (se conservan al redibujar por sync). */
     const openGroups = new Set<string>();
     const openRows = new Set<string>();
-    const PAGE = 40;
-    let limit = PAGE;
+    /** Página actual de cada lista ("all" = resultados de búsqueda, "g:<categoría>"). */
+    const pages = new Map<string, number>();
+    const PAGE_SEARCH = 10;
+    const PAGE_GROUP = 8;
     /** Existencia mostrada al empezar a editar: solo se guarda si el usuario la cambió. */
     let stockAtEdit: string | null = null;
     let searchTimer: ReturnType<typeof setTimeout> | undefined;
-    const filters = mountProductFilters(root, "products", ctx, () => render());
+    const filters = mountProductFilters(root, "products", ctx, () => {
+      pages.set("all", 0);
+      render();
+    });
 
     const stockRowFor = (productId: string) =>
       ctx.repos.stocks.all().find(
@@ -234,14 +253,9 @@ export const productosTab: TabModule = {
         `;
       };
       if (filtering) {
-        // Con búsqueda o filtro: resultados directos (de 40 en 40)
-        const shown = products.slice(0, limit);
-        setHtml(
-          list,
-          html`<div class="list">${shown.map(row)}</div>${products.length > shown.length
-            ? html`<button class="ghost block list-more" type="button" data-more-products>Ver más (${products.length - shown.length})</button>`
-            : html``}`
-        );
+        // Con búsqueda o filtro: resultados directos, de 10 en 10
+        const page = paginate(products, pages.get("all") ?? 0, PAGE_SEARCH);
+        setHtml(list, html`<div class="list">${page.items.map(row)}</div>${pagerMarkup("all", page)}`);
         return;
       }
       // Sin búsqueda: agrupados por categoría, plegados; solo se dibujan los abiertos
@@ -259,6 +273,7 @@ export const productosTab: TabModule = {
             return (stock?.stock ?? 0) <= (stock?.min_stock ?? 0);
           }).length;
           const open = openGroups.has(name);
+          const page = open ? paginate(items, pages.get(`g:${name}`) ?? 0, PAGE_GROUP) : null;
           return html`
             <details class="group-box" data-group="${name}" ${open ? "open" : null}>
               <summary>
@@ -266,7 +281,7 @@ export const productosTab: TabModule = {
                 <span class="tag">${items.length}</span>
                 ${lowCount ? html`<span class="count-badge" data-tone="amber" title="Productos en o bajo el mínimo">${lowCount} ${lowCount === 1 ? "bajo" : "bajos"}</span>` : html``}
               </summary>
-              ${open ? html`<div class="list">${items.map(row)}</div>` : html``}
+              ${page ? html`<div class="list">${page.items.map(row)}</div>${pagerMarkup(`g:${name}`, page)}` : html``}
             </details>
           `;
         })}`
@@ -324,7 +339,10 @@ export const productosTab: TabModule = {
       // pisaría ventas recientes que el servidor aún no ha descontado.
       if (current && !stockChanged && normalizeQty(current.min_stock) === minValue) {
         resetForm();
-        if (existing) formBox.open = false;
+        if (existing) {
+          formBox.open = false;
+          sections.show("lista");
+        }
         ctx.toast(existing ? "Producto actualizado" : "Producto guardado");
         return;
       }
@@ -337,20 +355,30 @@ export const productosTab: TabModule = {
         updated_at: ts
       });
       resetForm();
-      if (existing) formBox.open = false;
+      if (existing) {
+        formBox.open = false;
+        sections.show("lista");
+      }
       ctx.toast(existing ? "Producto actualizado" : "Producto guardado");
     });
 
     cancelEdit.addEventListener("click", () => {
       resetForm();
       formBox.open = false;
+      sections.show("lista");
     });
 
     list.addEventListener("toggle", (event) => {
       const box = event.target as HTMLDetailsElement;
       if (box.dataset?.group !== undefined) {
-        if (box.open) openGroups.add(box.dataset.group);
-        else openGroups.delete(box.dataset.group);
+        if (box.open) {
+          // Solo una categoría abierta: abrir otra cierra la anterior
+          openGroups.clear();
+          openGroups.add(box.dataset.group);
+          list.querySelectorAll<HTMLDetailsElement>("details.group-box[open]").forEach((other) => {
+            if (other !== box) other.open = false;
+          });
+        } else openGroups.delete(box.dataset.group);
         // El contenido de la categoría se dibuja al abrirla
         if (box.open && !box.querySelector(".list")) render();
       } else if (box.dataset?.product) {
@@ -361,6 +389,7 @@ export const productosTab: TabModule = {
 
     root.querySelector<HTMLButtonElement>("#newProductToggle")!.addEventListener("click", () => {
       if (idInput.value) resetForm();
+      sections.show("nuevo");
       formBox.open = true;
       formBox.scrollIntoView({ behavior: "smooth", block: "start" });
       nameInput.focus({ preventScroll: true });
@@ -368,9 +397,14 @@ export const productosTab: TabModule = {
 
     list.addEventListener("click", async (event) => {
       const target = event.target as HTMLElement;
-      if (target.closest("[data-more-products]")) {
-        limit += PAGE;
+      const paging = pagerClick(event);
+      if (paging) {
+        pages.set(paging.key, paging.page);
+        openRows.clear();
         render();
+        // Al cambiar de página se vuelve al inicio de esa lista
+        const anchor = paging.key === "all" ? list : list.querySelector<HTMLElement>(`details.group-box[open]`);
+        anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
       const editButton = target.closest<HTMLElement>("[data-edit]");
@@ -395,6 +429,7 @@ export const productosTab: TabModule = {
         barcodeInput.value = product.barcode ?? "";
         cancelEdit.hidden = false;
         formTitle.textContent = `Editando: ${product.name}`;
+        sections.show("nuevo");
         formBox.open = true;
         formBox.scrollIntoView({ behavior: "smooth", block: "start" });
         nameInput.focus({ preventScroll: true });
@@ -433,7 +468,7 @@ export const productosTab: TabModule = {
     });
 
     listSearch.addEventListener("input", () => {
-      limit = PAGE;
+      pages.set("all", 0);
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(render, 180);
     });
