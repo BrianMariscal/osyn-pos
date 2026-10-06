@@ -194,7 +194,54 @@ export const ajustesTab: TabModule = {
     };
 
     // ---- Gestor de usuarios: el dueño administra todos, el admin solo vendedores ----
-    const renderUsers = async (): Promise<void> => {
+    // Lista de usuarios: se muestra al instante con la última copia guardada y
+    // se actualiza en segundo plano (antes se borraba y esperaba al servidor).
+    const usersCacheKey = (): string => `pos-users-cache:${ctx.auth.session?.user?.id ?? "x"}`;
+    const readUsersCache = (): ManagedUser[] | null => {
+      try {
+        const raw = localStorage.getItem(usersCacheKey());
+        return raw ? (JSON.parse(raw) as ManagedUser[]) : null;
+      } catch {
+        return null;
+      }
+    };
+    const writeUsersCache = (users: ManagedUser[]): void => {
+      try {
+        localStorage.setItem(usersCacheKey(), JSON.stringify(users));
+      } catch {
+        /* sin espacio: solo se pierde la copia rápida */
+      }
+    };
+    const paintUsers = (users: ManagedUser[]): void => {
+      cachedUsers = users;
+      if (!users.length) {
+        setHtml(usersList, html`<p class="muted">Sin usuarios.</p>`);
+        return;
+      }
+      setHtml(
+        usersList,
+        html`${users.map(
+          (user) => html`
+            <div class="list-item item-line">
+              <div>
+                <strong>${user.name}</strong>
+                <p class="muted">
+                  ${user.email} · ${ROLE_LABELS[user.role] ?? user.role}${user.branch_id ? ` · ${ctx.branches.name(user.branch_id)}` : user.role === "admin" ? " · Todas las sucursales" : ""}
+                </p>
+              </div>
+              <div class="actions">
+                <button class="ghost" type="button" data-edit-user="${user.user_id}">Editar</button>
+                <button class="ghost danger" type="button" data-delete-user="${user.user_id}">Eliminar</button>
+              </div>
+            </div>
+          `
+        )}`
+      );
+    };
+    let usersLoading: Promise<void> | null = null;
+    let usersLoadedAt = 0;
+
+    const renderUsers = async (force = false): Promise<void> => {
       if (!ctx.auth.isAdmin()) {
         usersSection.hidden = true;
         return;
@@ -203,35 +250,25 @@ export const ajustesTab: TabModule = {
       const owner = ctx.auth.isOwner();
       usersTitle.textContent = owner ? "Usuarios" : "Vendedores";
       addUser.textContent = owner ? "Agregar" : "Agregar vendedor";
-      setHtml(usersList, html`<p class="muted">Cargando…</p>`);
-      try {
-        cachedUsers = await ctx.userAdmin.list();
-        if (!cachedUsers.length) {
-          setHtml(usersList, html`<p class="muted">Sin usuarios.</p>`);
-          return;
+      const cached = cachedUsers.length ? cachedUsers : readUsersCache();
+      if (cached) paintUsers(cached);
+      else setHtml(usersList, html`<p class="muted">Cargando usuarios…</p>`);
+      // Se revisa con el servidor como máximo cada 20 s (o al guardar cambios)
+      if (!force && Date.now() - usersLoadedAt < 20_000) return;
+      if (usersLoading) return usersLoading;
+      usersLoading = (async () => {
+        try {
+          const fresh = await ctx.userAdmin.list();
+          usersLoadedAt = Date.now();
+          writeUsersCache(fresh);
+          paintUsers(fresh);
+        } catch (error) {
+          if (!cached) setHtml(usersList, html`<p class="muted">${error instanceof Error ? error.message : "No se pudieron cargar los usuarios"}</p>`);
+        } finally {
+          usersLoading = null;
         }
-        setHtml(
-          usersList,
-          html`${cachedUsers.map(
-            (user) => html`
-              <div class="list-item item-line">
-                <div>
-                  <strong>${user.name}</strong>
-                  <p class="muted">
-                    ${user.email} · ${ROLE_LABELS[user.role] ?? user.role}${user.branch_id ? ` · ${ctx.branches.name(user.branch_id)}` : user.role === "admin" ? " · Todas las sucursales" : ""}
-                  </p>
-                </div>
-                <div class="actions">
-                  <button class="ghost" type="button" data-edit-user="${user.user_id}">Editar</button>
-                  <button class="ghost danger" type="button" data-delete-user="${user.user_id}">Eliminar</button>
-                </div>
-              </div>
-            `
-          )}`
-        );
-      } catch (error) {
-        setHtml(usersList, html`<p class="muted">${error instanceof Error ? error.message : "No se pudieron cargar los usuarios"}</p>`);
-      }
+      })();
+      return usersLoading;
     };
 
     const field = (id: string): HTMLInputElement | HTMLSelectElement =>
@@ -339,7 +376,7 @@ export const ajustesTab: TabModule = {
                     ctx.toast("Usuario creado");
                   }
                   close();
-                  void renderUsers();
+                  void renderUsers(true);
                 } catch (error) {
                   ctx.toast(error instanceof Error ? error.message : "No se pudo guardar");
                 }
@@ -375,7 +412,7 @@ export const ajustesTab: TabModule = {
         try {
           await ctx.userAdmin.remove(user.user_id);
           ctx.toast("Usuario eliminado");
-          void renderUsers();
+          void renderUsers(true);
         } catch (error) {
           ctx.toast(error instanceof Error ? error.message : "No se pudo eliminar");
         }

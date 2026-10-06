@@ -37,7 +37,7 @@ export const gastosTab: TabModule = {
               </label>
               <label class="form-field">Categoría
                 <select id="fixedCategory" class="input">
-                  ${FIXED_CATEGORIES.map((category) => html`<option>${category}</option>`)}
+                  ${FIXED_CATEGORIES.map((category) => html`<option value="${category}">${category === "Sueldos" ? "Sueldos (nómina)" : category}</option>`)}
                 </select>
               </label>
               <button class="primary" type="submit">${iconFor("plus")} Agregar</button>
@@ -76,6 +76,10 @@ export const gastosTab: TabModule = {
     const fixedAmount = root.querySelector<HTMLInputElement>("#fixedAmount")!;
     const fixedCategory = root.querySelector<HTMLSelectElement>("#fixedCategory")!;
     const fixedPeriod = root.querySelector<HTMLSelectElement>("#fixedPeriod")!;
+    // La nómina se paga por semana: al elegir Sueldos se sugiere "Semanal"
+    fixedCategory.addEventListener("change", () => {
+      if (fixedCategory.value === "Sueldos") fixedPeriod.value = "semanal";
+    });
     const fixedList = root.querySelector<HTMLElement>("#fixedList")!;
     const fixedTarget = root.querySelector<HTMLElement>("#fixedTarget")!;
     const form = root.querySelector<HTMLFormElement>("#expenseForm")!;

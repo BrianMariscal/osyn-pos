@@ -2,7 +2,7 @@ import { html, setHtml, type SafeHtml } from "../../core/html";
 import { dayRange, monthInputValue, todayInputValue, toInputDateValue } from "../../core/dates";
 import { fmtMoney, fmtMoneyPesos, sumCents, toCents, toPesos } from "../../core/money";
 import { PAYMENT_LABELS, type PaymentMethod, type PeriodReport } from "../../core/types";
-import { daysInMonth } from "../../domain/expense-service";
+import { daysInMonth, payrollProgress } from "../../domain/expense-service";
 import { isRevenueSale } from "../../domain/sale-groups";
 import { fmtQty } from "../../core/qty";
 import { VIEW_ALL } from "../../domain/app-state";
@@ -50,6 +50,7 @@ export const inicioTab: TabModule = {
           <div id="scopeChips"></div>
         </header>
         <div class="kpi-grid" id="kpis"></div>
+        <article class="card payroll-card hidden" id="dCardPayroll"></article>
         <div class="dash-row dash-row-2">
           <article class="card chart-card" id="dCardChart"></article>
           <article class="card" id="dCardTarget">
@@ -80,6 +81,7 @@ export const inicioTab: TabModule = {
     const kpisEl = root.querySelector<HTMLElement>("#kpis")!;
     const chartCard = root.querySelector<HTMLElement>("#dCardChart")!;
     const targetCard = root.querySelector<HTMLElement>("#dCardTarget")!;
+    const payrollCard = root.querySelector<HTMLElement>("#dCardPayroll")!;
     const targetEl = root.querySelector<HTMLElement>("#dailyTarget")!;
     const row3 = root.querySelector<HTMLElement>("#dRow3")!;
     const monthCard = root.querySelector<HTMLElement>("#dCardMonth")!;
@@ -156,6 +158,7 @@ export const inicioTab: TabModule = {
       const yesterday = dayReport(scope, 1);
 
       targetCard.classList.toggle("hidden", !isManager);
+      payrollCard.classList.toggle("hidden", !isManager);
       row3.classList.toggle("hidden", !isManager);
       if (!isManager) {
         setHtml(scopeChips, html``);
@@ -236,6 +239,7 @@ export const inicioTab: TabModule = {
       renderMonth(scope, monthReport);
       renderLow(scope, lowStock);
       renderTarget(scope, today.gross_profit, today.sales_total, monthReport.sales_total, monthReport.gross_profit);
+      renderPayroll(scope, monthReport);
       renderRank(scope);
     };
 
@@ -310,6 +314,89 @@ export const inicioTab: TabModule = {
         parts.monthly > 0 ? `Mensuales ${fmtMoney(parts.monthly)} ÷ ${daysInMonth(new Date())} días` : "",
         parts.weekly > 0 ? `Semanales ${fmtMoney(parts.weekly)} ÷ 7 días` : ""
       ].filter(Boolean).join(" + ");
+    };
+
+    /**
+     * Meta de nómina de la semana (lunes a domingo): la ganancia de la semana
+     * (venta − costo de la mercancía) contra los sueldos registrados en Gastos.
+     */
+    const renderPayroll = (scope: string, month: PeriodReport): void => {
+      const payroll = ctx.expenses.payroll(scope);
+      if (payroll.weekly <= 0) {
+        setHtml(
+          payrollCard,
+          html`
+            <div class="card-head"><div><h2>Meta de nómina de la semana</h2><p class="hint">Aquí verás cuánto llevas para pagar los sueldos de la semana.</p></div></div>
+            <p class="hint">Registra la nómina en <b>Gastos › Costos fijos</b> con la categoría <b>Sueldos</b> y frecuencia <b>Semanal</b>.</p>
+            <button class="ghost" type="button" data-go="gastos">Registrar nómina</button>
+          `
+        );
+        return;
+      }
+      const now = new Date();
+      const dayIndex = (now.getDay() + 6) % 7; // lunes = 0
+      const days = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date(now);
+        date.setDate(now.getDate() - dayIndex + i);
+        const report = i <= dayIndex ? dayReport(scope, dayIndex - i) : null;
+        return {
+          label: date.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", ""),
+          day: date.getDate(),
+          earned: report ? toCents(report.gross_profit) : 0,
+          sales: report ? toCents(report.sales_total) : 0,
+          future: i > dayIndex,
+          today: i === dayIndex
+        };
+      });
+      const earned = days.reduce((sum, d) => sum + d.earned, 0);
+      const weekSales = days.reduce((sum, d) => sum + d.sales, 0);
+      const p = payrollProgress(payroll.weekly, earned, now);
+      const perDayGoal = Math.round(payroll.weekly / 7);
+      const maxBar = Math.max(perDayGoal, ...days.map((d) => d.earned), 1);
+      // Margen de la semana (o del mes) para traducir la ganancia que falta a ventas
+      const margin = weekSales > 0 ? earned / weekSales : month.sales_total > 0 ? month.gross_profit / month.sales_total : 0;
+      const salesPerDay = margin > 0 && p.perDay > 0 ? Math.round(p.perDay / margin) : 0;
+      const first = new Date(now);
+      first.setDate(now.getDate() - dayIndex);
+      const last = new Date(first);
+      last.setDate(first.getDate() + 6);
+      const range = `${first.toLocaleDateString("es-MX", { day: "numeric", month: "short" })} – ${last.toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
+      const done = p.missing <= 0;
+      setHtml(
+        payrollCard,
+        html`
+          <div class="card-head">
+            <div><h2>Meta de nómina de la semana</h2><p class="hint">${range} · ${payroll.items.length} ${payroll.items.length === 1 ? "sueldo registrado" : "sueldos registrados"}</p></div>
+            <div class="align-right"><span class="micro">Nómina a pagar</span><strong class="big-num">${fmtMoney(p.goal)}</strong></div>
+          </div>
+          <div class="payroll-progress ${done ? "done" : ""}">
+            <div class="payroll-bar"><div style="width:${p.progress}%"></div></div>
+            <div class="payroll-figures">
+              <span><b>${fmtMoney(p.earned)}</b> de ganancia esta semana</span>
+              <strong>${p.progress}%</strong>
+            </div>
+          </div>
+          ${done
+            ? html`<p class="payroll-done">✓ ¡Nómina de la semana cubierta! Lo que sigue ganando esta semana ya es para otros gastos y utilidad.</p>`
+            : html`<div class="mini-stats">
+                <div data-tone="coral"><span>Faltan</span><strong>${fmtMoney(p.missing)}</strong></div>
+                <div data-tone="amber"><span>${p.daysLeft === 1 ? "Queda hoy" : `Quedan ${p.daysLeft} días`}</span><strong>${fmtMoney(p.perDay)} / día</strong></div>
+                <div data-tone="blue"><span>Equivale a vender</span><strong>${salesPerDay ? `≈ ${fmtMoney(salesPerDay)} / día` : "—"}</strong></div>
+              </div>`}
+          <div class="payroll-days" role="img" aria-label="Ganancia por día contra la meta diaria de nómina">
+            ${days.map(
+              (d) => html`
+                <div class="payroll-day ${d.today ? "today" : ""} ${d.future ? "future" : ""} ${!d.future && d.earned >= perDayGoal ? "hit" : ""}" title="${d.label} ${d.day}: ${fmtMoney(d.earned)} de ganancia (meta ${fmtMoney(perDayGoal)})">
+                  <span class="payroll-day-val">${d.future ? "" : fmtMoney(d.earned).replace(".00", "")}</span>
+                  <div class="payroll-day-track"><div class="payroll-day-goal" style="bottom:${Math.round((perDayGoal / maxBar) * 100)}%"></div><div class="payroll-day-fill" style="height:${d.future ? 0 : Math.max(2, Math.round((d.earned / maxBar) * 100))}%"></div></div>
+                  <span class="chart-label">${d.today ? "Hoy" : d.label}</span>
+                </div>
+              `
+            )}
+          </div>
+          <p class="micro">La línea marca la meta diaria (${fmtMoney(perDayGoal)}). Ganancia = venta − costo de la mercancía.</p>
+        `
+      );
     };
 
     const renderTarget = (scope: string, grossToday: number, salesToday: number, salesMonth: number, grossMonth: number): void => {

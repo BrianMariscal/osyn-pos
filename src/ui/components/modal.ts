@@ -11,6 +11,10 @@ export interface ModalOptions {
   content: ReturnType<typeof html>;
   actions?: ModalAction[];
   onOpen?: (root: HTMLElement, close: () => void) => void;
+  /** Se llama al cerrarse por cualquier vía (botón, ✕, fondo o Escape). */
+  onClose?: () => void;
+  /** Selector del elemento que recibe el foco al abrir (por defecto, el primero). */
+  initialFocus?: string;
 }
 
 let openCount = 0;
@@ -37,10 +41,15 @@ export function openModal(options: ModalOptions): () => void {
     `
   );
 
+  let closed = false;
   const close = (): void => {
+    if (closed) return;
+    closed = true;
     backdrop.remove();
+    document.removeEventListener("keydown", onKey);
     openCount = Math.max(0, openCount - 1);
     if (!openCount) document.body.classList.remove("modal-open");
+    options.onClose?.();
   };
 
   backdrop.addEventListener("click", (event) => {
@@ -53,19 +62,18 @@ export function openModal(options: ModalOptions): () => void {
       else close();
     }
   });
-  const onKey = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") {
-      close();
-      document.removeEventListener("keydown", onKey);
-    }
-  };
+  function onKey(event: KeyboardEvent): void {
+    if (event.key === "Escape") close();
+  }
   document.addEventListener("keydown", onKey);
 
   document.body.appendChild(backdrop);
   openCount += 1;
   document.body.classList.add("modal-open");
   options.onOpen?.(backdrop, close);
-  const focusTarget = backdrop.querySelector<HTMLElement>("input, select, textarea, button");
+  const focusTarget =
+    (options.initialFocus ? backdrop.querySelector<HTMLElement>(options.initialFocus) : null) ??
+    backdrop.querySelector<HTMLElement>("input, select, textarea, button");
   focusTarget?.focus();
   return close;
 }

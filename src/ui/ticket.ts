@@ -305,7 +305,17 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
             </div>
           </div>`}
     `,
-    actions: [{ label: options.justSold ? "Nueva venta" : "Cerrar", kind: options.justSold ? "primary" : "ghost" }],
+    actions: [
+      {
+        label: options.justSold ? "Nueva venta" : "Cerrar",
+        kind: options.justSold ? "primary" : "ghost"
+      }
+    ],
+    // En PC: Enter = "Nueva venta"; al cerrar (como sea) el cursor vuelve al buscador
+    initialFocus: options.justSold && !isMobileDevice() ? "[data-modal-action]" : undefined,
+    onClose: () => {
+      if (options.justSold && !isMobileDevice()) document.getElementById("productSearch")?.focus();
+    },
     onOpen: (root) => {
       // La imagen se prepara desde ahora para compartirla al instante
       let image: Blob | null = null;

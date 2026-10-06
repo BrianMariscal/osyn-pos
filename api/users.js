@@ -81,14 +81,17 @@ function normalizeRole(role, isOwner) {
 }
 
 async function listUsers(res, base, serviceHeaders, isOwner, callerBranch) {
-  const authRes = await fetch(`${base}/auth/v1/admin/users?per_page=200`, { headers: serviceHeaders });
+  // Ambas consultas a la vez (antes una tras otra)
+  const [authRes, profilesRes] = await Promise.all([
+    fetch(`${base}/auth/v1/admin/users?per_page=200`, { headers: serviceHeaders }),
+    fetch(`${base}/rest/v1/profiles?select=user_id,name,role,branch_id`, { headers: serviceHeaders })
+  ]);
   if (!authRes.ok) {
     res.status(502).json({ error: "No se pudieron leer los usuarios" });
     return;
   }
   const body = await authRes.json();
   const authUsers = body.users || [];
-  const profilesRes = await fetch(`${base}/rest/v1/profiles?select=user_id,name,role,branch_id`, { headers: serviceHeaders });
   const profiles = profilesRes.ok ? await profilesRes.json() : [];
   const byId = new Map(profiles.map((p) => [p.user_id, p]));
   let users = authUsers

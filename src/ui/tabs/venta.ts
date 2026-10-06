@@ -2,13 +2,14 @@ import { html, setHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import { type CartUnit, type PaymentMethod, type Product, type Supplier } from "../../core/types";
-import { resolveScannedCode, searchProducts, supplierCode } from "../../domain/catalog";
+import { resolveScannedCode, searchProducts } from "../../domain/catalog";
 import { scanBarcode } from "../scanner";
 import { iconFor } from "../icons";
 import { speak, vibrate, isVoiceEnabled } from "../voice-recognition";
 import { openNewProductModal } from "./inventario";
 import { cashChange, quickCashOptions } from "../../domain/ticket";
 import { openTicket } from "../ticket";
+import { openModal } from "../components/modal";
 import type { TabModule } from "./tab-module";
 
 /** Paso del stepper según la unidad: piezas enteras, medio litro/kilo, 50 gramos. */
@@ -41,8 +42,8 @@ export const ventaTab: TabModule = {
               </label>
               <button id="scanButton" class="primary" type="button" title="Escanear con la cámara">${iconFor("barcode")}<span class="hide-sm">Escanear</span></button>
             </div>
+            <p class="kbd-hint"><kbd>F2</kbd> buscar · <kbd>Enter</kbd> agregar · <kbd>3*</kbd> cantidad · <kbd>F4</kbd> recibido · <kbd>F9</kbd> cobrar · <button type="button" class="link-btn" id="showShortcuts"><kbd>F1</kbd> todos los atajos</button></p>
             <div id="searchResults" class="search-results hidden" role="listbox" aria-label="Resultados"></div>
-            <section id="productPreview" class="preview-card hidden" aria-live="polite"></section>
 
             <div class="pos-lines-head">
               <h2>Productos de la venta <span class="count-badge" data-tone="blue" id="cartBadge"></span></h2>
@@ -106,7 +107,6 @@ export const ventaTab: TabModule = {
 
     const search = root.querySelector<HTMLInputElement>("#productSearch")!;
     const resultsEl = root.querySelector<HTMLElement>("#searchResults")!;
-    const previewEl = root.querySelector<HTMLElement>("#productPreview")!;
     const items = root.querySelector<HTMLElement>("#cartItems")!;
     const cartBadge = root.querySelector<HTMLElement>("#cartBadge")!;
     const payPanel = root.querySelector<HTMLElement>("#payPanel")!;
@@ -142,248 +142,154 @@ export const ventaTab: TabModule = {
       return searchProducts(sellable(), query, (p) => (p.supplier_id ? suppliers.get(p.supplier_id) : undefined));
     };
 
-    // ---------------- Resultados de búsqueda ----------------
+    // ---------------- Búsqueda: escribir o escanear agrega directo ----------------
+
+    /** "3*coca" o "3 x coca": cantidad antes del producto (como en las cajas registradoras). */
+    const parseQuery = (raw: string): { qty: number; text: string } => {
+      const match = /^\s*(\d+(?:[.,]\d+)?)\s*[*xX]\s*(.*)$/.exec(raw);
+      if (!match) return { qty: 1, text: raw.trim() };
+      const qty = Number(match[1]!.replace(",", "."));
+      return { qty: Number.isFinite(qty) && qty > 0 ? qty : 1, text: match[2]!.trim() };
+    };
+
+    let found: Product[] = [];
+    let activeIndex = 0;
 
     /** Lista corta de coincidencias bajo el buscador. Sin texto: no se muestra nada. */
     const renderResults = (): void => {
-      const query = search.value.trim();
-      if (!query) {
+      const { text, qty } = parseQuery(search.value);
+      if (!text) {
+        found = [];
         resultsEl.classList.add("hidden");
         setHtml(resultsEl, html``);
         return;
       }
-      const found = matchesFor(query);
+      found = matchesFor(text).slice(0, MAX_RESULTS);
+      const total = found.length ? matchesFor(text).length : 0;
+      activeIndex = Math.min(activeIndex, Math.max(0, found.length - 1));
       resultsEl.classList.remove("hidden");
       if (!found.length) {
-        setHtml(resultsEl, html`<p class="search-empty">Ningún producto coincide con “${query}”.</p>`);
+        setHtml(resultsEl, html`<p class="search-empty">Ningún producto coincide con “${text}”.</p>`);
         return;
       }
       setHtml(
         resultsEl,
-        html`${found.slice(0, MAX_RESULTS).map((product) => {
+        html`${found.map((product, index) => {
           const stock = ctx.sales.stockOf(product.id);
           const min = ctx.sales.minStockOf(product.id);
           return html`
-            <button class="result-row" type="button" role="option" data-result="${product.id}">
+            <button class="result-row ${index === activeIndex ? "active" : ""}" type="button" role="option" aria-selected="${index === activeIndex ? "true" : "false"}" data-result="${product.id}" tabindex="-1">
               <span class="row-title"><strong>${product.name}</strong><small class="muted">${product.category || "Sin categoría"}${product.barcode ? ` · ${product.barcode}` : ""}</small></span>
               <span class="stock-pill" data-tone="${stock <= 0 ? "coral" : stock <= min ? "amber" : "green"}">${stock <= 0 ? "Agotado" : `${fmtQty(stock)} ${product.um}`}</span>
-              <strong class="row-price">${fmtMoneyPesos(product.price)}</strong>
+              <strong class="row-price">${qty !== 1 ? html`<small class="muted">${fmtQty(qty)} × </small>` : html``}${fmtMoneyPesos(product.price)}</strong>
             </button>
           `;
-        })}${found.length > MAX_RESULTS ? html`<p class="search-more">${found.length - MAX_RESULTS} más: sigue escribiendo para afinar</p>` : html``}`
+        })}${total > MAX_RESULTS ? html`<p class="search-more">${total - MAX_RESULTS} más: sigue escribiendo para afinar</p>` : html``}<p class="search-keys">↑ ↓ elegir · Enter agregar · Esc limpiar</p>`
       );
     };
 
-    /** Deja la búsqueda como al inicio: sin texto, sin resultados y sin vista previa. */
+    /** Deja la búsqueda como al inicio: sin texto ni resultados. */
     const resetSearch = (focus = false): void => {
       if (searchTimer) clearTimeout(searchTimer);
       search.value = "";
+      activeIndex = 0;
       renderResults();
-      closePreview();
       if (focus && !isMobile()) search.focus({ preventScroll: true });
     };
 
-    // ---------------- Vista previa del producto ----------------
-
-    /**
-     * Vista previa: lo escaneado o elegido se muestra primero (precio y
-     * existencia) y solo entra a la venta al tocar "Agregar". Así se puede
-     * consultar un precio sin tocar la venta.
-     */
-    interface PreviewItem { productId: string; qty: number; unit: CartUnit }
-    let preview: PreviewItem | null = null;
-
-    const closePreview = (): void => {
-      preview = null;
-      renderPreview();
-    };
-
-    const renderPreview = (): void => {
-      const product = preview ? ctx.repos.products.byId(preview.productId) : undefined;
-      previewEl.classList.toggle("hidden", !preview || !product);
-      if (!preview || !product) {
-        setHtml(previewEl, html``);
-        return;
-      }
-      const item = preview;
-      const isBox = item.unit === "caja";
-      const stock = ctx.sales.stockOf(product.id);
-      const min = ctx.sales.minStockOf(product.id);
-      const supplier = product.supplier_id ? suppliersById().get(product.supplier_id) : undefined;
-      const unitPrice = isBox ? product.pack_price ?? 0 : product.price;
-      const step = isBox ? 1 : qtyStep(product.um);
-      const byPack = ctx.sales.sellsByPack(product.id);
-      setHtml(
-        previewEl,
-        html`
-          <div class="preview-main">
-            <div class="preview-info">
-              <strong class="preview-name">${product.name}</strong>
-              <span class="muted">${product.category || "Sin categoría"}${supplier ? ` · ${supplierCode(supplier) || supplier.name}` : ""}</span>
-              <span class="stock-pill" data-tone="${stock <= 0 ? "coral" : stock <= min ? "amber" : "green"}">${stock <= 0 ? "Agotado" : `Existencia: ${fmtQty(stock)} ${product.um}`}</span>
-            </div>
-            <div class="preview-price">
-              <strong>${fmtMoneyPesos(unitPrice)}</strong>
-              <span class="muted">por ${isBox ? `caja de ${product.pack_size ?? 1}` : product.um}</span>
-            </div>
-            <button class="icon-btn preview-close" type="button" data-preview-close aria-label="Cerrar">✕</button>
-          </div>
-          <div class="preview-actions">
-            ${byPack
-              ? html`<div class="unit-toggle" role="group" aria-label="Vender por">
-                  <button type="button" class="${isBox ? "" : "active"}" data-preview-unit="pza">Pieza ${fmtMoneyPesos(product.price)}</button>
-                  <button type="button" class="${isBox ? "active" : ""}" data-preview-unit="caja">Caja ${fmtMoneyPesos(product.pack_price ?? 0)}</button>
-                </div>`
-              : html``}
-            <div class="qty-stepper">
-              <button type="button" data-preview-dec aria-label="Menos">−</button>
-              <input class="input" type="number" min="${step}" step="${step}" value="${item.qty}" data-preview-qty inputmode="decimal" aria-label="Cantidad">
-              <button type="button" data-preview-inc aria-label="Más">+</button>
-            </div>
-            <button class="primary grow preview-add" type="button" data-preview-add ${stock <= 0 ? "disabled" : null}>${iconFor("plus")} Agregar · ${fmtMoney(lineTotalCents(item.qty, unitPrice))}</button>
-          </div>
-        `
-      );
-    };
-
-    const previewProduct = (product: Product): void => {
-      preview = { productId: product.id, qty: 1, unit: "pza" };
-      // Elegido el producto, la búsqueda vuelve a empezar
-      if (searchTimer) clearTimeout(searchTimer);
-      search.value = "";
-      renderResults();
-      renderPreview();
-      vibrate(25);
-      speak(`${product.name}, ${speakPesos(product.price)}.`, voiceEnabled());
-      if (isMobile()) previewEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      else root.querySelector<HTMLButtonElement>("[data-preview-add]")?.focus({ preventScroll: true });
-    };
-
-    const addPreview = (): void => {
-      if (!preview) return;
-      const product = ctx.repos.products.byId(preview.productId);
-      const result = ctx.sales.addToCart(preview.productId, preview.qty, undefined, preview.unit);
+    /** Agrega a la venta sin pasos extra y resalta el renglón. */
+    const addProduct = (product: Product, qty = 1): void => {
+      const result = ctx.sales.addToCart(product.id, qty);
       if (!result.ok) {
-        ctx.toast(`${product?.name ?? "Producto"}: ${result.error}`);
+        ctx.toast(`${product.name}: ${result.error}`);
+        vibrate(120);
         return;
       }
       vibrate(40);
-      ctx.toast(`${product?.name ?? "Producto"} agregado`);
       resetSearch(true);
+      requestAnimationFrame(() => {
+        const row = items.querySelector<HTMLElement>(`[data-line="${CSS.escape(product.id)}"][data-unit="pza"]`);
+        if (!row) return;
+        row.classList.remove("flash");
+        void row.offsetWidth;
+        row.classList.add("flash");
+        row.scrollIntoView({ block: "nearest" });
+      });
     };
 
-    previewEl.addEventListener("click", (event) => {
-      const target = event.target as HTMLElement;
-      if (!preview) return;
-      if (target.closest("[data-preview-close]")) {
-        resetSearch(true);
-        return;
-      }
-      if (target.closest("[data-preview-add]")) {
-        addPreview();
-        return;
-      }
-      const product = ctx.repos.products.byId(preview.productId);
-      const unit = target.closest<HTMLElement>("[data-preview-unit]");
-      if (unit) {
-        preview.unit = unit.dataset.previewUnit === "caja" ? "caja" : "pza";
-        preview.qty = 1;
-        renderPreview();
-        return;
-      }
-      const step = preview.unit === "caja" ? 1 : qtyStep(product?.um ?? "Pza");
-      if (target.closest("[data-preview-inc]")) preview.qty = Math.round((preview.qty + step) * 1000) / 1000;
-      else if (target.closest("[data-preview-dec]")) preview.qty = Math.max(step, Math.round((preview.qty - step) * 1000) / 1000);
-      else return;
-      renderPreview();
-    });
-
-    previewEl.addEventListener("change", (event) => {
-      const input = (event.target as HTMLElement).closest<HTMLInputElement>("[data-preview-qty]");
-      if (!input || !preview) return;
-      const qty = Number(input.value);
-      if (Number.isFinite(qty) && qty > 0) preview.qty = qty;
-      renderPreview();
-    });
-
-    // ---------------- Búsqueda y escáner ----------------
-
-    /** Código leído (cámara, lector USB/Bluetooth o QR): producto o alta rápida. */
-    const handleCode = (code: string): void => {
+    /** Código leído (cámara, lector USB/Bluetooth o QR): se agrega, o alta rápida si no existe. */
+    const handleCode = (code: string, qty = 1): void => {
       const product = resolveScannedCode(ctx.repos.products.list(), code);
       if (product) {
-        previewProduct(product);
+        addProduct(product, qty);
         return;
       }
       const matches = matchesFor(code);
       if (matches.length === 1) {
-        previewProduct(matches[0]!);
+        addProduct(matches[0]!, qty);
         return;
       }
       if (!matches.length) {
         resetSearch();
-        openNewProductModal(ctx, (created) => previewProduct(created), { barcode: code });
+        openNewProductModal(ctx, (created) => addProduct(created, qty), { barcode: code });
         return;
       }
       search.value = code;
+      activeIndex = 0;
       renderResults();
     };
 
     search.addEventListener("input", () => {
       if (searchTimer) clearTimeout(searchTimer);
-      // Al borrar todo se restablece al instante (sin resultados ni vista previa)
-      if (!search.value.trim()) {
-        resetSearch();
+      activeIndex = 0;
+      // Al borrar todo se restablece al instante
+      if (!parseQuery(search.value).text) {
+        renderResults();
         return;
       }
       searchTimer = setTimeout(renderResults, 120);
     });
 
     // Enter: los lectores de código (USB/Bluetooth) "teclean" el código y Enter.
-    // Código exacto o un solo resultado → vista previa. Con la búsqueda vacía,
-    // Enter agrega lo que está en la vista previa. Escape limpia todo.
+    // Código exacto → se agrega. Si no, se agrega el resultado marcado (↑ ↓).
     search.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         resetSearch(true);
         return;
       }
-      if (event.key === "ArrowDown") {
-        resultsEl.querySelector<HTMLElement>("[data-result]")?.focus();
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        if (searchTimer) {
+          clearTimeout(searchTimer);
+          renderResults();
+        }
+        if (!found.length) return;
         event.preventDefault();
+        activeIndex = (activeIndex + (event.key === "ArrowDown" ? 1 : -1) + found.length) % found.length;
+        renderResults();
+        resultsEl.querySelector(".result-row.active")?.scrollIntoView({ block: "nearest" });
         return;
       }
       if (event.key !== "Enter") return;
       event.preventDefault();
-      const value = search.value.trim();
-      if (!value) {
-        addPreview();
-        return;
-      }
+      const { qty, text } = parseQuery(search.value);
+      if (!text) return;
       if (searchTimer) clearTimeout(searchTimer);
-      const exact = resolveScannedCode(ctx.repos.products.list(), value);
+      const exact = resolveScannedCode(ctx.repos.products.list(), text);
       if (exact) {
-        previewProduct(exact);
+        addProduct(exact, qty);
         return;
       }
-      const matches = matchesFor(value);
-      if (matches.length === 1) previewProduct(matches[0]!);
-      else if (!matches.length && /^\d{6,}$/.test(value)) handleCode(value);
+      const matches = matchesFor(text);
+      if (matches.length) addProduct(matches[Math.min(activeIndex, matches.length - 1)]!, qty);
+      else if (/^\d{6,}$/.test(text)) handleCode(text, qty);
       else renderResults();
     });
 
     resultsEl.addEventListener("click", (event) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>("[data-result]");
       const product = row && ctx.repos.products.byId(row.dataset.result!);
-      if (product) previewProduct(product);
-    });
-    resultsEl.addEventListener("keydown", (event) => {
-      const row = (event.target as HTMLElement).closest<HTMLElement>("[data-result]");
-      if (!row) return;
-      if (event.key === "ArrowDown") (row.nextElementSibling as HTMLElement | null)?.focus();
-      else if (event.key === "ArrowUp") ((row.previousElementSibling as HTMLElement | null) ?? search).focus();
-      else if (event.key === "Escape") resetSearch(true);
-      else return;
-      event.preventDefault();
+      if (product) addProduct(product, parseQuery(search.value).qty);
     });
 
     // ---------------- Carrito y cobro ----------------
@@ -565,8 +471,6 @@ export const ventaTab: TabModule = {
       () => {
         renderResults();
         renderCart();
-        if (preview && !ctx.repos.products.byId(preview.productId)) preview = null;
-        renderPreview();
       }
     );
 
@@ -650,6 +554,95 @@ export const ventaTab: TabModule = {
       if (sale.change) speak(`Cambio: ${speakPesos(sale.change)}.`, voiceEnabled());
       renderCart();
       window.scrollTo({ top: 0 });
+    });
+
+    // ---------------- Atajos de teclado (PC) ----------------
+
+    const SHORTCUTS: Array<[string, string]> = [
+      ["F2  o  Ctrl + B", "Ir al buscador"],
+      ["Enter", "Agregar el producto (código escaneado o resultado marcado)"],
+      ["↑  ↓", "Elegir entre los resultados"],
+      ["3*coca  o  3x coca", "Agregar 3 piezas de una vez (también antes de escanear)"],
+      ["+  /  −", "Con el buscador vacío: más o menos del último producto"],
+      ["Supr", "Con el buscador vacío: quitar el último producto"],
+      ["Ctrl + Supr", "Vaciar la venta"],
+      ["Esc", "Limpiar la búsqueda"],
+      ["F3", "Escanear con la cámara"],
+      ["F4", "Escribir con cuánto paga (efectivo)"],
+      ["Alt + 1 … 5", "Efectivo, Transferencia, Tarjeta, Fiado, Uso interno"],
+      ["F9  o  Ctrl + Enter", "Cobrar"],
+      ["Enter (en Recibido)", "Cobrar"],
+      ["Enter (en el ticket)", "Nueva venta"],
+      ["F1", "Ver esta lista"]
+    ];
+    const showShortcuts = (): void => {
+      openModal({
+        title: "Atajos de teclado",
+        content: html`<div class="shortcut-list">${SHORTCUTS.map(([keys, what]) => html`<div><kbd>${keys}</kbd><span>${what}</span></div>`)}</div>`,
+        actions: [{ label: "Entendido", kind: "primary" }]
+      });
+    };
+    root.querySelector<HTMLButtonElement>("#showShortcuts")!.addEventListener("click", showShortcuts);
+
+    /** Último renglón de la venta (el más reciente). */
+    const lastLine = (): { productId: string; unit: CartUnit; qty: number } | null => {
+      const cart = ctx.sales.cart();
+      const line = cart[cart.length - 1];
+      return line ? { productId: line.productId, unit: line.unit === "caja" ? "caja" : "pza", qty: line.qty } : null;
+    };
+    const PAY_KEYS: PaymentMethod[] = ["efectivo", "transferencia", "tarjeta", "fiado", "interno"];
+
+    document.addEventListener("keydown", (event) => {
+      if (!root.classList.contains("active") || document.body.classList.contains("modal-open")) return;
+      const inSearch = event.target === search;
+      const searchEmpty = !search.value.trim();
+      const key = event.key;
+      const act = (fn: () => void): void => {
+        event.preventDefault();
+        fn();
+      };
+      if (key === "F1") return act(showShortcuts);
+      if (key === "F2" || (event.ctrlKey && key.toLowerCase() === "b")) return act(() => search.focus());
+      if (key === "F3") return act(() => root.querySelector<HTMLButtonElement>("#scanButton")!.click());
+      if (key === "F4") {
+        return act(() => {
+          if (payment.value !== "efectivo") {
+            payment.value = "efectivo";
+            payment.dispatchEvent(new Event("change"));
+          }
+          cashInput.focus();
+          cashInput.select();
+        });
+      }
+      if (key === "F9" || (event.ctrlKey && key === "Enter")) return act(() => completeButton.click());
+      if (event.altKey && /^[1-5]$/.test(key)) {
+        return act(() => {
+          payment.value = PAY_KEYS[Number(key) - 1]!;
+          payment.dispatchEvent(new Event("change"));
+        });
+      }
+      if (event.ctrlKey && key === "Delete") return act(() => root.querySelector<HTMLButtonElement>("#clearCart")!.click());
+      // + / − / Supr sobre el último producto: solo con el buscador vacío (o fuera de campos)
+      const typing = (event.target as HTMLElement).matches?.("input, textarea, select") && !(inSearch && searchEmpty);
+      if (typing) return;
+      const line = lastLine();
+      if (!line) return;
+      if (key === "+" || key === "-") {
+        return act(() => {
+          const product = ctx.repos.products.byId(line.productId);
+          const step = line.unit === "caja" ? 1 : qtyStep(product?.um ?? "Pza");
+          const result = ctx.sales.setCartQty(line.productId, key === "+" ? line.qty + step : line.qty - step, line.unit);
+          if (!result.ok) ctx.toast(result.error);
+        });
+      }
+      if (key === "Delete") return act(() => ctx.sales.removeFromCart(line.productId, line.unit));
+    });
+
+    // En "Recibido", Enter cobra
+    cashInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      completeButton.click();
     });
 
     // Escáner de cámara: código de barras o QR

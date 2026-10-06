@@ -2171,3 +2171,54 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
 @media (max-width: 860px) {
   .pos .pay-methods button { font-size: var(--fs-xs); gap: 6px; }
 }
+
+/* Venta: atajos y renglón recién agregado */
+.kbd-hint { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); }
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  border: var(--line-w) solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--ink);
+  font: 700 0.72rem/1.4 var(--font);
+  text-align: center;
+  white-space: nowrap;
+}
+.link-btn { min-height: 0; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: inherit; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+@media (max-width: 860px) { .kbd-hint { display: none; } }
+.result-row.active { background: color-mix(in srgb, var(--primary) 12%, var(--card)); box-shadow: inset 3px 0 0 var(--primary); }
+.search-keys { padding: 6px var(--sp-4); font-size: var(--fs-2xs); color: var(--muted); background: var(--card-2); border-top: var(--line-w) solid var(--line); }
+@media (max-width: 860px) { .search-keys { display: none; } }
+.pos-line.flash { animation: line-flash 900ms var(--ease); }
+@keyframes line-flash { 0% { background: color-mix(in srgb, var(--c-green) 28%, var(--card)); } 100% { background: transparent; } }
+.shortcut-list { display: grid; gap: 6px; }
+.shortcut-list > div { display: grid; grid-template-columns: minmax(150px, auto) 1fr; gap: var(--sp-3); align-items: center; padding: 6px 0; border-bottom: var(--line-w) solid var(--line); font-size: var(--fs-sm); }
+.shortcut-list > div:last-child { border-bottom: 0; }
+.shortcut-list kbd { justify-self: start; font-size: 0.78rem; }
+
+/* Inicio: meta de nómina de la semana */
+.payroll-card { margin-bottom: var(--sp-4); border-top: 4px solid var(--c-violet); }
+.payroll-progress { margin: var(--sp-2) 0 var(--sp-3); }
+.payroll-bar { height: 16px; border-radius: 999px; background: var(--card-2); border: var(--line-w) solid var(--line); overflow: hidden; }
+.payroll-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--c-violet), var(--c-blue)); transition: width var(--t-slow) var(--ease); }
+.payroll-progress.done .payroll-bar > div { background: var(--c-green); }
+.payroll-figures { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; font-size: var(--fs-sm); color: var(--muted); }
+.payroll-figures b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.payroll-figures strong { font-size: var(--fs-xl); color: var(--c-violet); font-variant-numeric: tabular-nums; }
+.payroll-progress.done .payroll-figures strong { color: var(--c-green); }
+.payroll-done { padding: var(--sp-3); border-radius: var(--r-sm); background: color-mix(in srgb, var(--c-green) 13%, var(--card)); color: var(--c-green); font-weight: 700; }
+.payroll-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-2); height: 150px; margin: var(--sp-4) 0 var(--sp-2); }
+.payroll-day { display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 4px; min-width: 0; }
+.payroll-day-val { font-size: var(--fs-2xs); font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1em; white-space: nowrap; }
+.payroll-day-track { position: relative; width: 100%; max-width: 46px; height: 100%; }
+.payroll-day-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 6px 6px 3px 3px; background: color-mix(in srgb, var(--c-violet) 45%, var(--card)); }
+.payroll-day.hit .payroll-day-fill { background: var(--c-green); }
+.payroll-day.today .payroll-day-fill { background: var(--c-violet); }
+.payroll-day.today.hit .payroll-day-fill { background: var(--c-green); }
+.payroll-day.future .payroll-day-track { background: repeating-linear-gradient(-45deg, var(--card-2), var(--card-2) 4px, transparent 4px, transparent 8px); border-radius: 6px; }
+.payroll-day-goal { position: absolute; left: -3px; right: -3px; border-top: 2px dashed var(--c-coral); z-index: 1; }
+.payroll-day.today .chart-label { color: var(--ink); font-weight: 800; }

@@ -190,11 +190,17 @@ export function buildApp(ctx: AppContext): void {
   applyTheme(ctx);
   renderAuthState(ctx);
 
+  // Al activarse un service worker nuevo solo se recarga si el servidor tiene
+  // OTRA versión: la página ya se pide a la red al abrir, así que normalmente
+  // está al día y no hace falta la recarga (antes se veía la versión vieja y luego la nueva).
   let reloading = false;
   navigator.serviceWorker?.addEventListener?.("controllerchange", () => {
     if (reloading) return;
-    reloading = true;
-    window.location.reload();
+    void serverVersion().then((version) => {
+      if (reloading || !version || version === __APP_VERSION__) return;
+      reloading = true;
+      window.location.reload();
+    });
   });
   void navigator.serviceWorker?.getRegistration?.().then((registration) => {
     if (!registration) return;
@@ -452,16 +458,31 @@ function syncStatus(ctx: AppContext): { state: SyncState; label: string; detail:
   return { state: "idle", label: "Conectando…", detail: "" };
 }
 
+/** Versión publicada en el servidor (null sin conexión). */
+async function serverVersion(): Promise<string | null> {
+  try {
+    const res = await fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return ((await res.json()) as { version?: string }).version ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Busca una versión nueva de la app. Si hay, se instala y la página se recarga
  * sola (controllerchange). Devuelve true si encontró una.
  */
 async function checkForUpdate(): Promise<boolean> {
-  const registration = await navigator.serviceWorker?.getRegistration?.();
-  if (!registration) {
-    window.location.reload();
+  const latest = await serverVersion();
+  if (latest && latest !== __APP_VERSION__) {
+    const registration = await navigator.serviceWorker?.getRegistration?.();
+    await registration?.update().catch(() => undefined);
+    window.setTimeout(() => window.location.reload(), 600);
     return true;
   }
+  const registration = await navigator.serviceWorker?.getRegistration?.();
+  if (!registration) return false;
   await registration.update().catch(() => undefined);
   const waiting = registration.waiting ?? registration.installing;
   if (waiting) {
