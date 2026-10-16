@@ -189,7 +189,7 @@ export const reportesTab: TabModule = {
         <div><span>Gastos extra</span><strong>${fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)}</strong></div>
         <div><span>Compras proveedores</span><strong>${fmtMoneyPesos(report.purchases_total)}</strong></div>
         <div><span>Mermas</span><strong>${fmtMoneyPesos(report.mermas_total)}</strong></div>
-        <div><span>Devoluciones</span><strong>${fmtMoneyPesos(report.returns_total ?? 0)}</strong></div>
+        <div><span>Devoluciones (ya restadas)</span><strong>${fmtMoneyPesos(report.returns_total ?? 0)}</strong></div>
         <div class="row-strong"><span>Ganancia después de gastos</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
         <div><span>Fiado vendido</span><strong>${fmtMoneyPesos(report.credit_total)}</strong></div>
         <div><span>Consumo interno (a costo)</span><strong>${fmtMoneyPesos(report.internal_total ?? 0)}</strong></div>

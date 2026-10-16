@@ -1,12 +1,12 @@
 import { toCents, toPesos, sumCents, lineTotalCents } from "../core/money";
 import { roundQty4 } from "../core/qty";
-import type { PeriodReport, ProductSaleStat, Sale } from "../core/types";
+import type { PeriodReport, ProductSaleStat, Sale, SaleGroup } from "../core/types";
 import type { Repositories } from "../data/repositories";
 import { VIEW_ALL } from "./app-state";
 import type { AppState } from "./app-state";
 import type { Store } from "./store";
 import { fixedCostsForRange, isFixedCost } from "./expense-service";
-import { groupTotalsCents, isInternalSale, isRevenueSale } from "./sale-groups";
+import { groupTotalsCents, isInternalSale, isRevenueSale, itemGroup } from "./sale-groups";
 
 interface CacheEntry {
   version: number;
@@ -76,25 +76,31 @@ export class ReportService {
     const extraCents = sumCents(extras.map((expense) => toCents(expense.amount)));
     const expensesTotalCents = extraCents + fixedCents;
     const purchasesTotalCents = centsOf(purchases);
-    // Devoluciones: revierten ingreso y costo; su margen baja la ganancia
-    // (la "ganancia bruta" del periodo ya viene neta de devoluciones).
+    // Devoluciones: revierten ingreso y costo. Las ventas y el costo del
+    // periodo se reportan NETOS (la ganancia bruta ya venía neta).
     const returnsTotalCents = centsOf(returns);
     const returnsCostCents = sumCents(returns.map((ret) => toCents(ret.cost)));
     const grossProfitCents = salesTotalCents - salesCostCents - (returnsTotalCents - returnsCostCents);
     const groups = groupTotalsCents(sales, (id) => this.repos.products.byId(id));
+    const returnedGroups: Record<SaleGroup, number> = { general: 0, cigarros: 0, cerveza: 0 };
+    for (const ret of returns) {
+      for (const item of ret.items ?? []) {
+        returnedGroups[itemGroup(item, (id) => this.repos.products.byId(id))] += lineTotalCents(item.qty, item.price);
+      }
+    }
     const stats = this.productStats(sales);
     return {
       start,
       end,
       branch_id: scope,
-      sales_total: toPesos(salesTotalCents),
-      sales_cost: toPesos(salesCostCents),
+      sales_total: toPesos(salesTotalCents - returnsTotalCents),
+      sales_cost: toPesos(salesCostCents - returnsCostCents),
       gross_profit: toPesos(grossProfitCents),
       expenses_total: toPesos(expensesTotalCents),
       fixed_costs_total: toPesos(fixedCents),
       extra_expenses_total: toPesos(extraCents),
-      cigarros_total: toPesos(groups.cigarros),
-      cerveza_total: toPesos(groups.cerveza),
+      cigarros_total: toPesos(groups.cigarros - returnedGroups.cigarros),
+      cerveza_total: toPesos(groups.cerveza - returnedGroups.cerveza),
       internal_total: toPesos(sumCents(internal.map((sale) => toCents(sale.cost)))),
       purchases_total: toPesos(purchasesTotalCents),
       mermas_total: toPesos(sumCents(mermas.map((merma) => toCents(merma.cost_impact)))),

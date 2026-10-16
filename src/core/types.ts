@@ -335,7 +335,9 @@ export interface PeriodReport {
   start: string;
   end: string;
   branch_id: string | "all";
+  /** Ventas del periodo ya netas de devoluciones (importe restado). */
   sales_total: number;
+  /** Costo de lo vendido ya neto de devoluciones (su costo restado). */
   sales_cost: number;
   gross_profit: number;
   /** Gastos totales del periodo = costos fijos prorrateados + gastos extra. */
@@ -348,7 +350,7 @@ export interface PeriodReport {
   purchases_total: number;
   mermas_total: number;
   mermas_count: number;
-  /** Devoluciones del periodo: importe reembolsado y su costo. */
+  /** Devoluciones del periodo: importe reembolsado y su costo (ya restados de ventas y costo). */
   returns_total?: number;
   returns_cost?: number;
   returns_count?: number;

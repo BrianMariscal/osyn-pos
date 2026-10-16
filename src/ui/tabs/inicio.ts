@@ -89,7 +89,7 @@ export const inicioTab: TabModule = {
     };
     const inScope = (scope: string, branchId: string | null | undefined): boolean => scope === VIEW_ALL || branchId === scope;
 
-    /** Ventas por hora de un día (centavos), solo ventas con ingreso. */
+    /** Ventas por hora de un día (centavos): con ingreso y netas de devoluciones. */
     const hourly = (scope: string, offsetDays: number): number[] => {
       const start = dayStart(offsetDays).toISOString();
       const end = dayStart(offsetDays - 1).toISOString();
@@ -97,6 +97,11 @@ export const inicioTab: TabModule = {
       for (const sale of ctx.repos.sales.list()) {
         if (!inScope(scope, sale.branch_id) || sale.created_at < start || sale.created_at >= end || !isRevenueSale(sale)) continue;
         hours[new Date(sale.created_at).getHours()]! += toCents(sale.total);
+      }
+      // Las devoluciones bajan las ventas de la hora en que se hicieron.
+      for (const ret of ctx.repos.returns.list()) {
+        if (!inScope(scope, ret.branch_id) || ret.created_at < start || ret.created_at >= end) continue;
+        hours[new Date(ret.created_at).getHours()]! -= toCents(ret.total);
       }
       return hours;
     };
@@ -142,6 +147,7 @@ export const inicioTab: TabModule = {
             <div class="hero-stats">
               ${stat("Ventas", String(today.sales_count), "violet")}
               ${stat("Ticket promedio", fmtMoney(avg), "teal")}
+              ${today.returns_total ? stat("Devoluciones", fmtMoneyPesos(today.returns_total), "coral") : html``}
               ${isManager ? stat("Ganancia bruta", fmtMoneyPesos(today.gross_profit), "green") : html``}
               ${isManager ? stat("Ganancia neta", fmtMoneyPesos(today.profit_after_expenses), today.profit_after_expenses < 0 ? "coral" : "green") : html``}
             </div>
@@ -316,7 +322,7 @@ export const inicioTab: TabModule = {
             )}
             <div class="legend-plain"><span>Compras a proveedores</span><strong>${fmtMoneyPesos(month.purchases_total)}</strong></div>
             ${month.mermas_total ? html`<div class="legend-plain"><span>Mermas</span><strong>${fmtMoneyPesos(month.mermas_total)}</strong></div>` : html``}
-            ${month.returns_total ? html`<div class="legend-plain"><span>Devoluciones</span><strong>${fmtMoneyPesos(month.returns_total)}</strong></div>` : html``}
+            ${month.returns_total ? html`<div class="legend-plain"><span>Devoluciones (ya restadas)</span><strong>${fmtMoneyPesos(month.returns_total)}</strong></div>` : html``}
           </div>
         `
       );
@@ -423,15 +429,20 @@ export const inicioTab: TabModule = {
 
     // ---------------- Vendedor ----------------
 
-    const renderVendorPayments = (scope: string, today: PeriodReport): void => {
+    const renderVendorPayments = (scope: string): void => {
       const range = dayRange(todayInputValue());
       const byPayment = new Map<string, number>();
       for (const sale of ctx.repos.sales.list()) {
         if (sale.branch_id !== scope || sale.created_at < range.start || sale.created_at >= range.end || !isRevenueSale(sale)) continue;
         byPayment.set(sale.payment, (byPayment.get(sale.payment) ?? 0) + toCents(sale.total));
       }
-      const totalCents = toCents(today.sales_total);
-      const rows = [...byPayment.entries()].sort((a, b) => b[1] - a[1]);
+      // Las devoluciones del día bajan su forma de pago (el abono a fiado, el fiado).
+      for (const ret of ctx.repos.returns.list()) {
+        if (ret.branch_id !== scope || ret.created_at < range.start || ret.created_at >= range.end) continue;
+        byPayment.set(ret.payment, Math.max(0, (byPayment.get(ret.payment) ?? 0) - toCents(ret.total)));
+      }
+      const rows = [...byPayment.entries()].filter(([, cents]) => cents > 0).sort((a, b) => b[1] - a[1]);
+      const totalCents = sumCents(rows.map(([, cents]) => cents));
       setHtml(
         goalsCard,
         html`
@@ -462,7 +473,7 @@ export const inicioTab: TabModule = {
       const today = dayReport(scope, 0);
       renderHero(scope, today, isManager);
       if (!isManager) {
-        renderVendorPayments(scope, today);
+        renderVendorPayments(scope);
         return;
       }
       const monthReport = ctx.reports.monthReport(scope, monthInputValue());

@@ -222,17 +222,18 @@ describe("devoluciones en corte y reportes", () => {
     expect(afterCard.ganancia).toBe(10);
   });
 
-  it("el reporte del periodo resta el margen devuelto", () => {
+  it("el reporte del periodo descuenta las devoluciones de ventas, costo y ganancia", () => {
     const sale = sell(app, [{ productId: "jitomate", qty: 2 }], "efectivo");
     const result = app.returns.create({ saleId: sale.id, lines: [{ index: 0, qty: 1 }], payment: "efectivo", reason: "Producto dañado" });
     expect(result.ok).toBe(true);
     const end = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const report = app.reports.periodReport("sucursal-1", todayStartISO(), end);
-    expect(report.sales_total).toBe(50);
-    expect(report.sales_cost).toBe(30);
+    expect(report.sales_total).toBe(25);
+    expect(report.sales_cost).toBe(15);
     expect(report.returns_total).toBe(25);
     expect(report.returns_cost).toBe(15);
     expect(report.returns_count).toBe(1);
+    expect(report.gross_profit).toBe(10);
     expect(report.profit_after_expenses).toBe(10);
   });
 

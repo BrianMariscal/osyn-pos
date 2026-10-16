@@ -23,7 +23,7 @@ export function openReportPdf(title: string, storeName: string, report: PeriodRe
     ["Gastos extra", fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)],
     ["Compras proveedores", fmtMoneyPesos(report.purchases_total)],
     ["Mermas", fmtMoneyPesos(report.mermas_total)],
-    ["Devoluciones", fmtMoneyPesos(report.returns_total ?? 0)],
+    ["Devoluciones (ya restadas)", fmtMoneyPesos(report.returns_total ?? 0)],
     ["Ganancia después de gastos", fmtMoneyPesos(report.profit_after_expenses)],
     ["Ventas fiadas", fmtMoneyPesos(report.credit_total)],
     ["Consumo interno (a costo)", fmtMoneyPesos(report.internal_total ?? 0)],
