@@ -2,6 +2,7 @@ import { nowISO } from "../core/dates";
 import { uid } from "../core/id";
 import { toCents, toPesos } from "../core/money";
 import { fmtQty, normalizeQty } from "../core/qty";
+import { normalizeQtyForUnit } from "../core/units";
 import { MERMA_REASONS, DEFAULT_BRANCH_ID, type CountIncidence, type CountSummary, type InventoryCount, type Merma, type MermaReason, type Purchase, type PurchasePayment } from "../core/types";
 import { moveStock } from "./stock-moves";
 import type { Repositories } from "../data/repositories";
@@ -60,7 +61,7 @@ export class InventoryService {
   backfillFromProducts(): number {
     const withRows = new Set(this.repos.stocks.all().map((row) => row.product_id));
     const legacy = this.repos.products.list().filter(
-      (product) => !withRows.has(product.id) && normalizeQty(product.stock ?? 0) > 0
+      (product) => !withRows.has(product.id) && normalizeQtyForUnit(product.stock ?? 0, product.um) > 0
     );
     const ts = nowISO();
     legacy.forEach((product) => {
@@ -68,8 +69,8 @@ export class InventoryService {
         id: `${product.id}:${DEFAULT_BRANCH_ID}`,
         product_id: product.id,
         branch_id: DEFAULT_BRANCH_ID,
-        stock: normalizeQty(product.stock ?? 0),
-        min_stock: normalizeQty(product.min_stock ?? 0),
+        stock: normalizeQtyForUnit(product.stock ?? 0, product.um),
+        min_stock: normalizeQtyForUnit(product.min_stock ?? 0, product.um),
         updated_at: ts
       });
     });
@@ -133,12 +134,12 @@ export class InventoryService {
       const raw = active.items[product.id];
       if (raw === undefined || raw === "") continue;
       captured += 1;
-      const physical = normalizeQty(raw);
+      const physical = normalizeQtyForUnit(raw, product.um);
       const systemStock = this.repos.stocks
         .list()
         .find((row) => row.product_id === product.id && row.branch_id === branchId);
-      const system = normalizeQty(systemStock?.stock ?? 0);
-      const difference = Math.round((physical - system) * 1000) / 1000;
+      const system = normalizeQtyForUnit(systemStock?.stock ?? 0, product.um);
+      const difference = Math.round((physical - system) * 10000) / 10000;
       if (difference === 0) {
         ok += 1;
         continue;
@@ -181,6 +182,7 @@ export class InventoryService {
       const stockRow = this.repos.stocks
         .list()
         .find((row) => row.product_id === incidence.product_id && row.branch_id === active.branch_id);
+      const um = this.repos.products.byId(incidence.product_id)?.um;
       // Producto contado sin fila de existencia en la sucursal: se crea.
       this.repos.stocks.upsert({
         id: stockRow?.id ?? `${incidence.product_id}:${active.branch_id}`,
@@ -189,7 +191,7 @@ export class InventoryService {
         min_stock: stockRow?.min_stock ?? 0,
         ...stockRow,
         deleted: false,
-        stock: normalizeQty(incidence.physical_stock),
+        stock: normalizeQtyForUnit(incidence.physical_stock, um),
         updated_at: ts
       });
     }
@@ -217,10 +219,11 @@ export class InventoryService {
 
   /** Admin: stock de todas las sucursales de un producto (vista consolidada). */
   stockEverywhere(productId: string): Array<{ branch_id: string; stock: number; min_stock: number }> {
+    const um = this.repos.products.byId(productId)?.um;
     return this.repos.stocks
       .list()
       .filter((row) => row.product_id === productId)
-      .map((row) => ({ branch_id: row.branch_id, stock: normalizeQty(row.stock), min_stock: normalizeQty(row.min_stock) }));
+      .map((row) => ({ branch_id: row.branch_id, stock: normalizeQtyForUnit(row.stock, um), min_stock: normalizeQtyForUnit(row.min_stock, um) }));
   }
 
   /** Entrada de mercancía: suma stock y registra la compra para reportes. */
@@ -234,13 +237,13 @@ export class InventoryService {
   ): { ok: true; qty: number } | { ok: false; error: string } {
     const product = this.repos.products.byId(productId);
     if (!product) return { ok: false, error: "No se encontró el producto" };
-    const quantity = normalizeQty(qty);
+    const quantity = normalizeQtyForUnit(qty, product.um);
     if (!Number.isFinite(qty) || quantity <= 0) return { ok: false, error: "Cantidad inválida" };
     if (!Number.isFinite(totalPaid) || totalPaid < 0) return { ok: false, error: "Total pagado inválido" };
     const branchId = this.branches.operationalId();
     const ts = nowISO();
     const stockRow = this.repos.stocks.list().find((row) => row.product_id === productId && row.branch_id === branchId);
-    const previousStock = normalizeQty(stockRow?.stock ?? 0);
+    const previousStock = normalizeQtyForUnit(stockRow?.stock ?? 0, product.um);
     const serverStock = this.serverStock();
     moveStock(this.repos, serverStock, productId, branchId, quantity, ts);
     if (totalPaid > 0 && previousStock + quantity > 0) {
@@ -294,11 +297,11 @@ export class InventoryService {
     const product = this.repos.products.byId(productId);
     if (!product) return { ok: false, error: "No se encontró el producto" };
     if (!(MERMA_REASONS as readonly string[]).includes(reason)) return { ok: false, error: "Motivo inválido" };
-    const quantity = normalizeQty(qty);
+    const quantity = normalizeQtyForUnit(qty, product.um);
     if (quantity <= 0) return { ok: false, error: "Cantidad inválida" };
     const branchId = this.branches.operationalId();
     const stockRow = this.repos.stocks.list().find((row) => row.product_id === productId && row.branch_id === branchId);
-    const available = normalizeQty(stockRow?.stock ?? 0);
+    const available = normalizeQtyForUnit(stockRow?.stock ?? 0, product.um);
     if (quantity > available) return { ok: false, error: `Solo hay ${fmtQty(available)} ${product.um} en existencia` };
     const ts = nowISO();
     const serverStock = this.serverStock();

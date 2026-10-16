@@ -286,6 +286,8 @@ export interface ShiftSummary {
   transferencia: number;
   tarjeta: number;
   fiado: number;
+  /** Abonos de fiado cobrados en efectivo en el turno (entran a la caja). */
+  abonos?: number;
   /** Ventas de cigarros y de cerveza (incluidas en `ventas`). */
   cigarros?: number;
   cerveza?: number;

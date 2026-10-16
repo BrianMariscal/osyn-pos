@@ -71,6 +71,16 @@ export class ShiftService {
     const devolucionesEfectivoCents = totalCents(returns.filter((ret) => ret.payment === "efectivo"));
     const margenDevueltoCents = sumCents(returns.map((ret) => toCents(ret.total) - toCents(ret.cost)));
     const efectivo = totalCents(sales.filter((s) => s.payment === "efectivo"));
+    // Cobranza de fiado del turno: es efectivo que se recibió y se guardó en
+    // la caja, igual que una venta en efectivo. Sin esto el corte marcaba
+    // sobrante falso cada vez que un cliente pagaba su deuda.
+    let abonosCents = 0;
+    this.repos.customers.list().forEach((customer) => {
+      if (customer.branch_id && customer.branch_id !== branchId) return;
+      (customer.movements ?? []).forEach((movement) => {
+        if (movement.type === "pago" && since(movement.created_at)) abonosCents += toCents(movement.amount);
+      });
+    });
     const gananciaCents = sumCents(sales.map((s) => toCents(s.profit))) - gastos - margenDevueltoCents;
     const groups = groupTotalsCents(sales, (id) => this.repos.products.byId(id));
     return {
@@ -79,6 +89,7 @@ export class ShiftService {
       transferencia: toPesos(totalCents(sales.filter((s) => s.payment === "transferencia"))),
       tarjeta: toPesos(totalCents(sales.filter((s) => s.payment === "tarjeta"))),
       fiado: toPesos(totalCents(sales.filter((s) => s.payment === "fiado"))),
+      abonos: toPesos(abonosCents),
       cigarros: toPesos(groups.cigarros),
       cerveza: toPesos(groups.cerveza),
       interno: toPesos(sumCents(internal.map((s) => toCents(s.cost)))),
@@ -89,7 +100,7 @@ export class ShiftService {
       proveedoresAparte: toPesos(proveedoresAparte),
       mermas: toPesos(mermasCents),
       ganancia: toPesos(gananciaCents),
-      efectivoEsperado: toPesos(efectivo - gastos - proveedores - devolucionesEfectivoCents)
+      efectivoEsperado: toPesos(efectivo + abonosCents - gastos - proveedores - devolucionesEfectivoCents)
     };
   }
 

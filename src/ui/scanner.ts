@@ -45,6 +45,8 @@ export function scanBarcode(): Promise<string | null> {
           }
         }
       ],
+      // Cerrar con ✕, el fondo o Escape también apaga la cámara.
+      onClose: () => finish(null),
       onOpen: async (root, close) => {
         const video = root.querySelector<HTMLVideoElement>("#scannerVideo")!;
         try {

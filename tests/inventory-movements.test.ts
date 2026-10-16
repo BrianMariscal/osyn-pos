@@ -57,4 +57,14 @@ describe("entradas y mermas de inventario", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("Solo hay 10");
   });
+
+  it("la merma a granel conserva la precisión de gramo", () => {
+    const ts = nowISO();
+    repos.products.upsert({ id: "jitomate", name: "Jitomate", category: "Frutas", um: "Kg", cost: 15, price: 25, active: true, updated_at: ts });
+    repos.stocks.upsert({ id: "jitomate:sucursal-1", product_id: "jitomate", branch_id: "sucursal-1", stock: 2, min_stock: 0, updated_at: ts });
+    const result = inventory.registerMerma("jitomate", 0.125, "Dañado", "");
+    expect(result.ok).toBe(true);
+    expect(inventory.stockEverywhere("jitomate")[0]?.stock).toBe(1.875);
+    expect(repos.mermas.list().find((m) => m.product_id === "jitomate")?.qty).toBe(0.125);
+  });
 });

@@ -4,7 +4,7 @@
  * gramos/kilos para Kg y Gr, mililitros/litros para Lts. También permite
  * capturar un importe ("$20 de jitomate") y calcular la cantidad.
  */
-import { roundQty4 } from "./qty";
+import { normalizeBulkQty, normalizeQty, roundQty4 } from "./qty";
 import type { Unit } from "./types";
 
 export interface BulkSubunit {
@@ -17,6 +17,15 @@ export interface BulkSubunit {
 /** ¿El producto se vende por peso/volumen (báscula)? */
 export function isBulkUnit(um: Unit | undefined | null): boolean {
   return um === "Kg" || um === "Gr" || um === "Lts";
+}
+
+/**
+ * Redondea una cantidad según la unidad del producto: 4 decimales para
+ * peso/volumen (báscula) y 2 para piezas. Se usa donde las cantidades se
+ * guardan en unidad base (inventario, compras, mermas).
+ */
+export function normalizeQtyForUnit(qty: number | string | null | undefined, um: Unit | undefined | null): number {
+  return isBulkUnit(um) ? normalizeBulkQty(qty) : normalizeQty(qty);
 }
 
 /** Subunidades de captura del producto, de la más chica a la más grande. */

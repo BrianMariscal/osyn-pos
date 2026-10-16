@@ -28,6 +28,7 @@ const bool = z.coerce.boolean().catch(false);
 /** Opcional que tolera basura: valor inválido → undefined (nunca rompe el arranque). */
 const optionalString = z.string().optional().catch(undefined);
 const optionalPositive = z.coerce.number().positive().optional().catch(undefined);
+const optionalNonNegative = z.coerce.number().min(0).optional().catch(undefined);
 const saleGroupSchema = z.enum(SALE_GROUPS as unknown as [string, ...string[]]).optional().catch(undefined);
 
 const unitSchema = z
@@ -165,6 +166,11 @@ const saleSchema = z.object({
   profit: num,
   payment: z.enum(PAYMENT_METHODS as unknown as [string, ...string[]]).catch("efectivo"),
   customer_id: z.string().nullable().catch(null),
+  // Datos del cobro: si el esquema no los declara, Zod los tira en cada
+  // recarga y el ticket pierde "Pagó con", "Cambio" y quién atendió.
+  cash_received: optionalPositive,
+  change: optionalNonNegative,
+  cashier: optionalString,
   stock_by_server: bool.optional(),
   created_at: iso,
   updated_at: iso,

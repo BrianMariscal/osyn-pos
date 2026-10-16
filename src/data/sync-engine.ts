@@ -15,9 +15,11 @@ const SYNC_TABLES: readonly SyncTableKey[] = [
   "suppliers",
   "products",
   "product_stocks",
-  "customers",
   "sales",
+  // returns va antes de customers: la guardia del servidor solo acepta un
+  // movimiento de devolución si ya existe la devolución a la que abona.
   "returns",
+  "customers",
   "expenses",
   "purchases",
   "mermas",
@@ -180,9 +182,14 @@ export class SyncEngine {
       // Postgres con cada venta/compra/merma (y rechazaría las suyas).
       const vendorBlocked = new Set<SyncTableKey>(["products", "branches", "month_closings"]);
       if (serverStock) vendorBlocked.add("product_stocks");
-      if (!isAdmin && serverStock) {
-        const stale = this.tracker.takeIds("product_stocks");
-        if (stale?.length) this.tracker.clear("product_stocks", stale);
+      if (!isAdmin) {
+        // El vendedor no sube estas tablas (las gobierna el servidor): sus
+        // pendientes se descartan para que el aviso de sync no quede
+        // encendido para siempre ni tape pendientes de verdad.
+        vendorBlocked.forEach((table) => {
+          const stale = this.tracker.takeIds(table);
+          if (stale?.length) this.tracker.clear(table, stale);
+        });
       }
       const pushable = isAdmin ? tables : tables.filter((table) => !vendorBlocked.has(table));
       // Una fila rechazada no frena las demás tablas: se sigue y se avisa al final.

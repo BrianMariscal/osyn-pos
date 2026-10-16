@@ -168,4 +168,29 @@ describe("sync con stock en el servidor", () => {
     expect(posted).not.toContain("product_stocks");
     expect(tracker.isDirty("product_stocks", "cig:sucursal-1")).toBe(false);
   });
+
+  it("también descarta los pendientes de products del vendedor", async () => {
+    const store = new Store<AppState>(createInitialState());
+    const tracker = new ChangeTracker();
+    const repos = new Repositories(store, tracker);
+    const ts = nowISO();
+    repos.products.upsert({ id: "cig", name: "Cigarros", category: "", um: "Pza", cost: 10, price: 12, active: true, updated_at: ts });
+    const posted: string[] = [];
+    const client = {
+      configured: true,
+      rest: async (path: string, _token: string, init: RequestInit = {}) => {
+        if ((init.method ?? "GET") === "POST") posted.push(path.split("?")[0] ?? "");
+        return { ok: true, status: 200, json: async () => [], text: async () => "" } as Response;
+      },
+      rpc: async (fn: string) => (fn === "pos_server_stock" ? true : {})
+    } as unknown as SupabaseClient;
+    store.update((state) => {
+      state.settings = { ...state.settings, vendorTabs: ["venta"] };
+    });
+    const sync = new SyncEngine(store, client, fakeAuth(false), tracker, repos);
+    const result = await sync.syncNow();
+    expect(result.ok).toBe(true);
+    expect(posted).not.toContain("products");
+    expect(tracker.isDirty("products", "cig")).toBe(false);
+  });
 });

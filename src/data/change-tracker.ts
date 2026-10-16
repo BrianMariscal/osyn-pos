@@ -15,7 +15,23 @@ const deltasKey = (table: string, id: string): string => `${table}:${id}`;
 export class ChangeTracker {
   private dirty = new Map<SyncTableKey, Set<string>>();
   private deltas = new Map<string, Record<string, number>>();
-  onChange: (() => void) | null = null;
+  private listeners = new Set<() => void>();
+
+  /**
+   * Registra un interesado en los cambios pendientes (persistencia + aviso de
+   * la UI). Antes `onChange` era un solo callback y el último en asignarlo
+   * pisaba a los demás: por eso el tracker dejaba de persistirse.
+   */
+  addListener(callback: () => void): () => void {
+    this.listeners.add(callback);
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  private notify(): void {
+    this.listeners.forEach((callback) => callback());
+  }
 
   mark(table: SyncTableKey, id: string): void {
     let ids = this.dirty.get(table);
@@ -24,7 +40,7 @@ export class ChangeTracker {
       this.dirty.set(table, ids);
     }
     ids.add(id);
-    this.onChange?.();
+    this.notify();
   }
 
   /** Acumula el cambio de un contador para una fila (se suma a lo pendiente). */
@@ -63,7 +79,7 @@ export class ChangeTracker {
       if (!set.size) this.dirty.delete(table);
     }
     ids.forEach((id) => this.clearDelta(table, id));
-    this.onChange?.();
+    this.notify();
   }
 
   has(table: SyncTableKey): boolean {
@@ -85,7 +101,7 @@ export class ChangeTracker {
   reset(): void {
     this.dirty.clear();
     this.deltas.clear();
-    this.onChange?.();
+    this.notify();
   }
 
   snapshot(): TrackerSnapshot {
@@ -111,6 +127,6 @@ export class ChangeTracker {
     Object.entries(snapshot.deltas || {}).forEach(([key, values]) => {
       this.deltas.set(key, { ...values });
     });
-    this.onChange?.();
+    this.notify();
   }
 }

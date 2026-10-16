@@ -48,12 +48,16 @@ export async function loadTracker(scope = "guest"): Promise<TrackerSnapshot | nu
 }
 
 export function attachTrackerPersistence(
-  tracker: { snapshot: () => TrackerSnapshot; onChange: (() => void) | null },
+  tracker: { snapshot: () => TrackerSnapshot; addListener: (callback: () => void) => () => void },
   scope = "guest"
 ): void {
-  tracker.onChange = () => {
-    void set(scopedKey(TRACKER_KEY, scope), tracker.snapshot()).catch(() => undefined);
-  };
+  tracker.addListener(() => {
+    try {
+      void set(scopedKey(TRACKER_KEY, scope), tracker.snapshot()).catch(() => undefined);
+    } catch {
+      /* IndexedDB no disponible (pruebas o navegador restringido) */
+    }
+  });
 }
 
 const AUTH_KEY = "abarrotes-pos-auth-v2";

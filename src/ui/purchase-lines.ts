@@ -8,6 +8,7 @@
 import { html, setHtml } from "../core/html";
 import { fmtMoney, toCents } from "../core/money";
 import { fmtQty, normalizeQty } from "../core/qty";
+import { isBulkUnit, normalizeQtyForUnit } from "../core/units";
 import type { Product } from "../core/types";
 import { unitsFromPacks, type StockReceipt } from "../domain/inventory-service";
 import { productsForSupplier, resolveScannedCode, searchProducts } from "../domain/catalog";
@@ -61,7 +62,7 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     const product = ctx.repos.products.byId(line.productId);
     const qty = Number(line.qty || 0);
     if (!Number.isFinite(qty) || qty <= 0) return 0;
-    return line.mode === "caja" ? unitsFromPacks(qty, packSizeOf(product)) : normalizeQty(qty);
+    return line.mode === "caja" ? unitsFromPacks(qty, packSizeOf(product)) : normalizeQtyForUnit(qty, product?.um);
   };
 
   const hintFor = (line: LineState): string => {
@@ -119,7 +120,7 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     const product = ctx.repos.products.byId(line.productId);
     const size = packSizeOf(product);
     return html`
-      <input class="input" data-f="qty" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
+      <input class="input" data-f="qty" type="number" step="${line.mode === "pza" && isBulkUnit(product?.um) ? "any" : "0.01"}" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
       ${size
         ? html`<select class="input" data-f="mode" aria-label="Unidad de compra">
             <option value="caja" ${line.mode === "caja" ? "selected" : null}>Cajas</option>

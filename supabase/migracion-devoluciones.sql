@@ -164,6 +164,16 @@ begin
   if jsonb_typeof(new.items) is distinct from 'array' or jsonb_array_length(new.items) = 0 then
     raise exception 'La devolución % no trae renglones válidos', new.id using errcode = '23514';
   end if;
+  -- Renglones repetidos del mismo índice burlarían el tope (cada uno se
+  -- validaría por separado): se rechazan de plano.
+  if exists (
+    select 1
+    from jsonb_array_elements(new.items) as item
+    group by item->>'index'
+    having count(*) > 1
+  ) then
+    raise exception 'La devolución % repite un renglón de la venta', new.id using errcode = '23514';
+  end if;
 
   for v_item in select value from jsonb_array_elements(new.items) loop
     v_index := coalesce((v_item->>'index')::int, -1);
@@ -277,6 +287,52 @@ begin
   if tg_op = 'UPDATE' then
     v_old_movements := case when jsonb_typeof(old.movements) = 'array' then old.movements else '[]'::jsonb end;
     v_old_balance := coalesce(old.balance, 0);
+  end if;
+
+  -- Un movimiento "devolucion" NUEVO solo vale si existe su devolución
+  -- registrada, del mismo cliente y por el mismo importe. Los movimientos
+  -- viejos ya aceptados no se revisan (no se castiga el pasado). La app sube
+  -- returns antes que customers, así que el cliente honesto pasa en un ciclo.
+  if exists (
+    select 1
+    from jsonb_array_elements(case when jsonb_typeof(new.movements) = 'array' then new.movements else '[]'::jsonb end) as m
+    where m->>'type' = 'devolucion'
+      and not exists (
+        select 1
+        from jsonb_array_elements(case when jsonb_typeof(old.movements) = 'array' then old.movements else '[]'::jsonb end) as o
+        where o->>'id' = m->>'id'
+      )
+      and not exists (
+        select 1 from public.returns r
+        where r.id = coalesce(m->>'return_id', '')
+          and r.customer_id = new.id
+          and not coalesce(r.deleted, false)
+          and abs(r.total - coalesce((m->>'amount')::numeric, -1)) < 0.005
+      )
+  ) then
+    raise exception 'Movimiento de devolución sin devolución registrada' using errcode = '23514';
+  end if;
+  -- Una devolución solo se abona una vez: si hay dos movimientos con el mismo
+  -- return_id y al menos uno es nuevo, el segundo sería un abono duplicado.
+  if exists (
+    select 1
+    from (
+      select m->>'return_id' as rid,
+             count(*) as total,
+             bool_or(
+               not exists (
+                 select 1
+                 from jsonb_array_elements(case when jsonb_typeof(old.movements) = 'array' then old.movements else '[]'::jsonb end) as o
+                 where o->>'id' = m->>'id'
+               )
+             ) as has_new
+      from jsonb_array_elements(case when jsonb_typeof(new.movements) = 'array' then new.movements else '[]'::jsonb end) as m
+      where m->>'type' = 'devolucion'
+      group by 1
+    ) d
+    where d.total > 1 and d.has_new
+  ) then
+    raise exception 'La devolución ya se abonó a este cliente' using errcode = '23514';
   end if;
 
   -- Movimientos nuevos = los que llegan y no estaban (por id).

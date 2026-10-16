@@ -24,14 +24,13 @@ export function openReturnFlow(ctx: AppContext, presetSale?: Sale): void {
 }
 
 /** Ventas de la sucursal con algo por devolver, más recientes primero. */
-function returnableSales(ctx: AppContext, limit = 40): Sale[] {
+function returnableSales(ctx: AppContext): Sale[] {
   const branchId = ctx.branches.operationalId();
   return ctx.repos.sales
     .list()
     .filter((sale) => !sale.deleted && sale.payment !== "interno" && (!sale.branch_id || sale.branch_id === branchId))
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    .filter((sale) => ctx.returns.hasPending(sale))
-    .slice(0, limit);
+    .filter((sale) => ctx.returns.hasPending(sale));
 }
 
 function saleRowHtml(ctx: AppContext, sale: Sale): ReturnType<typeof html> {
@@ -51,7 +50,10 @@ function saleRowHtml(ctx: AppContext, sale: Sale): ReturnType<typeof html> {
 
 /** Paso 1: encontrar la venta por folio o entre las recientes. */
 function openReturnSearch(ctx: AppContext): void {
-  const recent = returnableSales(ctx);
+  // Con folio escrito se busca en TODAS las ventas por devolver; sin folio
+  // solo se listan las recientes.
+  const all = returnableSales(ctx);
+  const recent = all.slice(0, 40);
   const byId = new Map(ctx.repos.sales.list().map((sale) => [sale.id, sale]));
   openModal({
     title: "Devolución",
@@ -71,8 +73,8 @@ function openReturnSearch(ctx: AppContext): void {
       if (!input || !list || !empty) return;
       const render = (): void => {
         const query = input.value.trim().toUpperCase();
-        const matches = query ? recent.filter((sale) => saleFolio(sale).toUpperCase().includes(query)) : recent;
-        setHtml(list, matches.length ? html`${matches.map((sale) => saleRowHtml(ctx, sale))}` : html``);
+        const matches = (query ? all : recent).filter((sale) => saleFolio(sale).toUpperCase().includes(query));
+        setHtml(list, matches.length ? html`${matches.slice(0, 80).map((sale) => saleRowHtml(ctx, sale))}` : html``);
         empty.hidden = matches.length > 0;
       };
       root.addEventListener("click", (event) => {

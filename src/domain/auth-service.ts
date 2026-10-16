@@ -92,8 +92,12 @@ export class AuthService {
         expires_at: Math.floor(Date.now() / 1000) + Number(raw.expires_in || 3600),
         user: raw.user ?? session.user
       });
-    } catch {
-      this.setSession(null);
+    } catch (error) {
+      // Solo se cierra la sesión si el refresh token de verdad ya no sirve
+      // (400/401/403). Sin internet o con el servidor caído se conserva, para
+      // que la tienda pueda seguir vendiendo offline.
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 400 || status === 401 || status === 403) this.setSession(null);
     }
   }
 

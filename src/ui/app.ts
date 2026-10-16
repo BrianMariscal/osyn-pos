@@ -647,12 +647,12 @@ function wireSessionMenu(ctx: AppContext): void {
 }
 
 function wireSyncListeners(ctx: AppContext): void {
-  ctx.tracker.onChange = () => {
+  ctx.tracker.addListener(() => {
     ctx.store.update((state) => {
       state.sync = { ...state.sync, pending: ctx.tracker.pendingCount() };
     });
     ctx.sync.schedule();
-  };
+  });
   window.addEventListener("online", () => {
     void ctx.sync.syncNow({ quiet: true });
   });

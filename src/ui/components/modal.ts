@@ -18,6 +18,8 @@ export interface ModalOptions {
 }
 
 let openCount = 0;
+/** Modales abiertos, en orden: Escape cierra solo el de hasta arriba. */
+const modalStack: HTMLElement[] = [];
 
 export function openModal(options: ModalOptions): () => void {
   const backdrop = document.createElement("div");
@@ -47,6 +49,8 @@ export function openModal(options: ModalOptions): () => void {
     closed = true;
     backdrop.remove();
     document.removeEventListener("keydown", onKey);
+    const stackIndex = modalStack.indexOf(backdrop);
+    if (stackIndex >= 0) modalStack.splice(stackIndex, 1);
     openCount = Math.max(0, openCount - 1);
     if (!openCount) document.body.classList.remove("modal-open");
     options.onClose?.();
@@ -63,11 +67,14 @@ export function openModal(options: ModalOptions): () => void {
     }
   });
   function onKey(event: KeyboardEvent): void {
-    if (event.key === "Escape") close();
+    // Con modales apilados (p. ej. escáner + producto nuevo), Escape cierra
+    // solo el de hasta arriba.
+    if (event.key === "Escape" && modalStack[modalStack.length - 1] === backdrop) close();
   }
   document.addEventListener("keydown", onKey);
 
   document.body.appendChild(backdrop);
+  modalStack.push(backdrop);
   openCount += 1;
   document.body.classList.add("modal-open");
   options.onOpen?.(backdrop, close);
@@ -106,6 +113,8 @@ export function confirmDialog(options: {
     openModal({
       title: options.title,
       content,
+      // Descartarlo con ✕/fondo/Escape cuenta como "no".
+      onClose: () => finish(false),
       actions: [
         { label: options.cancelLabel ?? "Cancelar", kind: "ghost", onClick: (close) => { close(); finish(false); } },
         {
@@ -149,6 +158,8 @@ export function promptDialog(options: {
           <input class="input" type="${options.type ?? "text"}" id="promptInput" placeholder="${options.placeholder ?? ""}" value="${options.initial ?? ""}">
         </label>
       `,
+      // Descartarlo con ✕/fondo/Escape cuenta como cancelar.
+      onClose: () => finish(null),
       actions: [
         { label: "Cancelar", kind: "ghost", onClick: (close) => { close(); finish(null); } },
         {
@@ -182,6 +193,7 @@ export function promptDialog(options: {
 
 export function closeAllModals(): void {
   document.querySelectorAll(".modal-backdrop").forEach((el) => el.remove());
+  modalStack.length = 0;
   openCount = 0;
   document.body.classList.remove("modal-open");
 }

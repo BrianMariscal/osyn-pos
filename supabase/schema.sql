@@ -454,19 +454,23 @@ create policy "txn_purchases_update" on purchases for update to authenticated
 create policy "txn_purchases_delete" on purchases for delete to authenticated
   using (public.current_user_role() = 'dueno');
 
--- suppliers: catálogo global, todos los usuarios de la tienda lo administran
+-- suppliers: catálogo global. Todos lo consultan, pero solo dueño/admin lo
+-- administran (mismo endurecimiento que migracion-endurecimiento.sql).
 drop policy if exists "suppliers_select" on suppliers;
 drop policy if exists "suppliers_insert" on suppliers;
 drop policy if exists "suppliers_update" on suppliers;
 drop policy if exists "suppliers_delete" on suppliers;
+drop policy if exists "suppliers_manager_insert" on suppliers;
+drop policy if exists "suppliers_manager_update" on suppliers;
+drop policy if exists "suppliers_owner_delete" on suppliers;
 create policy "suppliers_select" on suppliers for select to authenticated
   using (public.has_profile());
-create policy "suppliers_insert" on suppliers for insert to authenticated
-  with check (true);
-create policy "suppliers_update" on suppliers for update to authenticated
-  using (true)
-  with check (true);
-create policy "suppliers_delete" on suppliers for delete to authenticated
+create policy "suppliers_manager_insert" on suppliers for insert to authenticated
+  with check (public.is_manager());
+create policy "suppliers_manager_update" on suppliers for update to authenticated
+  using (public.is_manager())
+  with check (public.is_manager());
+create policy "suppliers_owner_delete" on suppliers for delete to authenticated
   using (public.current_user_role() = 'dueno');
 
 -- mermas: por sucursal, como los gastos

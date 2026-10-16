@@ -6,6 +6,7 @@ import { Repositories } from "../src/data/repositories";
 import { BranchService } from "../src/domain/branch-service";
 import { SaleService } from "../src/domain/sale-service";
 import { ReturnService } from "../src/domain/return-service";
+import { CreditService } from "../src/domain/credit-service";
 import { ShiftService } from "../src/domain/shift-service";
 import { ReportService } from "../src/domain/report-service";
 import type { AuthService } from "../src/domain/auth-service";
@@ -25,6 +26,7 @@ interface TestApp {
   repos: Repositories;
   sales: SaleService;
   returns: ReturnService;
+  credit: CreditService;
   shifts: ShiftService;
   reports: ReportService;
 }
@@ -40,6 +42,7 @@ function makeApp(): TestApp {
   });
   const sales = new SaleService(store, repos, branches);
   const returns = new ReturnService(store, repos, branches);
+  const credit = new CreditService(repos);
   const shifts = new ShiftService(repos, branches);
   const reports = new ReportService(repos, store);
   const ts = nowISO();
@@ -49,7 +52,7 @@ function makeApp(): TestApp {
   repos.stocks.upsert({ id: "pan:sucursal-1", product_id: "pan", branch_id: "sucursal-1", stock: 10, min_stock: 0, updated_at: ts });
   repos.products.upsert({ id: "coca", name: "Coca cola", category: "", um: "Pza", cost: 8, price: 12, pack_size: 12, pack_price: 120, active: true, updated_at: ts });
   repos.stocks.upsert({ id: "coca:sucursal-1", product_id: "coca", branch_id: "sucursal-1", stock: 24, min_stock: 0, updated_at: ts });
-  return { store, repos, sales, returns, shifts, reports };
+  return { store, repos, sales, returns, credit, shifts, reports };
 }
 
 function sell(app: TestApp, sales: Array<{ productId: string; qty: number; unit?: "pza" | "caja" }>, payment: "efectivo" | "tarjeta" | "fiado" | "interno", customerId: string | null = null): Sale {
@@ -173,6 +176,18 @@ describe("devoluciones (return-service)", () => {
     const badIndex = app.returns.create({ saleId: sale.id, lines: [{ index: 7, qty: 1 }], payment: "efectivo", reason: "Otro" });
     expect(badIndex.ok).toBe(false);
   });
+
+  it("rechaza renglones repetidos de la misma venta", () => {
+    const sale = sell(app, [{ productId: "pan", qty: 2 }], "efectivo");
+    const result = app.returns.create({
+      saleId: sale.id,
+      lines: [{ index: 0, qty: 1 }, { index: 0, qty: 1 }],
+      payment: "efectivo",
+      reason: "Otro"
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("repetido");
+  });
 });
 
 describe("devoluciones en corte y reportes", () => {
@@ -228,5 +243,22 @@ describe("devoluciones en corte y reportes", () => {
     if (!result.ok) return;
     expect(result.ret.branch_id).toBe("sucursal-1");
     expect(app.repos.returns.byId(result.ret.id)?.total).toBe(6);
+  });
+
+  it("los abonos de fiado en efectivo entran al corte", () => {
+    const ts = nowISO();
+    app.repos.customers.upsert({ id: "cliente-1", branch_id: "sucursal-1", name: "Rosa", phone: "", notes: "", balance: 0, movements: [], created_at: ts, updated_at: ts });
+    sell(app, [{ productId: "jitomate", qty: 2 }], "fiado", "cliente-1");
+    // La venta fiado no es efectivo, pero la cobranza sí llega a la caja.
+    const before = app.shifts.summarize("sucursal-1");
+    expect(before.abonos).toBe(0);
+    expect(before.efectivoEsperado).toBe(0);
+
+    const pay = app.credit.pay("cliente-1", 20);
+    expect(pay.ok).toBe(true);
+    const after = app.shifts.summarize("sucursal-1");
+    expect(after.abonos).toBe(20);
+    expect(after.efectivoEsperado).toBe(20);
+    expect(app.repos.customers.byId("cliente-1")?.balance).toBe(30);
   });
 });

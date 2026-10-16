@@ -76,9 +76,11 @@ export class ReportService {
     const extraCents = sumCents(extras.map((expense) => toCents(expense.amount)));
     const expensesTotalCents = extraCents + fixedCents;
     const purchasesTotalCents = centsOf(purchases);
-    // Devoluciones: revierten ingreso y costo; su margen baja la ganancia.
+    // Devoluciones: revierten ingreso y costo; su margen baja la ganancia
+    // (la "ganancia bruta" del periodo ya viene neta de devoluciones).
     const returnsTotalCents = centsOf(returns);
     const returnsCostCents = sumCents(returns.map((ret) => toCents(ret.cost)));
+    const grossProfitCents = salesTotalCents - salesCostCents - (returnsTotalCents - returnsCostCents);
     const groups = groupTotalsCents(sales, (id) => this.repos.products.byId(id));
     const stats = this.productStats(sales);
     return {
@@ -87,7 +89,7 @@ export class ReportService {
       branch_id: scope,
       sales_total: toPesos(salesTotalCents),
       sales_cost: toPesos(salesCostCents),
-      gross_profit: toPesos(salesTotalCents - salesCostCents),
+      gross_profit: toPesos(grossProfitCents),
       expenses_total: toPesos(expensesTotalCents),
       fixed_costs_total: toPesos(fixedCents),
       extra_expenses_total: toPesos(extraCents),
@@ -100,7 +102,7 @@ export class ReportService {
       returns_total: toPesos(returnsTotalCents),
       returns_cost: toPesos(returnsCostCents),
       returns_count: returns.length,
-      profit_after_expenses: toPesos(salesTotalCents - salesCostCents - expensesTotalCents - (returnsTotalCents - returnsCostCents)),
+      profit_after_expenses: toPesos(grossProfitCents - expensesTotalCents),
       credit_total: toPesos(centsOf(sales.filter((sale) => sale.payment === "fiado"))),
       sales_count: sales.length,
       expenses_count: extras.length,

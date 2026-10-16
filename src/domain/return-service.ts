@@ -94,6 +94,12 @@ export class ReturnService {
     }
 
     const pending = new Map(this.pendingLines(sale).map((line) => [line.index, line]));
+    // Un renglón repetido burlaría el tope (el servidor también los rechaza).
+    const seenIndexes = new Set<number>();
+    for (const line of input.lines) {
+      if (seenIndexes.has(line.index)) return { ok: false, error: "Hay un renglón repetido en la devolución" };
+      seenIndexes.add(line.index);
+    }
     const items: SaleReturnItem[] = [];
     for (const line of input.lines) {
       const target = pending.get(line.index);
