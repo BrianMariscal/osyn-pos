@@ -235,7 +235,7 @@ export const proveedoresTab: TabModule = {
                 const other = product.supplier_id && product.supplier_id !== supplier.id ? ctx.repos.suppliers.byId(product.supplier_id) : undefined;
                 return html`
                   <label class="check-option check-row">
-                    <input type="checkbox" value="${product.id}" ${selected.has(product.id) ? "checked" : null} ${editable ? null : "disabled"}>
+                    <input type="checkbox" name="producto" value="${product.id}" ${selected.has(product.id) ? "checked" : null} ${editable ? null : "disabled"}>
                     <span>${product.name}<small class="muted">${product.category || "Sin categoría"}${other && !other.deleted ? ` · ahora con ${supplierLabel(other)}` : ""}</small></span>
                   </label>
                 `;

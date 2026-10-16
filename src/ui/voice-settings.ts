@@ -14,36 +14,40 @@ import {
  * Configuración de la voz del asistente (por dispositivo), accesible desde
  * Ajustes y desde el menú de usuario para cualquier rol (incluido vendedor).
  */
+/** Ids únicos por instancia: la pestaña Ajustes y el modal pueden coexistir. */
+let voiceSettingsSeq = 0;
+
 export function mountVoiceSettings(host: HTMLElement): void {
+  const uid = `vs${++voiceSettingsSeq}`;
   setHtml(
     host,
     html`
        <label class="form-field">Voz del asistente
-         <select id="vsSource" class="input" disabled>
+         <select id="${uid}Source" class="input" disabled>
            <option value="cloud">Jessica · ElevenLabs</option>
         </select>
       </label>
-      <div id="vsDeviceRow" class="row">
-        <select id="vsDeviceVoice" class="input"></select>
-        <button id="vsTestDevice" class="ghost" type="button">Probar</button>
+      <div id="${uid}DeviceRow" class="row">
+        <select id="${uid}DeviceVoice" class="input"></select>
+        <button id="${uid}TestDevice" class="ghost" type="button">Probar</button>
       </div>
-      <div id="vsCloudRow" style="display: none;">
+      <div id="${uid}CloudRow" style="display: none;">
          <div class="row">
-           <select id="vsCloudVoice" class="input" disabled></select>
-           <button id="vsRefreshCloud" class="ghost" type="button">Actualizar</button>
+           <select id="${uid}CloudVoice" class="input" disabled></select>
+           <button id="${uid}RefreshCloud" class="ghost" type="button">Actualizar</button>
          </div>
-        <button id="vsTestCloud" class="ghost" type="button" style="width: 100%; margin-top: var(--sp-1);">Probar esta voz</button>
-         <p class="hint" id="vsCloudHint" style="margin: var(--sp-1) 0 0;">El asistente usa siempre la voz Jessica de ElevenLabs.</p>
+        <button id="${uid}TestCloud" class="ghost" type="button" style="width: 100%; margin-top: var(--sp-1);">Probar esta voz</button>
+         <p class="hint" id="${uid}CloudHint" style="margin: var(--sp-1) 0 0;">El asistente usa siempre la voz Jessica de ElevenLabs.</p>
       </div>
     `
   );
 
-  const source = host.querySelector<HTMLSelectElement>("#vsSource")!;
-  const deviceRow = host.querySelector<HTMLElement>("#vsDeviceRow")!;
-  const cloudRow = host.querySelector<HTMLElement>("#vsCloudRow")!;
-  const deviceSelect = host.querySelector<HTMLSelectElement>("#vsDeviceVoice")!;
-  const cloudSelect = host.querySelector<HTMLSelectElement>("#vsCloudVoice")!;
-  const cloudHint = host.querySelector<HTMLElement>("#vsCloudHint")!;
+  const source = host.querySelector<HTMLSelectElement>(`#${uid}Source`)!;
+  const deviceRow = host.querySelector<HTMLElement>(`#${uid}DeviceRow`)!;
+  const cloudRow = host.querySelector<HTMLElement>(`#${uid}CloudRow`)!;
+  const deviceSelect = host.querySelector<HTMLSelectElement>(`#${uid}DeviceVoice`)!;
+  const cloudSelect = host.querySelector<HTMLSelectElement>(`#${uid}CloudVoice`)!;
+  const cloudHint = host.querySelector<HTMLElement>(`#${uid}CloudHint`)!;
 
   const apply = (): void => {
      const cloud = true;
@@ -95,12 +99,12 @@ export function mountVoiceSettings(host: HTMLElement): void {
   source.addEventListener("change", apply);
   deviceSelect.addEventListener("change", () => setPreferredVoiceName(deviceSelect.value));
   cloudSelect.addEventListener("change", () => setCloudVoiceId(cloudSelect.value));
-  host.querySelector<HTMLButtonElement>("#vsRefreshCloud")!.addEventListener("click", () => void loadCloud());
-  host.querySelector<HTMLButtonElement>("#vsTestDevice")!.addEventListener("click", () => {
+  host.querySelector<HTMLButtonElement>(`#${uid}RefreshCloud`)!.addEventListener("click", () => void loadCloud());
+  host.querySelector<HTMLButtonElement>(`#${uid}TestDevice`)!.addEventListener("click", () => {
     setCloudVoiceEnabled(false);
     speak("Hola, soy tu asistente de la tienda. ¿En qué te ayudo?", true);
   });
-  host.querySelector<HTMLButtonElement>("#vsTestCloud")!.addEventListener("click", () => {
+  host.querySelector<HTMLButtonElement>(`#${uid}TestCloud`)!.addEventListener("click", () => {
     setCloudVoiceEnabled(true);
     speak("Hola, soy tu asistente de la tienda. ¿En qué te ayudo?", true);
   });

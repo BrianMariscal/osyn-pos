@@ -200,7 +200,7 @@ export const ventaTab: TabModule = {
       return html`
         <div class="bulk-capture" data-bulk>
           <div class="bulk-inputs">
-            <input class="input" type="number" min="0" step="${step}" value="${inputValue}" data-qty data-bulk-input inputmode="decimal" aria-label="Cantidad de ${product.name}${amount ? " en pesos" : ` en ${subunit.label}`}">
+            <input class="input" name="cantidad" type="number" min="0" step="${step}" value="${inputValue}" data-qty data-bulk-input inputmode="decimal" aria-label="Cantidad de ${product.name}${amount ? " en pesos" : ` en ${subunit.label}`}">
             <button type="button" class="bulk-unit ${amount ? "hidden" : ""}" data-bulk-unit title="Cambiar unidad">${subunit.label}</button>
             <button type="button" class="bulk-mode ${amount ? "active" : ""}" data-bulk-mode aria-pressed="${amount ? "true" : "false"}" title="Capturar por importe (ej. $20 de…)">$</button>
           </div>
@@ -467,7 +467,7 @@ export const ventaTab: TabModule = {
                 ? bulkCaptureHtml(product, line)
                 : html`<div class="qty-stepper" data-step="${step}">
                     <button type="button" data-qty-dec aria-label="Menos cantidad">−</button>
-                    <input class="input" type="number" min="0" max="${ctx.sales.availableFor(line.productId, lineUnit)}" step="${step}" value="${line.qty}" data-qty inputmode="decimal" aria-label="Cantidad de ${product.name}${isBox ? " en cajas" : ""}">
+                    <input class="input" name="cantidad" type="number" min="0" max="${ctx.sales.availableFor(line.productId, lineUnit)}" step="${step}" value="${line.qty}" data-qty inputmode="decimal" aria-label="Cantidad de ${product.name}${isBox ? " en cajas" : ""}">
                     <button type="button" data-qty-inc aria-label="Más cantidad">+</button>
                   </div>`}
               <strong class="pos-line-total">${fmtMoney(lineTotalCents(line.qty, unit))}</strong>

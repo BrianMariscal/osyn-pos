@@ -127,11 +127,11 @@ function openReturnForm(ctx: AppContext, sale: Sale): void {
           (line) => html`
             <div class="return-item" data-return-line="${line.index}">
               <label class="return-pick">
-                <input type="checkbox" data-return-check checked>
+                <input type="checkbox" name="devolucion" data-return-check checked>
                 <span>${line.item.name}</span>
               </label>
               <div class="return-qty">
-                <input class="input" type="number" min="0" step="any" inputmode="decimal" value="${roundQty4(line.pending)}" data-return-qty aria-label="Cantidad a devolver de ${line.item.name}">
+                <input class="input" name="cantidad" type="number" min="0" step="any" inputmode="decimal" value="${roundQty4(line.pending)}" data-return-qty aria-label="Cantidad a devolver de ${line.item.name}">
                 <span class="muted">${line.item.um} · ${fmtMoneyPesos(line.item.price)} c/u</span>
               </div>
             </div>

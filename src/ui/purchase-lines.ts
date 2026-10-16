@@ -84,11 +84,11 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
   const productField = (line: LineState, index: number, list: Product[]) => {
     const supplierId = options.supplierId?.() ?? "";
     if (!list.length) {
-      return html`<input class="input" disabled placeholder="${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}">`;
+      return html`<input class="input" name="producto" disabled placeholder="${supplierId ? "Este proveedor no tiene productos" : "No hay productos"}">`;
     }
     return html`
       <div class="combo-row">
-        <input class="input" data-f="search" type="search" placeholder="Busca producto o código de barras" autocomplete="off"
+        <input class="input" name="buscar" data-f="search" type="search" placeholder="Busca producto o código de barras" autocomplete="off"
           role="combobox" aria-label="Producto ${index + 1}" value="${line.search}">
         <button class="primary scan-btn" type="button" data-scan-line title="Escanear código de barras o QR" aria-label="Escanear producto ${index + 1}">${iconFor("barcode")}</button>
       </div>
@@ -120,9 +120,9 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
     const product = ctx.repos.products.byId(line.productId);
     const size = packSizeOf(product);
     return html`
-      <input class="input" data-f="qty" type="number" step="${line.mode === "pza" && isBulkUnit(product?.um) ? "any" : "0.01"}" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
+      <input class="input" name="cantidad" data-f="qty" type="number" step="${line.mode === "pza" && isBulkUnit(product?.um) ? "any" : "0.01"}" min="0.01" inputmode="decimal" placeholder="${line.mode === "caja" ? "Cajas" : "Cantidad"}" value="${line.qty}">
       ${size
-        ? html`<select class="input" data-f="mode" aria-label="Unidad de compra">
+        ? html`<select class="input" name="unidad" data-f="mode" aria-label="Unidad de compra">
             <option value="caja" ${line.mode === "caja" ? "selected" : null}>Cajas</option>
             <option value="pza" ${line.mode === "pza" ? "selected" : null}>${product?.um ?? "Pza"}</option>
           </select>`
@@ -135,7 +135,7 @@ export function mountPurchaseLines(container: HTMLElement, ctx: AppContext, opti
       <div class="purchase-line" data-line="${index}">
         <div class="purchase-product combo">${productField(line, index, list)}</div>
         <div class="purchase-qty">${qtyMarkup(line)}</div>
-        <input class="input" data-f="total" type="number" step="0.01" min="0" inputmode="decimal" placeholder="${options.requireTotal ? "Total pagado" : "Total pagado (opcional)"}" value="${line.total}">
+        <input class="input" name="total" data-f="total" type="number" step="0.01" min="0" inputmode="decimal" placeholder="${options.requireTotal ? "Total pagado" : "Total pagado (opcional)"}" value="${line.total}">
         <button class="ghost danger" type="button" data-remove-line="${index}" aria-label="Quitar producto" ${lines.length > 1 ? null : "disabled"}>Quitar</button>
         <p class="hint purchase-hint" data-hint="${index}">${hintFor(line)}</p>
       </div>

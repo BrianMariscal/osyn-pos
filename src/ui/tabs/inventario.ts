@@ -167,7 +167,7 @@ export const inventarioTab: TabModule = {
                 ? html`
                     <div class="item-line">
                       <label class="count-label">Físico
-                        <input class="input count-input" type="number" step="0.01" min="0" inputmode="decimal" enterkeyhint="next" value="${counted ?? ""}" data-count-product="${product!.id}" placeholder="—" aria-label="Cantidad física de ${product!.name}">
+                        <input class="input count-input" name="conteo" type="number" step="0.01" min="0" inputmode="decimal" enterkeyhint="next" value="${counted ?? ""}" data-count-product="${product!.id}" placeholder="—" aria-label="Cantidad física de ${product!.name}">
                       </label>
                       <p class="muted" data-diff-for="${product!.id}">${diffText(diff, product!.um)}</p>
                     </div>

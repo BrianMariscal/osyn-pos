@@ -168,7 +168,7 @@ export const ajustesTab: TabModule = {
         html`${VENDOR_CONFIGURABLE_TABS.map(
           (tab) => html`
             <label class="check-option">
-              <input type="checkbox" value="${tab}" ${selected.has(tab) ? "checked" : null}>
+              <input type="checkbox" name="pantallaVendedor" value="${tab}" ${selected.has(tab) ? "checked" : null}>
               ${TAB_LABELS[tab as TabId]}
             </label>
           `
@@ -181,7 +181,7 @@ export const ajustesTab: TabModule = {
           html`${ALL_TABS.map(
             (tab) => html`
               <label class="check-option">
-                <input type="checkbox" value="${tab}" ${adminSelected.has(tab) ? "checked" : null}>
+                <input type="checkbox" name="pantallaAdmin" value="${tab}" ${adminSelected.has(tab) ? "checked" : null}>
                 ${TAB_LABELS[tab]}
               </label>
             `
@@ -322,8 +322,8 @@ export const ajustesTab: TabModule = {
               </label>`}
           ${user ? html`<label class="form-field">Nueva contraseña (opcional)
             <span class="pass-field">
-              <input id="uPass" class="input" type="password" autocomplete="new-password">
-              <button class="pass-toggle" type="button" data-toggle-pass="uPass">Ver</button>
+              <input id="uPassEdit" class="input" type="password" autocomplete="new-password">
+              <button class="pass-toggle" type="button" data-toggle-pass="uPassEdit">Ver</button>
             </span>
           </label>` : html``}
         `,
@@ -357,7 +357,8 @@ export const ajustesTab: TabModule = {
               const branchField = field("uBranch") as HTMLSelectElement | null;
               // El dueño no lleva sucursal; vendedor y administrador sí (admin vacío = todas)
               const branchId = role === "dueno" ? null : myBranch ?? (branchField ? branchField.value || null : null);
-              const pass = (document.getElementById("uPass") as HTMLInputElement | null)?.value ?? "";
+              const passInput = (document.getElementById("uPass") ?? document.getElementById("uPassEdit")) as HTMLInputElement | null;
+              const pass = passInput?.value ?? "";
               void (async () => {
                 try {
                   if (user) {
