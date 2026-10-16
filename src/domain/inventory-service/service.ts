@@ -1,37 +1,14 @@
-import { nowISO } from "../core/dates";
-import { uid } from "../core/id";
-import { toCents, toPesos } from "../core/money";
-import { fmtQty, normalizeQty } from "../core/qty";
-import { normalizeQtyForUnit } from "../core/units";
-import { MERMA_REASONS, DEFAULT_BRANCH_ID, type CountIncidence, type CountSummary, type InventoryCount, type Merma, type MermaReason, type Purchase, type PurchasePayment } from "../core/types";
-import { moveStock } from "./stock-moves";
-import type { Repositories } from "../data/repositories";
-import type { BranchService } from "./branch-service";
-
-export interface ActiveCount {
-  id: string;
-  branch_id: string;
-  started_at: string;
-  items: Record<string, string>;
-}
-
-export type ApplyCountResult = { ok: true; count: InventoryCount } | { ok: false; error: string };
-export interface StockReceipt {
-  productId: string;
-  /** Cantidad en la unidad base del producto (piezas, kg…). */
-  qty: number;
-  totalPaid: number;
-  /** Si se capturó en cajas: cuántas cajas y de cuántas piezas. */
-  packs?: number;
-  packSize?: number;
-}
-
-/** Convierte cajas/paquetes a piezas: 3 cajas de 12 + 2 sueltas = 38. */
-export function unitsFromPacks(packs: number, packSize: number | undefined, loose = 0): number {
-  const size = normalizeQty(packSize ?? 0);
-  const boxes = normalizeQty(packs);
-  return normalizeQty((size > 0 ? boxes * size : boxes) + normalizeQty(loose));
-}
+import { nowISO } from "../../core/dates";
+import { uid } from "../../core/id";
+import { fmtQty } from "../../core/qty";
+import { normalizeQtyForUnit } from "../../core/units";
+import { MERMA_REASONS, DEFAULT_BRANCH_ID, type CountSummary, type InventoryCount, type Merma, type MermaReason, type PurchasePayment } from "../../core/types";
+import type { Repositories } from "../../data/repositories";
+import type { BranchService } from "../branch-service";
+import { moveStock } from "../stock-moves";
+import { applyCount, computeSummary } from "./counts";
+import { buildMerma, buildPurchase, withAverageCost } from "./receipts";
+import type { ActiveCount, ApplyCountResult, StockReceipt } from "./types";
 
 /**
  * Conteo físico por sucursal. El conteo activo es transitorio (no se sincroniza);
@@ -121,55 +98,7 @@ export class InventoryService {
   summary(): CountSummary | null {
     const active = this.activeCount();
     if (!active) return null;
-    const incidences: CountIncidence[] = [];
-    let captured = 0;
-    let ok = 0;
-    let shortage = 0;
-    let surplus = 0;
-    let costImpactCents = 0;
-    let saleImpactCents = 0;
-    const branchId = active.branch_id;
-    for (const product of this.repos.products.list()) {
-      if (product.active === false) continue;
-      const raw = active.items[product.id];
-      if (raw === undefined || raw === "") continue;
-      captured += 1;
-      const physical = normalizeQtyForUnit(raw, product.um);
-      const systemStock = this.repos.stocks
-        .list()
-        .find((row) => row.product_id === product.id && row.branch_id === branchId);
-      const system = normalizeQtyForUnit(systemStock?.stock ?? 0, product.um);
-      const difference = Math.round((physical - system) * 10000) / 10000;
-      if (difference === 0) {
-        ok += 1;
-        continue;
-      }
-      if (difference < 0) shortage += 1;
-      else surplus += 1;
-      costImpactCents += Math.round(difference * toCents(product.cost));
-      saleImpactCents += Math.round(difference * toCents(product.price));
-      incidences.push({
-        product_id: product.id,
-        name: product.name,
-        category: product.category,
-        um: product.um,
-        system_stock: system,
-        physical_stock: physical,
-        difference,
-        cost_impact: toPesos(Math.round(difference * toCents(product.cost))),
-        sale_impact: toPesos(Math.round(difference * toCents(product.price)))
-      });
-    }
-    return {
-      captured,
-      ok,
-      shortage,
-      surplus,
-      adjusted: incidences.length,
-      costImpact: toPesos(costImpactCents),
-      saleImpact: toPesos(saleImpactCents),
-      incidences
-    };
+    return computeSummary(this.repos, active);
   }
 
   apply(): ApplyCountResult {
@@ -177,34 +106,7 @@ export class InventoryService {
     if (!active) return { ok: false, error: "Primero inicia un conteo" };
     const summary = this.summary();
     if (!summary || !summary.captured) return { ok: false, error: "Captura cantidades físicas primero" };
-    const ts = nowISO();
-    for (const incidence of summary.incidences) {
-      const stockRow = this.repos.stocks
-        .list()
-        .find((row) => row.product_id === incidence.product_id && row.branch_id === active.branch_id);
-      const um = this.repos.products.byId(incidence.product_id)?.um;
-      // Producto contado sin fila de existencia en la sucursal: se crea.
-      this.repos.stocks.upsert({
-        id: stockRow?.id ?? `${incidence.product_id}:${active.branch_id}`,
-        product_id: incidence.product_id,
-        branch_id: active.branch_id,
-        min_stock: stockRow?.min_stock ?? 0,
-        ...stockRow,
-        deleted: false,
-        stock: normalizeQtyForUnit(incidence.physical_stock, um),
-        updated_at: ts
-      });
-    }
-    const count: InventoryCount = {
-      id: active.id,
-      branch_id: active.branch_id,
-      started_at: active.started_at,
-      applied_at: ts,
-      summary: { ...summary, incidences: [] },
-      incidences: summary.incidences,
-      updated_at: ts
-    };
-    this.repos.counts.upsert(count);
+    const count = applyCount(this.repos, active, summary, nowISO());
     this.active = null;
     return { ok: true, count };
   }
@@ -247,25 +149,9 @@ export class InventoryService {
     const serverStock = this.serverStock();
     moveStock(this.repos, serverStock, productId, branchId, quantity, ts);
     if (totalPaid > 0 && previousStock + quantity > 0) {
-      const averageCost = (previousStock * product.cost + totalPaid) / (previousStock + quantity);
-      this.repos.products.upsert({ ...product, cost: toPesos(Math.round(toCents(averageCost))), updated_at: ts });
+      this.repos.products.upsert(withAverageCost(product, previousStock, totalPaid, quantity, ts));
     }
-    const purchase: Purchase = {
-      id: uid(),
-      branch_id: branchId,
-      supplier: supplierName.trim() || "Entrada de inventario",
-      product_id: product.id,
-      product_name: product.name,
-      um: product.um,
-      qty: quantity,
-      total: Math.round(totalPaid * 100) / 100,
-      ...(pack?.packs && pack.packSize ? { packs: normalizeQty(pack.packs), pack_size: normalizeQty(pack.packSize) } : {}),
-      ...(paidFrom === "aparte" ? { paid_from: "aparte" as const } : {}),
-      ...(serverStock ? { stock_by_server: true } : {}),
-      created_at: ts,
-      updated_at: ts
-    };
-    this.repos.purchases.upsert(purchase);
+    this.repos.purchases.upsert(buildPurchase({ branchId, supplier: supplierName, product, qty: quantity, totalPaid, pack, paidFrom, serverStock, ts }));
     return { ok: true, qty: quantity };
   }
 
@@ -306,20 +192,7 @@ export class InventoryService {
     const ts = nowISO();
     const serverStock = this.serverStock();
     moveStock(this.repos, serverStock, productId, branchId, -quantity, ts);
-    const merma: Merma = {
-      id: uid(),
-      branch_id: branchId,
-      product_id: product.id,
-      product_name: product.name,
-      um: product.um,
-      qty: quantity,
-      reason,
-      note,
-      cost_impact: toPesos(Math.round(quantity * toCents(product.cost))),
-      ...(serverStock ? { stock_by_server: true } : {}),
-      created_at: ts,
-      updated_at: ts
-    };
+    const merma = buildMerma({ branchId, product, qty: quantity, reason, note, serverStock, ts });
     this.repos.mermas.upsert(merma);
     return { ok: true, merma };
   }
