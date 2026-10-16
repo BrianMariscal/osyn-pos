@@ -200,12 +200,6 @@ export function pickPreferredVoice(voices: TtsVoice[]): TtsVoice | null {
   );
 }
 
-/** Voz de la nube a mostrar/usar: la elegida manda; sin elección, la automática. */
-export function chooseCloudVoice(voices: TtsVoice[], savedId: string): TtsVoice | null {
-  const savedVoice = savedId ? voices.find((voice) => voice.voice_id === savedId) : undefined;
-  return savedVoice ?? pickPreferredVoice(voices);
-}
-
 /** Voces de ElevenLabs disponibles (de la biblioteca de la cuenta). */
 export async function fetchTtsVoices(): Promise<TtsVoice[]> {
   const token = sessionToken();
@@ -224,16 +218,27 @@ export async function fetchTtsVoices(): Promise<TtsVoice[]> {
   }));
 }
 
-async function cloudSpeak(text: string, sequence: number): Promise<boolean> {
-  const token = sessionToken();
-  const voiceId = await getPreferredCloudVoiceId();
-  if (!token || !voiceId) return false;
-  if (sequence !== speechSequence) return false;
-  const res = await fetch("/api/tts", {
+function postTts(token: string, voiceId: string, text: string): Promise<Response> {
+  return fetch("/api/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ voice_id: voiceId, text })
   });
+}
+
+async function cloudSpeak(text: string, sequence: number): Promise<boolean> {
+  const token = sessionToken();
+  const saved = cloudVoiceId();
+  const voiceId = await getPreferredCloudVoiceId();
+  if (!token || !voiceId) return false;
+  if (sequence !== speechSequence) return false;
+  let res = await postTts(token, voiceId, text);
+  // Si la voz elegida falla (por ejemplo, ya no existe en la cuenta), se
+  // reintenta con la automática SIN borrar la elección del usuario.
+  if (!res.ok && saved && voiceId === saved && sequence === speechSequence) {
+    const fallback = await autoCloudVoiceId();
+    if (fallback && fallback !== voiceId) res = await postTts(token, fallback, text);
+  }
   if (!res.ok) return false;
   const blob = await res.blob();
   if (sequence !== speechSequence) return false;
@@ -269,19 +274,24 @@ function stopCurrentSpeech(): void {
   }
 }
 
-/**
- * Voz de la nube: la elegida se respeta SIEMPRE. Si no hay ninguna elegida,
- * se usa automáticamente una voz en español (mexicana primero) y, si no hay,
- * Jessica; sin fijarla, para re-evaluar cuando agregues voces nuevas.
- */
-async function getPreferredCloudVoiceId(): Promise<string | null> {
-  const saved = cloudVoiceId();
-  if (saved) return saved;
+/** Voz automática: español (mexicana primero), Jessica o la primera. */
+async function autoCloudVoiceId(): Promise<string | null> {
   if (!cloudVoicesPromise) {
     cloudVoicesPromise = fetchTtsVoices().catch(() => null);
   }
   const voices = await cloudVoicesPromise;
   return voices ? pickPreferredVoice(voices)?.voice_id ?? null : null;
+}
+
+/**
+ * Voz de la nube: la elegida se respeta SIEMPRE y NUNCA se borra sola. Si no
+ * hay ninguna elegida, se usa automáticamente una voz en español (mexicana
+ * primero) y, si no hay, Jessica.
+ */
+async function getPreferredCloudVoiceId(): Promise<string | null> {
+  const saved = cloudVoiceId();
+  if (saved) return saved;
+  return autoCloudVoiceId();
 }
 
 export function speak(message: string, enabled: boolean): void {

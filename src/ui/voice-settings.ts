@@ -1,7 +1,6 @@
 import { html, setHtml } from "../core/html";
 import { openModal } from "./components/modal";
 import {
-  chooseCloudVoice,
   cloudVoiceId,
   fetchTtsVoices,
   isSpanishVoice,
@@ -21,6 +20,13 @@ import {
  */
 /** Ids únicos por instancia: la pestaña Ajustes y el modal pueden coexistir. */
 let voiceSettingsSeq = 0;
+
+/** Instancias montadas: al elegir una voz se avisa a las demás para que no queden desfasadas. */
+const cloudWatchers = new Set<(voiceId: string) => void>();
+
+function notifyCloudVoice(voiceId: string): void {
+  for (const watcher of [...cloudWatchers]) watcher(voiceId);
+}
 
 export function mountVoiceSettings(host: HTMLElement): void {
   const uid = `vs${++voiceSettingsSeq}`;
@@ -79,7 +85,7 @@ export function mountVoiceSettings(host: HTMLElement): void {
 
   const voiceHintFor = (voice: TtsVoice): string =>
     isSpanishVoice(voice)
-      ? `Voz elegida: ${voice.name} (español).`
+      ? `Voz elegida: ${voice.name} (español${voice.accent ? ` · ${voice.accent}` : ""}).`
       : `Voz elegida: ${voice.name}. Para acento mexicano usa una voz en español (por ejemplo «Ingrid») de la Biblioteca de ElevenLabs.`;
 
   const autoHintFor = (auto: TtsVoice | null): string =>
@@ -88,6 +94,29 @@ export function mountVoiceSettings(host: HTMLElement): void {
         ? `Automática: usa ${auto.name} (voz en español).`
         : `Automática: aún no hay voces en español; usa ${auto.name}. Agrega una (por ejemplo «Ingrid», mexicana) desde la Biblioteca de ElevenLabs.`
       : "Automática: no hay voces en la biblioteca de ElevenLabs.";
+
+  const missingHint = "Voz elegida guardada; ahora no aparece en la lista de ElevenLabs.";
+
+  /** Aplica una voz elegida a ESTA instancia (selector + aviso). */
+  const applySavedVoice = (voiceId: string): void => {
+    if (!cloudSelect.isConnected) {
+      cloudWatchers.delete(applySavedVoice);
+      return;
+    }
+    if (!voiceId) {
+      cloudSelect.value = "";
+      cloudHint.textContent = autoHintFor(pickPreferredVoice(cloudVoices));
+      return;
+    }
+    if ([...cloudSelect.options].some((option) => option.value === voiceId)) {
+      cloudSelect.value = voiceId;
+    } else {
+      // La lista de esta instancia está vieja (sin esa voz): se recarga.
+      void loadCloud();
+    }
+    const voice = cloudVoices.find((item) => item.voice_id === voiceId);
+    cloudHint.textContent = voice ? voiceHintFor(voice) : missingHint;
+  };
 
   const loadCloud = async (): Promise<void> => {
     setHtml(cloudSelect, html`<option value="">Cargando voces…</option>`);
@@ -99,18 +128,18 @@ export function mountVoiceSettings(host: HTMLElement): void {
         return;
       }
       const saved = cloudVoiceId();
-      const chosen = chooseCloudVoice(cloudVoices, saved);
-      const savedVoice = chosen && saved && chosen.voice_id === saved ? chosen : undefined;
-      // Si la voz guardada ya no existe en la biblioteca, se limpia y queda en automática.
-      if (saved && !savedVoice) setCloudVoiceId("");
+      const savedVoice = saved ? cloudVoices.find((voice) => voice.voice_id === saved) : undefined;
+      // La voz elegida NUNCA se borra sola: si no aparece en la lista, se
+      // conserva y se muestra como elegida.
       setHtml(
         cloudSelect,
-        html`<option value="" ${savedVoice ? null : "selected"}>Automática (prefiere voz en español)</option>
+        html`<option value="" ${saved ? null : "selected"}>Automática (prefiere voz en español)</option>
+          ${saved && !savedVoice ? html`<option value="${saved}" selected>Voz elegida (no aparece en la lista ahora)</option>` : html``}
           ${cloudVoices.map(
-            (voice) => html`<option value="${voice.voice_id}" ${voice.voice_id === savedVoice?.voice_id ? "selected" : null}>${voiceLabel(voice)}</option>`
+            (voice) => html`<option value="${voice.voice_id}" ${voice.voice_id === saved ? "selected" : null}>${voiceLabel(voice)}</option>`
           )}`
       );
-      cloudHint.textContent = savedVoice ? voiceHintFor(savedVoice) : autoHintFor(pickPreferredVoice(cloudVoices));
+      cloudHint.textContent = savedVoice ? voiceHintFor(savedVoice) : saved ? missingHint : autoHintFor(pickPreferredVoice(cloudVoices));
     } catch (error) {
       setHtml(cloudSelect, html`<option value="">No disponible</option>`);
       cloudHint.textContent = error instanceof Error ? error.message : "No se pudieron leer las voces.";
@@ -125,15 +154,10 @@ export function mountVoiceSettings(host: HTMLElement): void {
   }
   source.addEventListener("change", apply);
   deviceSelect.addEventListener("change", () => setPreferredVoiceName(deviceSelect.value));
+  cloudWatchers.add(applySavedVoice);
   cloudSelect.addEventListener("change", () => {
-    const value = cloudSelect.value;
-    setCloudVoiceId(value);
-    if (!value) {
-      cloudHint.textContent = autoHintFor(pickPreferredVoice(cloudVoices));
-      return;
-    }
-    const voice = cloudVoices.find((item) => item.voice_id === value);
-    if (voice) cloudHint.textContent = voiceHintFor(voice);
+    setCloudVoiceId(cloudSelect.value);
+    notifyCloudVoice(cloudSelect.value);
   });
   host.querySelector<HTMLButtonElement>(`#${uid}RefreshCloud`)!.addEventListener("click", () => void loadCloud());
   host.querySelector<HTMLButtonElement>(`#${uid}TestDevice`)!.addEventListener("click", () => {
