@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { numberToWords, speakPesos } from "../src/core/money";
-import { isSpanishVoice, moneyToWords, pickPreferredVoice, type TtsVoice } from "../src/ui/voice-recognition";
+import { cloudVoiceErrorHint, isSpanishVoice, moneyToWords, pickPreferredVoice, type TtsVoice } from "../src/ui/voice-recognition";
 
 describe("números en palabras", () => {
   it("unidades, decenas y centenas", () => {
@@ -58,5 +58,19 @@ describe("elección de la voz de la nube", () => {
     expect(pickPreferredVoice([jessica, renata])?.voice_id).toBe("b");
     expect(pickPreferredVoice([jessica])?.voice_id).toBe("a");
     expect(pickPreferredVoice([])).toBeNull();
+  });
+});
+
+describe("aviso cuando una voz en línea falla", () => {
+  it("explica que las voces de la Biblioteca necesitan plan de pago o créditos", () => {
+    expect(cloudVoiceErrorHint(402, "")).toContain("Biblioteca");
+    expect(cloudVoiceErrorHint(402, "")).toContain("créditos");
+    expect(cloudVoiceErrorHint(502, '{"detail":{"code":"paid_plan_required"}}')).toContain("Biblioteca");
+    expect(cloudVoiceErrorHint(502, "Free users cannot use library voices via the API")).toContain("Biblioteca");
+  });
+
+  it("aviso genérico para otros errores", () => {
+    expect(cloudVoiceErrorHint(502, "otro error")).toContain("dispositivo");
+    expect(cloudVoiceErrorHint(500, "")).toContain("dispositivo");
   });
 });
