@@ -107,17 +107,23 @@ export const reportesTab: TabModule = {
         setHtml(salesDayList, html`<p class="empty-note">No hay ventas este día.</p>`);
         return;
       }
+      const returnedBySale = new Map<string, number>();
+      for (const ret of ctx.repos.returns.list()) {
+        returnedBySale.set(ret.sale_id, (returnedBySale.get(ret.sale_id) ?? 0) + toCents(ret.total));
+      }
       const page = paginate(sales, salesDayPage, 10);
       setHtml(
         salesDayList,
         html`${page.items.map((sale) => {
           const pieces = sale.items.reduce((sum, item) => sum + (item.pack_size ? item.qty * item.pack_size : item.qty), 0);
           const names = sale.items.map((item) => item.name).join(", ");
+          const returnedCents = returnedBySale.get(sale.id) ?? 0;
           return html`
             <button class="ticket-row" type="button" data-ticket="${sale.id}">
               <span class="ticket-row-time">${new Date(sale.created_at).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</span>
               <span class="row-title"><strong>${names}</strong><small class="muted">Folio ${saleFolio(sale)} · ${fmtQty(pieces)} art.${sale.cashier ? ` · ${sale.cashier}` : ""}</small></span>
               <span class="tag" data-tone="${tones[sale.payment] ?? "teal"}">${PAYMENT_LABELS[sale.payment]}</span>
+              ${returnedCents > 0 ? html`<span class="tag" data-tone="coral" title="Reembolsado: ${fmtMoney(returnedCents)}">Devolución</span>` : html``}
               <strong class="row-price">${fmtMoneyPesos(sale.total)}</strong>
             </button>
           `;

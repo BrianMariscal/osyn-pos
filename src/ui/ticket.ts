@@ -506,6 +506,7 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
   const customerPhone = sale.customer_id ? ctx.repos.customers.byId(sale.customer_id)?.phone ?? "" : "";
   const internal = sale.payment === "interno";
   const canReturn = Boolean(options.onReturn) && ctx.returns.hasPending(sale);
+  const returnedCents = toCents(ctx.returns.returnedTotal(sale.id));
   const actions: ModalAction[] = [
     { label: options.justSold ? "Nueva venta" : "Cerrar", kind: options.justSold ? "primary" : "ghost" },
     ...(canReturn
@@ -528,6 +529,7 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
         ? html`<div class="change-banner"><span>Cambio a entregar</span><strong>${fmtMoney(toCents(sale.change ?? 0))}</strong></div>`
         : html``}
       ${ticketMarkup(ctx, sale)}
+      ${returnedCents > 0 ? html`<p class="hint">Este ticket tiene devoluciones por ${fmtMoney(returnedCents)}.</p>` : html``}
       ${internal ? html`<p class="hint">Uso interno: no suma a las ventas.</p>` : sendBlockHtml(mobile, customerPhone, "ticket")}
     `,
     actions,
