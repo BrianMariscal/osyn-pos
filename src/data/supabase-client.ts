@@ -41,7 +41,14 @@ export class SupabaseClient {
       headers: { apikey: this.apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken })
     });
-    return this.parseToken(res, "Sesión expirada");
+    if (!res.ok) {
+      // Se adjunta el estado HTTP para que el llamador distinga credenciales
+      // vencidas (la sesión ya no sirve) de un fallo de red o del servidor.
+      const error = new Error("Sesión expirada") as Error & { status?: number };
+      error.status = res.status;
+      throw error;
+    }
+    return (await res.json()) as RawTokenResponse;
   }
 
   async logout(accessToken: string): Promise<void> {

@@ -4,10 +4,10 @@
 
 select chequeo, case when ok then 'OK' else 'FALTA → ' || archivo end as estado
 from (values
-  ('RLS activo en las 13 tablas',
-   (select count(*) = 13 from pg_tables
+  ('RLS activo en las 14 tablas',
+   (select count(*) = 14 from pg_tables
     where schemaname = 'public' and rowsecurity
-      and tablename in ('branches','products','product_stocks','customers','sales','expenses','purchases',
+      and tablename in ('branches','products','product_stocks','customers','sales','returns','expenses','purchases',
                         'suppliers','mermas','shifts','month_closings','inventory_counts','profiles')),
    'supabase/schema.sql'),
   ('Proveedores: solo gerencia los edita',
@@ -29,6 +29,10 @@ from (values
   ('Saldo de fiado protegido',
    exists (select 1 from information_schema.triggers where trigger_name = 'trg_customers_guard'),
    'supabase/migracion-guardias-fiado.sql'),
+  ('Devoluciones: tabla y validación en el servidor',
+   (select count(distinct trigger_name) = 3 from information_schema.triggers
+    where trigger_name in ('trg_returns_guard','trg_returns_stock','trg_returns_synced_at')),
+   'supabase/migracion-devoluciones.sql'),
   ('Precios y cantidades validados por el servidor',
    exists (select 1 from information_schema.triggers where trigger_name = 'trg_sales_0_prices'),
    'supabase/migracion-precios-servidor.sql'),

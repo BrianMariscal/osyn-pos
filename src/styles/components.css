@@ -371,6 +371,57 @@ textarea.input { resize: vertical; }
 .qty-stepper input::-webkit-outer-spin-button,
 .qty-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .qty-stepper input:focus { box-shadow: none; }
+
+/* Captura a granel: peso/volumen o importe, con conversión en vivo */
+.bulk-capture { display: grid; gap: 4px; min-width: 0; }
+.bulk-inputs { display: flex; align-items: center; gap: 4px; }
+.bulk-inputs .input {
+  width: 58px;
+  min-width: 0;
+  text-align: center;
+  padding: 0.45rem 0.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.bulk-inputs .input::-webkit-outer-spin-button,
+.bulk-inputs .input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.bulk-unit, .bulk-mode {
+  height: 40px;
+  min-height: 40px;
+  min-width: 36px;
+  padding: 0 6px;
+  border: var(--line-w) solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--card-2);
+  color: var(--ink);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  line-height: 1;
+}
+.bulk-unit:hover, .bulk-mode:hover { background: var(--primary-soft); color: var(--primary); }
+.bulk-mode.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.bulk-mode.active:hover { background: var(--primary); color: #fff; }
+.bulk-preview {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bulk-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+.bulk-chip {
+  min-height: 26px;
+  padding: 2px 4px;
+  border: var(--line-w) solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+}
+.bulk-chip:hover { background: var(--primary-soft); color: var(--primary); border-color: var(--line-strong); }
 .cart-item-total { display: grid; gap: var(--sp-1); justify-items: end; }
 .cart-item-total strong { font-variant-numeric: tabular-nums; }
 .cart-item-total button { padding: 0.3rem 0.55rem; min-height: 32px; }
@@ -1878,6 +1929,7 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
   font-size: 14px;
 }
 .ticket-head { display: grid; justify-items: center; gap: 2px; text-align: center; color: var(--t-muted); }
+.ticket-headline { margin-top: 3px; font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--t-ink); }
 .ticket-logo { max-width: 150px; max-height: 64px; object-fit: contain; margin-bottom: 6px; }
 .ticket-store { font-size: 18px; color: var(--t-ink); }
 .ticket-meta { display: grid; gap: 2px; margin: 12px 0; padding: 10px 0; border-top: 1px dashed var(--paper-line); border-bottom: 1px dashed var(--paper-line); color: var(--t-muted); font-size: 13px; }
@@ -2116,6 +2168,7 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
 /* Renglones de la venta */
 .pos-lines-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); margin-top: var(--sp-5); padding-bottom: var(--sp-2); border-bottom: 2px solid var(--line); }
 .pos-lines-head h2 { font-size: var(--fs-md); display: flex; align-items: center; gap: var(--sp-2); }
+.head-actions { display: flex; align-items: center; gap: var(--sp-2); }
 .pos-empty #clearCart { visibility: hidden; }
 .pos-lines-cols, .pos-line { display: grid; grid-template-columns: minmax(0, 1fr) 132px 96px 40px; gap: var(--sp-3); align-items: center; }
 .pos-lines-cols { padding: var(--sp-2) var(--sp-2) var(--sp-1); font-size: var(--fs-2xs); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
@@ -2129,6 +2182,7 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
 .pos-line-info .muted { font-size: var(--fs-xs); }
 .pos-line-info .unit-toggle { margin-top: 4px; justify-self: start; }
 .pos-line .qty-stepper { width: 132px; }
+.pos-line.bulk { grid-template-columns: minmax(0, 1fr) 168px 96px 40px; }
 .pos-line-total { text-align: right; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 .pos-line .icon-btn { width: 36px; height: 36px; min-height: 36px; }
 .pos-lines .cart-empty-note { padding: var(--sp-5) var(--sp-3); }
@@ -2140,6 +2194,7 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
   .pos { grid-template-columns: minmax(0, 1fr) minmax(330px, 0.9fr); }
   .pos-lines-cols, .pos-line { grid-template-columns: minmax(0, 1fr) 118px 84px 36px; gap: var(--sp-2); }
   .pos-line .qty-stepper { width: 118px; }
+  .pos-line.bulk { grid-template-columns: minmax(0, 1fr) 148px 84px 36px; }
 }
 @media (max-width: 860px) {
   .pos { grid-template-columns: 1fr; }
@@ -2148,6 +2203,7 @@ body:has(.cart-card.cart-open) .assistant-fab { display: none; }
   .pos-line { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "info info del" "qty total total"; row-gap: var(--sp-2); }
   .pos-line-info { grid-area: info; }
   .pos-line .qty-stepper { grid-area: qty; }
+  .pos-line .bulk-capture { grid-area: qty; }
   .pos-line-total { grid-area: total; font-size: var(--fs-lg); }
   .pos-line .icon-btn { grid-area: del; }
   .pos .preview-main { grid-template-columns: minmax(0, 1fr) auto; }
@@ -2424,3 +2480,12 @@ summary, .result-row, .ticket-row, .tab, .subtabs button, .pay-methods button, .
 .scan-btn svg { width: 20px; height: 20px; }
 .combo-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }
 .form-field > .search-row { margin-top: var(--sp-1); }
+
+/* Devoluciones: renglones del formulario */
+.return-items { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.return-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); align-items: center; padding: var(--sp-2) var(--sp-3); border: var(--line-w) solid var(--line); border-radius: var(--r-sm); }
+.return-pick { display: flex; align-items: center; gap: var(--sp-2); font-weight: 700; min-width: 0; }
+.return-pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.return-qty { display: flex; align-items: center; gap: var(--sp-2); }
+.return-qty .input { width: 104px; text-align: right; }
+.return-qty .muted { white-space: nowrap; }

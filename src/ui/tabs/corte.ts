@@ -85,15 +85,18 @@ export const corteTab: TabModule = {
         ["  Cigarros", fmtMoneyPesos(summary.cigarros ?? 0), "group"],
         ["  Cerveza", fmtMoneyPesos(summary.cerveza ?? 0), "group"],
         ["  Resto de productos", fmtMoneyPesos(rest), "group"],
-        ["Efectivo vendido", fmtMoneyPesos(summary.efectivo)],
+        ["Cobrado en efectivo", fmtMoneyPesos(summary.efectivo)],
         ["Transferencia", fmtMoneyPesos(summary.transferencia)],
         ["Tarjeta", fmtMoneyPesos(summary.tarjeta)],
         ["Fiado", fmtMoneyPesos(summary.fiado)],
+        ["Abonos de fiado (cobrados en caja)", fmtMoneyPesos(summary.abonos ?? 0)],
         ["Consumo interno (a costo, no es venta)", fmtMoneyPesos(summary.interno ?? 0)],
         ["Gastos extra (de caja)", fmtMoneyPesos(summary.gastos)],
         ["Proveedores (pagado de caja)", fmtMoneyPesos(summary.proveedores)],
         ["Compras pagadas aparte (no salen de caja)", fmtMoneyPesos(summary.proveedoresAparte ?? 0)],
         ["Mermas", fmtMoneyPesos(summary.mermas)],
+        ["Devoluciones (ya restadas)", fmtMoneyPesos(summary.devoluciones ?? 0)],
+        ["  Reembolsadas en efectivo (salen de caja)", fmtMoneyPesos(summary.devolucionesEfectivo ?? 0), "group"],
         ["Ganancia estimada", fmtMoneyPesos(summary.ganancia)],
         ["Efectivo esperado con base", fmtMoneyPesos(expectedWithBase), "strong"],
         ["Efectivo contado", fmtMoneyPesos(countedValue)],
@@ -163,15 +166,17 @@ export const corteTab: TabModule = {
         `  - Cigarros: ${fmtMoneyPesos(s.cigarros ?? 0)}`,
         `  - Cerveza: ${fmtMoneyPesos(s.cerveza ?? 0)}`,
         `  - Resto: ${fmtMoneyPesos(toPesos(toCents(s.ventas) - toCents(s.cigarros ?? 0) - toCents(s.cerveza ?? 0)))}`,
-        `Efectivo vendido: ${fmtMoneyPesos(s.efectivo)}`,
+        `Cobrado en efectivo: ${fmtMoneyPesos(s.efectivo)}`,
         `Transferencia: ${fmtMoneyPesos(s.transferencia)}`,
         `Tarjeta: ${fmtMoneyPesos(s.tarjeta)}`,
         `Fiado: ${fmtMoneyPesos(s.fiado)}`,
+        ...(s.abonos ? [`Abonos de fiado: ${fmtMoneyPesos(s.abonos)}`] : []),
         `Consumo interno (a costo): ${fmtMoneyPesos(s.interno ?? 0)}`,
         `Gastos extra: ${fmtMoneyPesos(s.gastos)}`,
         `Proveedores (de caja): ${fmtMoneyPesos(s.proveedores)}`,
         ...(s.proveedoresAparte ? [`Compras pagadas aparte: ${fmtMoneyPesos(s.proveedoresAparte)}`] : []),
         `Mermas: ${fmtMoneyPesos(s.mermas)}`,
+        ...(s.devoluciones ? [`Devoluciones (ya restadas): ${fmtMoneyPesos(s.devoluciones)} (en efectivo: ${fmtMoneyPesos(s.devolucionesEfectivo ?? 0)})`] : []),
         `Ganancia estimada: ${fmtMoneyPesos(s.ganancia)}`,
         `Efectivo esperado con base: ${fmtMoneyPesos(shift.expected_cash_with_base)}`,
         `Efectivo contado: ${fmtMoneyPesos(shift.counted_cash)}`,
@@ -269,7 +274,7 @@ export const corteTab: TabModule = {
     };
 
     ctx.store.watch(
-      (s) => [s.sales, s.expenses, s.purchases, s.mermas, s.shifts, s.products, s.branches, s.currentBranchId] as const,
+      (s) => [s.sales, s.returns, s.expenses, s.purchases, s.mermas, s.shifts, s.products, s.branches, s.currentBranchId] as const,
       renderAll
     );
     renderAll();

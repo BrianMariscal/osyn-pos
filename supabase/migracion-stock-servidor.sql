@@ -191,11 +191,16 @@ begin
   if current_setting('pos.stock_server', true) = '1' or public.pos_is_manager_or_service() then
     return new;
   end if;
-  -- Vendedor: puede crear la fila (en 0) o tocar el mínimo, no la cantidad.
+  -- Vendedor: puede crear la fila (en 0) o tocar el mínimo; jamás la
+  -- cantidad, el borrado, el producto ni la sucursal (si no, podría vaciar
+  -- el inventario o esconder filas moviéndolas).
   if tg_op = 'INSERT' then
     new.stock := 0;
   else
     new.stock := old.stock;
+    new.deleted := old.deleted;
+    new.product_id := old.product_id;
+    new.branch_id := old.branch_id;
   end if;
   return new;
 end;

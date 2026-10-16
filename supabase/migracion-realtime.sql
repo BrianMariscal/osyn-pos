@@ -14,7 +14,7 @@ begin
     create publication supabase_realtime;
   end if;
   foreach t in array array[
-    'branches', 'suppliers', 'products', 'product_stocks', 'customers', 'sales',
+    'branches', 'suppliers', 'products', 'product_stocks', 'customers', 'sales', 'returns',
     'expenses', 'purchases', 'mermas', 'shifts', 'month_closings', 'inventory_counts'
   ]
   loop
@@ -28,5 +28,5 @@ begin
   end loop;
 end $$;
 
--- Verificación: debe listar las 12 tablas.
+-- Verificación: debe listar las 13 tablas (returns aparece tras migracion-devoluciones.sql).
 select tablename from pg_publication_tables where pubname = 'supabase_realtime' order by tablename;

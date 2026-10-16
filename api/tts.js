@@ -42,7 +42,8 @@ export default async function handler(req, res) {
         .map((voice) => ({
           voice_id: String(voice.voice_id || ""),
           name: String(voice.name || "Voz"),
-          language: String(voice.labels?.accent || voice.labels?.language || "")
+          language: String(voice.labels?.language || ""),
+          accent: String(voice.labels?.accent || "")
         }))
         .filter((voice) => voice.voice_id);
       res.status(200).json({ voices });

@@ -15,8 +15,11 @@ const SYNC_TABLES: readonly SyncTableKey[] = [
   "suppliers",
   "products",
   "product_stocks",
-  "customers",
   "sales",
+  // returns va antes de customers: la guardia del servidor solo acepta un
+  // movimiento de devolución si ya existe la devolución a la que abona.
+  "returns",
+  "customers",
   "expenses",
   "purchases",
   "mermas",
@@ -32,6 +35,7 @@ const SUPABASE_COLUMNS: Record<SyncTableKey, readonly string[]> = {
   product_stocks: ["id", "product_id", "branch_id", "stock", "min_stock", "updated_at", "deleted", "data"],
   customers: ["id", "branch_id", "name", "phone", "balance", "movements", "created_at", "updated_at", "deleted", "data"],
   sales: ["id", "branch_id", "items", "total", "cost", "profit", "payment", "customer_id", "created_at", "updated_at", "deleted", "data"],
+  returns: ["id", "branch_id", "sale_id", "folio", "items", "total", "cost", "payment", "customer_id", "reason", "note", "cashier", "created_at", "updated_at", "deleted", "data"],
   expenses: ["id", "branch_id", "concept", "amount", "category", "created_at", "updated_at", "deleted", "data"],
   purchases: ["id", "branch_id", "supplier", "product_id", "product_name", "um", "qty", "total", "created_at", "updated_at", "deleted", "data"],
   mermas: ["id", "branch_id", "product_id", "product_name", "um", "qty", "reason", "note", "cost_impact", "created_at", "updated_at", "deleted", "data"],
@@ -178,9 +182,14 @@ export class SyncEngine {
       // Postgres con cada venta/compra/merma (y rechazaría las suyas).
       const vendorBlocked = new Set<SyncTableKey>(["products", "branches", "month_closings"]);
       if (serverStock) vendorBlocked.add("product_stocks");
-      if (!isAdmin && serverStock) {
-        const stale = this.tracker.takeIds("product_stocks");
-        if (stale?.length) this.tracker.clear("product_stocks", stale);
+      if (!isAdmin) {
+        // El vendedor no sube estas tablas (las gobierna el servidor): sus
+        // pendientes se descartan para que el aviso de sync no quede
+        // encendido para siempre ni tape pendientes de verdad.
+        vendorBlocked.forEach((table) => {
+          const stale = this.tracker.takeIds(table);
+          if (stale?.length) this.tracker.clear(table, stale);
+        });
       }
       const pushable = isAdmin ? tables : tables.filter((table) => !vendorBlocked.has(table));
       // Una fila rechazada no frena las demás tablas: se sigue y se avisa al final.
@@ -428,18 +437,28 @@ export class SyncEngine {
       .filter((row) => dirtyIds.includes(String(row.id)))
       .map((row) => toSupabaseRow(table, row));
     if (!rows.length) return null;
-    const res = await this.upsert(table, token, rows);
-    if (res.status === 404) {
-      // Tabla sin migrar: los cambios quedan pendientes y se reintentan
-      return null;
-    }
     const rejectedIds = new Set<string>();
     let firstError = "";
-    if (!res.ok) {
+    // Las devoluciones se suben de una en una: el servidor topa cada cantidad
+    // contra las devoluciones ya registradas de la venta, y dos devoluciones en
+    // el mismo lote no se verían entre sí.
+    const batches = table === "returns" ? rows.map((row) => [row]) : [rows];
+    for (const batch of batches) {
+      const res = await this.upsert(table, token, batch);
+      if (res.status === 404) {
+        // Tabla sin migrar: los cambios quedan pendientes y se reintentan
+        return null;
+      }
+      if (res.ok) continue;
       if (!isRowRejection(res.status)) throw new Error(`Error sincronizando ${table}: ${await res.text()}`);
+      if (batch.length === 1) {
+        rejectedIds.add(String(batch[0]!.id));
+        if (!firstError) firstError = await res.text();
+        continue;
+      }
       // La base rechazó el lote (restricción o permiso): se sube fila por fila
       // para que una sola fila inválida no deje sin subir todas las demás.
-      for (const row of rows) {
+      for (const row of batch) {
         const one = await this.upsert(table, token, [row]);
         if (one.ok) continue;
         if (!isRowRejection(one.status)) throw new Error(`Error sincronizando ${table}: ${await one.text()}`);

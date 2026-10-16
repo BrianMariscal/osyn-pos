@@ -37,6 +37,34 @@ describe("respaldo legacy sin product_stocks", () => {
   });
 });
 
+describe("datos del cobro en ventas", () => {
+  it("conserva pagó con, cambio y cajero al normalizar", () => {
+    const state = normalizeState({
+      ...legacyRaw,
+      sales: [
+        {
+          id: "s1",
+          branch_id: "sucursal-1",
+          items: [],
+          total: 50,
+          cost: 30,
+          profit: 20,
+          payment: "efectivo",
+          customer_id: null,
+          cash_received: 100,
+          change: 50,
+          cashier: "Ana",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        }
+      ]
+    });
+    expect(state.sales[0]?.cash_received).toBe(100);
+    expect(state.sales[0]?.change).toBe(50);
+    expect(state.sales[0]?.cashier).toBe("Ana");
+  });
+});
+
 describe("código de barras", () => {
   const products = normalizeState(legacyRaw).products;
   const withCode: Product[] = products

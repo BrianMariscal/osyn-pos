@@ -18,6 +18,7 @@ import { BranchService } from "./domain/branch-service";
 import { SettingsService } from "./domain/settings-service";
 import { SaleService } from "./domain/sale-service";
 import { CreditService } from "./domain/credit-service";
+import { ReturnService } from "./domain/return-service";
 import { InventoryService } from "./domain/inventory-service";
 import { ShiftService } from "./domain/shift-service";
 import { ReportService } from "./domain/report-service";
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
   const settings = new SettingsService(store, tracker);
   const sales = new SaleService(store, repos, branches);
   const credit = new CreditService(repos);
+  const returns = new ReturnService(store, repos, branches);
   const inventory = new InventoryService(repos, branches, () => Boolean(store.getState().sync.serverStock));
   const shifts = new ShiftService(repos, branches);
   const reports = new ReportService(repos, store);
@@ -70,6 +72,7 @@ async function main(): Promise<void> {
     settings,
     sales,
     credit,
+    returns,
     inventory,
     shifts,
     reports,

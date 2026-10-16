@@ -10,6 +10,7 @@ import type {
   ProductStock,
   Purchase,
   Sale,
+  SaleReturn,
   Settings,
   Shift,
   Supplier,
@@ -28,6 +29,7 @@ export interface AppState {
   product_stocks: ProductStock[];
   customers: Customer[];
   sales: Sale[];
+  returns: SaleReturn[];
   expenses: Expense[];
   purchases: Purchase[];
   mermas: Merma[];
@@ -62,6 +64,7 @@ export function createInitialState(settingsOverride?: Partial<Settings>): AppSta
     product_stocks: [],
     customers: [],
     sales: [],
+    returns: [],
     expenses: [],
     purchases: [],
     mermas: [],

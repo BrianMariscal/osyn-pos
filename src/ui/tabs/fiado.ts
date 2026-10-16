@@ -241,7 +241,7 @@ export const fiadoTab: TabModule = {
                   (movement) => html`
                     <div class="list-item item-line">
                       <div>
-                        <strong>${movement.type === "cargo" ? "Cargo" : "Pago"}</strong>
+                        <strong>${movement.type === "cargo" ? "Cargo" : movement.type === "pago" ? "Pago" : "Devolución"}</strong>
                         <p class="muted">${movement.note} | ${fmtDateTime(movement.created_at)}</p>
                       </div>
                       <strong>${fmtMoneyPesos(movement.amount)}</strong>

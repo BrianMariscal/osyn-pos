@@ -1,24 +1,26 @@
 /**
- * Ticket de venta: vista en pantalla, imagen PNG del comprobante y envío por
- * WhatsApp (opcional), siempre como imagen: en celular con el menú de
- * compartir del sistema; en computadora se copia la imagen y se abre el chat.
+ * Comprobantes: ticket de venta y nota de devolución. Vista en pantalla, imagen
+ * PNG del comprobante y envío por WhatsApp (opcional), siempre como imagen: en
+ * celular con el menú de compartir del sistema; en computadora se copia la
+ * imagen y se abre el chat.
  */
 import { html, type SafeHtml } from "../core/html";
 import { fmtMoney, lineTotalCents, toCents } from "../core/money";
-import { PAYMENT_LABELS, type Sale } from "../core/types";
-import { itemLabel, saleFolio, saleTotalCents } from "../domain/ticket";
-import { openModal } from "./components/modal";
+import { fmtQty } from "../core/qty";
+import { PAYMENT_LABELS, REFUND_LABELS, type Sale, type SaleReturn, type SaleReturnItem } from "../core/types";
+import { itemLabel, returnFolio, returnTotalCents, saleFolio, saleTotalCents } from "../domain/ticket";
+import { openModal, type ModalAction } from "./components/modal";
 import { downloadBlob } from "./tabs/download";
 import type { AppContext } from "./context";
 
-interface TicketInfo {
+interface DocInfo {
   store: string;
   branch: string;
   logo: string;
   customer: string;
 }
 
-function infoFor(ctx: AppContext, sale: Sale): TicketInfo {
+function infoFor(ctx: AppContext, sale: Sale): DocInfo {
   const settings = ctx.store.getState().settings;
   return {
     store: settings.storeName || "Mi tienda",
@@ -28,8 +30,26 @@ function infoFor(ctx: AppContext, sale: Sale): TicketInfo {
   };
 }
 
+function returnInfoFor(ctx: AppContext, ret: SaleReturn): DocInfo {
+  const settings = ctx.store.getState().settings;
+  const sale = ctx.repos.sales.byId(ret.sale_id);
+  return {
+    store: settings.storeName || "Mi tienda",
+    branch: sale && ctx.branches.isMultiBranch() ? ctx.branches.name(sale.branch_id) : "",
+    logo: settings.logo,
+    customer: ret.customer_id ? ctx.repos.customers.byId(ret.customer_id)?.name ?? "" : ""
+  };
+}
+
 function dateLabel(iso: string): string {
   return new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function returnItemLabel(item: SaleReturnItem): string {
+  const qty = item.pack_size
+    ? `${fmtQty(item.qty)} ${item.qty === 1 ? "caja" : "cajas"} (${fmtQty(item.qty * item.pack_size)} ${item.um})`
+    : `${fmtQty(item.qty)} ${item.um}`;
+  return `${qty} × ${fmtMoney(toCents(item.price))}`;
 }
 
 /** Ticket con aspecto de comprobante impreso. */
@@ -72,6 +92,45 @@ export function ticketMarkup(ctx: AppContext, sale: Sale): SafeHtml {
   `;
 }
 
+/** Nota de devolución con el mismo aspecto del ticket. */
+export function returnNoteMarkup(ctx: AppContext, ret: SaleReturn): SafeHtml {
+  const info = returnInfoFor(ctx, ret);
+  return html`
+    <div class="ticket" role="document" aria-label="Nota de devolución">
+      <div class="ticket-head">
+        ${info.logo ? html`<img class="ticket-logo" src="${info.logo}" alt="">` : html``}
+        <strong class="ticket-store">${info.store}</strong>
+        ${info.branch ? html`<span>${info.branch}</span>` : html``}
+        <span class="ticket-headline">Nota de devolución</span>
+      </div>
+      <div class="ticket-meta">
+        <span>Folio <b>${returnFolio(ret)}</b></span>
+        ${ret.folio ? html`<span>Venta <b>${ret.folio}</b></span>` : html``}
+        <span>${dateLabel(ret.created_at)}</span>
+        ${ret.cashier ? html`<span>Atendió: ${ret.cashier}</span>` : html``}
+        ${info.customer ? html`<span>Cliente: ${info.customer}</span>` : html``}
+      </div>
+      <div class="ticket-items">
+        ${ret.items.map(
+          (item) => html`
+            <div class="ticket-item">
+              <span class="ticket-item-name">${item.name}</span>
+              <span class="ticket-item-qty">${returnItemLabel(item)}</span>
+              <strong>${fmtMoney(lineTotalCents(item.qty, item.price))}</strong>
+            </div>
+          `
+        )}
+      </div>
+      <div class="ticket-total"><span>TOTAL DEVUELTO</span><strong>${fmtMoney(returnTotalCents(ret))}</strong></div>
+      <div class="ticket-pay">
+        <div><span>Reembolso</span><span>${REFUND_LABELS[ret.payment]}</span></div>
+        ${ret.reason ? html`<div><span>Motivo</span><span>${ret.reason}</span></div>` : html``}
+      </div>
+      <p class="ticket-foot">La mercancía regresó al inventario</p>
+    </div>
+  `;
+}
+
 function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     if (!src) return resolve(null);
@@ -82,10 +141,31 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
-/** Imagen PNG del ticket (ancho de ticket de 80 mm, a doble resolución). */
-export async function ticketImage(ctx: AppContext, sale: Sale): Promise<Blob> {
-  const info = infoFor(ctx, sale);
-  const logo = await loadImage(info.logo);
+interface DocRow {
+  label: string;
+  value: string;
+  size?: number;
+  weight?: number;
+  color?: string;
+}
+
+/** Contenido del comprobante, igual para ticket y nota de devolución. */
+interface PrintableDoc {
+  info: DocInfo;
+  /** Línea extra bajo el nombre de la tienda (p. ej. "Nota de devolución"). */
+  headline: string;
+  /** Primera fila en negrita (folio). */
+  meta: Array<[string, string]>;
+  items: Array<{ name: string; detail: string; amount: string }>;
+  totalLabel: string;
+  total: string;
+  rows: DocRow[];
+  footer: string;
+}
+
+/** Imagen PNG del comprobante (ancho de ticket de 80 mm, a doble resolución). */
+async function documentImage(doc: PrintableDoc): Promise<Blob> {
+  const logo = await loadImage(doc.info.logo);
   const W = 420;
   const pad = 26;
   const scale = 2;
@@ -152,31 +232,28 @@ export async function ticketImage(ctx: AppContext, sale: Sale): Promise<Blob> {
       return h + 10;
     });
   }
-  wrap(info.store, 22, 800, W - pad * 2).forEach((line) => text(line, 22, 800, "center"));
-  if (info.branch) text(info.branch, 14, 400, "center", "#546374");
+  wrap(doc.info.store, 22, 800, W - pad * 2).forEach((line) => text(line, 22, 800, "center"));
+  if (doc.info.branch) text(doc.info.branch, 14, 400, "center", "#546374");
+  if (doc.headline) {
+    gap(4);
+    text(doc.headline, 15, 800, "center");
+  }
   gap(6);
   dashed();
-  row("Folio", saleFolio(sale), 14, 600);
-  row("Fecha", dateLabel(sale.created_at), 14);
-  if (sale.cashier) row("Atendió", sale.cashier, 14);
-  if (info.customer) row("Cliente", info.customer, 14);
+  doc.meta.forEach(([label, value], index) => row(label, value, 14, index === 0 ? 600 : 400));
   dashed();
-  for (const item of sale.items) {
+  for (const item of doc.items) {
     wrap(item.name, 16, 700, W - pad * 2).forEach((line) => text(line, 16, 700));
-    row(`${itemLabel(item)} × ${fmtMoney(toCents(item.price))}`, fmtMoney(lineTotalCents(item.qty, item.price)), 14, 400, "#3d4a57");
+    row(item.detail, item.amount, 14, 400, "#3d4a57");
     gap(2);
   }
   dashed();
-  row("TOTAL", fmtMoney(saleTotalCents(sale)), 24, 800);
+  row(doc.totalLabel, doc.total, 24, 800);
   gap(4);
-  row("Pago", PAYMENT_LABELS[sale.payment], 15);
-  if (sale.cash_received) {
-    row("Pagó con", fmtMoney(toCents(sale.cash_received)), 15);
-    row("Cambio", fmtMoney(toCents(sale.change ?? 0)), 17, 800, "#2e8a57");
-  }
+  for (const item of doc.rows) row(item.label, item.value, item.size ?? 15, item.weight ?? 400, item.color ?? "#17202a");
   dashed();
   gap(4);
-  text("¡Gracias por su compra!", 16, 700, "center");
+  text(doc.footer, 16, 700, "center");
   gap(10);
 
   let height = pad;
@@ -194,8 +271,74 @@ export async function ticketImage(ctx: AppContext, sale: Sale): Promise<Blob> {
   let y = pad;
   for (const op of ops) y += op(c, y);
   return await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("No se pudo crear la imagen del ticket"))), "image/png")
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("No se pudo crear la imagen del comprobante"))), "image/png")
   );
+}
+
+function ticketDoc(ctx: AppContext, sale: Sale): PrintableDoc {
+  const info = infoFor(ctx, sale);
+  return {
+    info,
+    headline: "",
+    meta: [
+      ["Folio", saleFolio(sale)],
+      ["Fecha", dateLabel(sale.created_at)],
+      ...(sale.cashier ? ([["Atendió", sale.cashier]] as Array<[string, string]>) : []),
+      ...(info.customer ? ([["Cliente", info.customer]] as Array<[string, string]>) : [])
+    ],
+    items: sale.items.map((item) => ({
+      name: item.name,
+      detail: `${itemLabel(item)} × ${fmtMoney(toCents(item.price))}`,
+      amount: fmtMoney(lineTotalCents(item.qty, item.price))
+    })),
+    totalLabel: "TOTAL",
+    total: fmtMoney(saleTotalCents(sale)),
+    rows: [
+      { label: "Pago", value: PAYMENT_LABELS[sale.payment] },
+      ...(sale.cash_received
+        ? [
+            { label: "Pagó con", value: fmtMoney(toCents(sale.cash_received)) },
+            { label: "Cambio", value: fmtMoney(toCents(sale.change ?? 0)), size: 17, weight: 800, color: "#2e8a57" }
+          ]
+        : [])
+    ],
+    footer: "¡Gracias por su compra!"
+  };
+}
+
+export async function ticketImage(ctx: AppContext, sale: Sale): Promise<Blob> {
+  return documentImage(ticketDoc(ctx, sale));
+}
+
+export function returnNoteDoc(ctx: AppContext, ret: SaleReturn): PrintableDoc {
+  const info = returnInfoFor(ctx, ret);
+  return {
+    info,
+    headline: "NOTA DE DEVOLUCIÓN",
+    meta: [
+      ["Folio", returnFolio(ret)],
+      ...(ret.folio ? ([["Venta", ret.folio]] as Array<[string, string]>) : []),
+      ["Fecha", dateLabel(ret.created_at)],
+      ...(ret.cashier ? ([["Atendió", ret.cashier]] as Array<[string, string]>) : []),
+      ...(info.customer ? ([["Cliente", info.customer]] as Array<[string, string]>) : [])
+    ],
+    items: ret.items.map((item) => ({
+      name: item.name,
+      detail: returnItemLabel(item),
+      amount: fmtMoney(lineTotalCents(item.qty, item.price))
+    })),
+    totalLabel: "TOTAL DEVUELTO",
+    total: fmtMoney(returnTotalCents(ret)),
+    rows: [
+      { label: "Reembolso", value: REFUND_LABELS[ret.payment] },
+      ...(ret.reason ? [{ label: "Motivo", value: ret.reason }] : [])
+    ],
+    footer: "La mercancía regresó al inventario"
+  };
+}
+
+export async function returnNoteImage(ctx: AppContext, ret: SaleReturn): Promise<Blob> {
+  return documentImage(returnNoteDoc(ctx, ret));
 }
 
 function isMobileDevice(): boolean {
@@ -227,12 +370,12 @@ function waNumber(phone: string): string {
 }
 
 /**
- * Envía el ticket como IMAGEN. Se llama directo en el toque (sin esperas):
+ * Envía un comprobante como IMAGEN. Se llama directo en el toque (sin esperas):
  * iPhone/Android solo permiten abrir el menú de compartir dentro del gesto,
- * por eso la imagen se genera antes, al abrir la ventana del ticket.
+ * por eso la imagen se genera antes, al abrir la ventana del comprobante.
  */
-function sendTicket(ctx: AppContext, sale: Sale, blob: Blob, phone: string): void {
-  const file = new File([blob], `ticket-${saleFolio(sale)}.png`, { type: "image/png" });
+function sendImage(ctx: AppContext, fileName: string, blob: Blob, phone: string): void {
+  const file = new File([blob], fileName, { type: "image/png" });
   const digits = phone.replace(/\D/g, "");
   if (digits && digits.length !== 10 && digits.length < 12) {
     ctx.toast("Revisa el número: escribe los 10 dígitos del celular del cliente");
@@ -270,7 +413,7 @@ function sendToNumber(ctx: AppContext, file: File, number: string): void {
   // Celular: primero se copia la imagen (si se abre WhatsApp antes, la copia se pierde)
   copyImage(file)
     .then(() => {
-      ctx.toast("Imagen del ticket copiada: en el chat mantén presionado y elige Pegar");
+      ctx.toast("Imagen lista: en el chat mantén presionado y elige Pegar");
       openWhatsAppChat(number);
     })
     .catch(() => {
@@ -281,7 +424,7 @@ function sendToNumber(ctx: AppContext, file: File, number: string): void {
         return;
       }
       downloadBlob(file.name, file);
-      ctx.toast("Ticket guardado: en el chat toca el clip y adjunta la imagen");
+      ctx.toast("Imagen guardada: en el chat toca el clip y adjúntala");
       openWhatsAppChat(number);
     });
 }
@@ -309,18 +452,76 @@ function shareFromDesktop(ctx: AppContext, file: File, phone: string): void {
   const copy = copyImage(file);
   openWhatsAppChat(phone ? waNumber(phone) : "");
   copy
-    .then(() => ctx.toast("Imagen del ticket copiada: en el chat de WhatsApp pégala con Ctrl+V"))
+    .then(() => ctx.toast("Imagen copiada: en el chat de WhatsApp pégala con Ctrl+V"))
     .catch(() => {
       downloadBlob(file.name, file);
-      ctx.toast("Ticket descargado: en WhatsApp adjunta la imagen (clip › Fotos)");
+      ctx.toast("Imagen descargada: en WhatsApp adjúntala (clip › Fotos)");
     });
 }
 
+/** Bloque para enviar el comprobante por WhatsApp (número opcional). */
+function sendBlockHtml(mobile: boolean, customerPhone: string, noun: string): SafeHtml {
+  return html`
+    <div class="ticket-send">
+      <p class="micro">¿El cliente quiere su ${noun}?</p>
+      <label class="form-field">Número de WhatsApp del cliente
+        <input id="ticketPhone" class="input" type="tel" inputmode="tel" autocomplete="off" placeholder="10 dígitos, ej. 55 1234 5678" value="${customerPhone}">
+      </label>
+      <p class="hint">${mobile
+        ? "Con número: se abre su chat y la imagen queda copiada (mantén presionado › Pegar). Sin número: eliges el contacto en el menú de compartir."
+        : "Se abre su chat en WhatsApp Web y la imagen queda copiada: pégala con Ctrl + V y envía."}</p>
+      <div class="ticket-actions">
+        <button class="primary whatsapp-btn" type="button" data-ticket-send>Enviar por WhatsApp</button>
+        <button class="ghost" type="button" data-ticket-download>Descargar imagen</button>
+      </div>
+    </div>
+  `;
+}
+
+/** Conecta "Enviar por WhatsApp" y "Descargar imagen" del bloque de envío. */
+function wireSend(root: HTMLElement, ctx: AppContext, fileName: string, ready: Promise<Blob>): void {
+  let image: Blob | null = null;
+  void ready.then((blob) => (image = blob)).catch(() => undefined);
+  root.querySelector<HTMLElement>("[data-ticket-send]")?.addEventListener("click", () => {
+    const phone = root.querySelector<HTMLInputElement>("#ticketPhone")?.value ?? "";
+    if (image) {
+      sendImage(ctx, fileName, image, phone);
+      return;
+    }
+    ctx.toast("Preparando la imagen…");
+    void ready
+      .then((blob) => sendImage(ctx, fileName, blob, phone))
+      .catch((error: unknown) => ctx.toast(error instanceof Error ? error.message : "No se pudo crear la imagen"));
+  });
+  root.querySelector<HTMLElement>("[data-ticket-download]")?.addEventListener("click", () => {
+    void ready
+      .then((blob) => downloadBlob(fileName, blob))
+      .catch((error: unknown) => ctx.toast(error instanceof Error ? error.message : "No se pudo crear la imagen"));
+  });
+}
+
 /** Ventana del ticket (al cobrar o desde el historial). Enviarlo es opcional. */
-export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: boolean } = {}): void {
+export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: boolean; onReturn?: () => void } = {}): void {
   const mobile = isMobileDevice();
   const customerPhone = sale.customer_id ? ctx.repos.customers.byId(sale.customer_id)?.phone ?? "" : "";
   const internal = sale.payment === "interno";
+  const canReturn = Boolean(options.onReturn) && ctx.returns.hasPending(sale);
+  const returnedCents = toCents(ctx.returns.returnedTotal(sale.id));
+  const actions: ModalAction[] = [
+    { label: options.justSold ? "Nueva venta" : "Cerrar", kind: options.justSold ? "primary" : "ghost" },
+    ...(canReturn
+      ? [
+          {
+            label: "Devolver",
+            kind: "ghost" as const,
+            onClick: (close: () => void) => {
+              close();
+              options.onReturn?.();
+            }
+          }
+        ]
+      : [])
+  ];
   openModal({
     title: options.justSold ? (internal ? "Uso interno registrado" : sale.payment === "fiado" ? "Venta fiada registrada" : "Venta registrada") : `Ticket ${saleFolio(sale)}`,
     content: html`
@@ -328,28 +529,10 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
         ? html`<div class="change-banner"><span>Cambio a entregar</span><strong>${fmtMoney(toCents(sale.change ?? 0))}</strong></div>`
         : html``}
       ${ticketMarkup(ctx, sale)}
-      ${internal
-        ? html`<p class="hint">Uso interno: no suma a las ventas.</p>`
-        : html`<div class="ticket-send">
-            <p class="micro">¿El cliente quiere su ticket?</p>
-            <label class="form-field">Número de WhatsApp del cliente
-              <input id="ticketPhone" class="input" type="tel" inputmode="tel" autocomplete="off" placeholder="10 dígitos, ej. 55 1234 5678" value="${customerPhone}">
-            </label>
-            <p class="hint">${mobile
-              ? "Con número: se abre su chat y la imagen del ticket queda copiada (mantén presionado › Pegar). Sin número: eliges el contacto en el menú de compartir."
-              : "Se abre su chat en WhatsApp Web y la imagen del ticket queda copiada: pégala con Ctrl + V y envía."}</p>
-            <div class="ticket-actions">
-              <button class="primary whatsapp-btn" type="button" data-ticket-send>Enviar por WhatsApp</button>
-              <button class="ghost" type="button" data-ticket-download>Descargar imagen</button>
-            </div>
-          </div>`}
+      ${returnedCents > 0 ? html`<p class="hint">Este ticket tiene devoluciones por ${fmtMoney(returnedCents)}.</p>` : html``}
+      ${internal ? html`<p class="hint">Uso interno: no suma a las ventas.</p>` : sendBlockHtml(mobile, customerPhone, "ticket")}
     `,
-    actions: [
-      {
-        label: options.justSold ? "Nueva venta" : "Cerrar",
-        kind: options.justSold ? "primary" : "ghost"
-      }
-    ],
+    actions,
     // En PC: Enter = "Nueva venta"; al cerrar (como sea) el cursor vuelve al buscador
     initialFocus: options.justSold && !isMobileDevice() ? "[data-modal-action]" : undefined,
     onClose: () => {
@@ -357,25 +540,28 @@ export function openTicket(ctx: AppContext, sale: Sale, options: { justSold?: bo
     },
     onOpen: (root) => {
       // La imagen se prepara desde ahora para compartirla al instante
-      let image: Blob | null = null;
-      const ready = ticketImage(ctx, sale).then((blob) => (image = blob));
-      ready.catch(() => undefined);
-      root.querySelector<HTMLElement>("[data-ticket-send]")?.addEventListener("click", () => {
-        const phone = root.querySelector<HTMLInputElement>("#ticketPhone")?.value ?? "";
-        if (image) {
-          sendTicket(ctx, sale, image, phone);
-          return;
-        }
-        ctx.toast("Preparando la imagen del ticket…");
-        void ready
-          .then((blob) => sendTicket(ctx, sale, blob, phone))
-          .catch((error: unknown) => ctx.toast(error instanceof Error ? error.message : "No se pudo crear la imagen"));
-      });
-      root.querySelector<HTMLElement>("[data-ticket-download]")?.addEventListener("click", () => {
-        void ready
-          .then((blob) => downloadBlob(`ticket-${saleFolio(sale)}.png`, blob))
-          .catch((error: unknown) => ctx.toast(error instanceof Error ? error.message : "No se pudo crear la imagen"));
-      });
+      wireSend(root, ctx, `ticket-${saleFolio(sale)}.png`, ticketImage(ctx, sale));
+    }
+  });
+}
+
+/** Nota de la devolución recién registrada: pantalla, imagen y WhatsApp. */
+export function openReturnNote(ctx: AppContext, ret: SaleReturn): void {
+  const mobile = isMobileDevice();
+  const customerPhone = ret.customer_id ? ctx.repos.customers.byId(ret.customer_id)?.phone ?? "" : "";
+  const fileName = `devolucion-${returnFolio(ret)}.png`;
+  openModal({
+    title: `Devolución ${returnFolio(ret)}`,
+    content: html`
+      ${ret.payment === "efectivo"
+        ? html`<div class="change-banner"><span>Efectivo a entregar</span><strong>${fmtMoney(returnTotalCents(ret))}</strong></div>`
+        : html``}
+      ${returnNoteMarkup(ctx, ret)}
+      ${sendBlockHtml(mobile, customerPhone, "nota de devolución")}
+    `,
+    actions: [{ label: "Cerrar", kind: "ghost" }],
+    onOpen: (root) => {
+      wireSend(root, ctx, fileName, returnNoteImage(ctx, ret));
     }
   });
 }

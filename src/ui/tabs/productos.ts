@@ -4,6 +4,7 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos } from "../../core/money";
 import { normalizeQty } from "../../core/qty";
 import { SALE_GROUP_LABELS, SALE_GROUPS, UNITS, type Product, type SaleGroup, type Unit } from "../../core/types";
+import { isBulkUnit } from "../../core/units";
 import { productQrPayload, supplierCode, supplierLabel } from "../../domain/catalog";
 import { detectSaleGroup } from "../../domain/sale-groups";
 import { confirmDialog, openModal } from "../components/modal";
@@ -56,13 +57,14 @@ export const productosTab: TabModule = {
                 </label>
               </div>
               <div class="row">
-                <label class="form-field">Costo
+                <label class="form-field">Costo <span id="productCostUnit" class="muted"></span>
                   <input id="productCost" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
                 </label>
-                <label class="form-field">Precio de venta
+                <label class="form-field">Precio de venta <span id="productPriceUnit" class="muted"></span>
                   <input id="productPrice" class="input" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00" required>
                 </label>
               </div>
+              <p id="productPriceHint" class="hint hidden">Con la unidad Gr el precio se cobra POR GRAMO. Si cobras por kilo, usa la unidad Kg.</p>
               <label class="form-field">Proveedor
                 <select id="productSupplier" class="input"></select>
               </label>
@@ -136,6 +138,9 @@ export const productosTab: TabModule = {
     const unitInput = root.querySelector<HTMLSelectElement>("#productUnit")!;
     const costInput = root.querySelector<HTMLInputElement>("#productCost")!;
     const priceInput = root.querySelector<HTMLInputElement>("#productPrice")!;
+    const costUnitLabel = root.querySelector<HTMLElement>("#productCostUnit")!;
+    const priceUnitLabel = root.querySelector<HTMLElement>("#productPriceUnit")!;
+    const priceHint = root.querySelector<HTMLElement>("#productPriceHint")!;
     const supplierInput = root.querySelector<HTMLSelectElement>("#productSupplier")!;
     const packInput = root.querySelector<HTMLInputElement>("#productPack")!;
     const packPriceInput = root.querySelector<HTMLInputElement>("#productPackPrice")!;
@@ -172,6 +177,22 @@ export const productosTab: TabModule = {
         (row) => !row.deleted && row.product_id === productId && row.branch_id === ctx.branches.operationalId()
       );
 
+    /**
+     * Aclara que en productos a granel el costo/precio son por unidad base
+     * (Kg, Gr, Lts) y avisa del error típico: precio "por kilo" con unidad Gr.
+     */
+    const syncUnitLabels = (): void => {
+      const unit = unitInput.value as Unit;
+      const bulk = isBulkUnit(unit);
+      costUnitLabel.textContent = bulk ? `(por ${unit})` : "";
+      priceUnitLabel.textContent = bulk ? `(por ${unit})` : "";
+      const price = Number(priceInput.value || 0);
+      priceHint.classList.toggle("hidden", !(unit === "Gr" && price >= 1));
+    };
+    unitInput.addEventListener("change", syncUnitLabels);
+    priceInput.addEventListener("input", syncUnitLabels);
+    syncUnitLabels();
+
     const sortedSuppliers = () =>
       ctx.repos.suppliers.list().sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.name.localeCompare(b.name));
 
@@ -196,6 +217,7 @@ export const productosTab: TabModule = {
       minInput.value = "2";
       stockInput.disabled = false;
       formTitle.textContent = "Nuevo producto";
+      syncUnitLabels();
     };
 
     // Al elegir proveedor se sugiere su giro como categoría (si no se ha elegido otra).
@@ -435,6 +457,7 @@ export const productosTab: TabModule = {
         barcodeInput.value = product.barcode ?? "";
         cancelEdit.hidden = false;
         formTitle.textContent = `Editando: ${product.name}`;
+        syncUnitLabels();
         sections.show("nuevo");
         formBox.open = true;
         formBox.scrollIntoView({ behavior: "smooth", block: "start" });

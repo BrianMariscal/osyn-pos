@@ -6,6 +6,7 @@ import { PAYMENT_LABELS, type PaymentMethod } from "../../core/types";
 import { saleFolio } from "../../domain/ticket";
 import { paginate, pagerClick, pagerMarkup } from "../pager";
 import { openTicket } from "../ticket";
+import { openReturnFlow } from "../return-flow";
 import { VIEW_ALL } from "../../domain/app-state";
 import { confirmDialog } from "../components/modal";
 import { openReportPdf } from "../pdf";
@@ -90,7 +91,16 @@ export const reportesTab: TabModule = {
       const revenue = sales.filter((sale) => sale.payment !== "interno");
       const byPayment = new Map<string, number>();
       for (const sale of revenue) byPayment.set(sale.payment, (byPayment.get(sale.payment) ?? 0) + toCents(sale.total));
-      const totalCents = sumCents(revenue.map((sale) => toCents(sale.total)));
+      // Las devoluciones del día bajan el total y su forma de pago (el abono a fiado, el fiado).
+      const scope = currentScope();
+      const range = dayRange(salesDayInput.value || todayInputValue());
+      let returnsCents = 0;
+      for (const ret of ctx.repos.returns.list()) {
+        if ((scope !== VIEW_ALL && ret.branch_id !== scope) || ret.created_at < range.start || ret.created_at >= range.end) continue;
+        returnsCents += toCents(ret.total);
+        byPayment.set(ret.payment, Math.max(0, (byPayment.get(ret.payment) ?? 0) - toCents(ret.total)));
+      }
+      const totalCents = sumCents(revenue.map((sale) => toCents(sale.total))) - returnsCents;
       const tones: Record<string, string> = { efectivo: "green", transferencia: "blue", tarjeta: "violet", fiado: "amber" };
       setHtml(
         salesDaySummary,
@@ -100,11 +110,16 @@ export const reportesTab: TabModule = {
           ${[...byPayment.entries()].map(
             ([payment, cents]) => html`<div data-tone="${tones[payment] ?? "blue"}"><span>${PAYMENT_LABELS[payment as PaymentMethod] ?? payment}</span><strong>${fmtMoney(cents)}</strong></div>`
           )}
+          ${returnsCents > 0 ? html`<div data-tone="coral"><span>Devoluciones (ya restadas)</span><strong>${fmtMoney(returnsCents)}</strong></div>` : html``}
         `
       );
       if (!sales.length) {
         setHtml(salesDayList, html`<p class="empty-note">No hay ventas este día.</p>`);
         return;
+      }
+      const returnedBySale = new Map<string, number>();
+      for (const ret of ctx.repos.returns.list()) {
+        returnedBySale.set(ret.sale_id, (returnedBySale.get(ret.sale_id) ?? 0) + toCents(ret.total));
       }
       const page = paginate(sales, salesDayPage, 10);
       setHtml(
@@ -112,11 +127,13 @@ export const reportesTab: TabModule = {
         html`${page.items.map((sale) => {
           const pieces = sale.items.reduce((sum, item) => sum + (item.pack_size ? item.qty * item.pack_size : item.qty), 0);
           const names = sale.items.map((item) => item.name).join(", ");
+          const returnedCents = returnedBySale.get(sale.id) ?? 0;
           return html`
             <button class="ticket-row" type="button" data-ticket="${sale.id}">
               <span class="ticket-row-time">${new Date(sale.created_at).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</span>
               <span class="row-title"><strong>${names}</strong><small class="muted">Folio ${saleFolio(sale)} · ${fmtQty(pieces)} art.${sale.cashier ? ` · ${sale.cashier}` : ""}</small></span>
               <span class="tag" data-tone="${tones[sale.payment] ?? "teal"}">${PAYMENT_LABELS[sale.payment]}</span>
+              ${returnedCents > 0 ? html`<span class="tag" data-tone="coral" title="Reembolsado: ${fmtMoney(returnedCents)}">Devolución</span>` : html``}
               <strong class="row-price">${fmtMoneyPesos(sale.total)}</strong>
             </button>
           `;
@@ -147,7 +164,7 @@ export const reportesTab: TabModule = {
       }
       const row = target.closest<HTMLElement>("[data-ticket]");
       const sale = row && ctx.repos.sales.byId(row.dataset.ticket!);
-      if (sale) openTicket(ctx, sale);
+      if (sale) openTicket(ctx, sale, { onReturn: () => openReturnFlow(ctx, sale) });
     });
 
     const dateInput = root.querySelector<HTMLInputElement>("#reportDate")!;
@@ -188,6 +205,7 @@ export const reportesTab: TabModule = {
         <div><span>Gastos extra</span><strong>${fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)}</strong></div>
         <div><span>Compras proveedores</span><strong>${fmtMoneyPesos(report.purchases_total)}</strong></div>
         <div><span>Mermas</span><strong>${fmtMoneyPesos(report.mermas_total)}</strong></div>
+        <div><span>Devoluciones (ya restadas)</span><strong>${fmtMoneyPesos(report.returns_total ?? 0)}</strong></div>
         <div class="row-strong"><span>Ganancia después de gastos</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
         <div><span>Fiado vendido</span><strong>${fmtMoneyPesos(report.credit_total)}</strong></div>
         <div><span>Consumo interno (a costo)</span><strong>${fmtMoneyPesos(report.internal_total ?? 0)}</strong></div>
@@ -305,7 +323,7 @@ export const reportesTab: TabModule = {
 
     initDates();
     ctx.store.watch(
-      (s) => [s.sales, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId] as const,
+      (s) => [s.sales, s.returns, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId] as const,
       () => {
         render();
         renderSalesDay();

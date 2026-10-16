@@ -8,6 +8,11 @@ en el dispositivo) y se puede instalar como app en Android.
 ## Características
 
 - **Venta** con buscador, escáner de código y dictado por voz ("dos cocas, una leche").
+- **Venta a granel**: por peso o litros (g/kg, ml/L) o por importe ("$20 de
+  jitomate") con conversión automática a dinero.
+- **Devoluciones**: busca la venta por folio, elige los renglones y cantidades
+  (acepta devoluciones parciales); el stock regresa al inventario y el reembolso
+  se descuenta de la caja, o se abona al fiado del cliente.
 - **Fiado** con clientes, cargos, pagos e historial de movimientos.
 - **Inventario** con entradas de mercancía, mermas, conteos físicos y aviso de mínimos.
 - **Corte de caja** con arqueo, diferencia y envío del resumen por WhatsApp.
@@ -83,7 +88,10 @@ docs/         decisiones y guías (respaldos, modelo comercial)
     `supabase/migracion-precios-servidor.sql` (después de
     `supabase/migracion-stock-servidor.sql`): un vendedor ya no puede alterar
     saldos de fiado ni registrar ventas debajo del costo o con cantidades inválidas.
- 7. Corre `supabase/verificacion.sql` (solo lectura): cada renglón debe decir
+ 7. Ejecuta `supabase/migracion-devoluciones.sql` (después de las anteriores):
+    crea la tabla de **devoluciones**, valida en el servidor que no se devuelva
+    más de lo vendido y regresa el stock al inventario.
+ 8. Corre `supabase/verificacion.sql` (solo lectura): cada renglón debe decir
     **OK**; si dice **FALTA**, indica qué archivo aplicar.
 
  > ¿Base ya existente con datos? Aplica `supabase/migracion-multisucursal.sql`
@@ -127,7 +135,7 @@ Cloudflare → Workers & Pages → osynpos → Settings → Variables and Secret
 | `SUPABASE_ANON_KEY` | Ídem |
 | `SUPABASE_SERVICE_ROLE_KEY` | Crear/editar usuarios desde `api/*` (secreta) |
 | `NVIDIA_API_KEY` o `OPENAI_API_KEY` | Motor del asistente (chat) |
-| `ELEVENLABS_API_KEY` | Voz del asistente |
+| `ELEVENLABS_API_KEY` | Voz del asistente (la clave necesita los permisos `voices_read` y `text_to_speech`) |
 | `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN` | Opcional (Upstash gratis): límite de solicitudes compartido entre instancias. Sin ellas se cuenta en memoria |
 
 Monitoreo de errores (opcional, Sentry gratis): pon el DSN en `sentryDsn` de

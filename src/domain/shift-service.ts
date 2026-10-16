@@ -1,11 +1,11 @@
 import { nowISO, todayStartISO } from "../core/dates";
 import { uid } from "../core/id";
-import { sumCents, toCents, toPesos } from "../core/money";
-import type { Shift, ShiftSummary } from "../core/types";
+import { lineTotalCents, sumCents, toCents, toPesos } from "../core/money";
+import type { RefundMethod, SaleGroup, Shift, ShiftSummary } from "../core/types";
 import type { Repositories } from "../data/repositories";
 import type { BranchService } from "./branch-service";
 import { isFixedCost } from "./expense-service";
-import { groupTotalsCents, isInternalSale, isRevenueSale } from "./sale-groups";
+import { groupTotalsCents, isInternalSale, isRevenueSale, itemGroup } from "./sale-groups";
 
 export interface CloseShiftInput {
   opening_cash: number;
@@ -57,31 +57,61 @@ export class ShiftService {
       .filter((e) => e.branch_id === branchId && !isFixedCost(e) && since(e.created_at));
     const purchases = this.repos.purchases.list().filter((p) => p.branch_id === branchId && since(p.created_at));
     const mermas = this.repos.mermas.list().filter((m) => m.branch_id === branchId && since(m.created_at));
+    // Devoluciones del turno: bajan las ventas (por forma de pago y por grupo),
+    // el efectivo esperado (si se reembolsaron en efectivo) y la ganancia por su
+    // margen (venta - costo).
+    const returns = this.repos.returns.list().filter((ret) => ret.branch_id === branchId && since(ret.created_at));
     const totalCents = (rows: Array<{ total: number }>): number => sumCents(rows.map((row) => toCents(row.total)));
-    const ventas = totalCents(sales);
     const gastos = sumCents(expenses.map((expense) => toCents(expense.amount)));
     // Solo las compras pagadas con dinero de la caja salen del efectivo.
     const proveedores = totalCents(purchases.filter((p) => p.paid_from !== "aparte"));
     const proveedoresAparte = totalCents(purchases.filter((p) => p.paid_from === "aparte"));
     const mermasCents = sumCents(mermas.map((merma) => toCents(merma.cost_impact)));
-    const efectivo = totalCents(sales.filter((s) => s.payment === "efectivo"));
-    const gananciaCents = sumCents(sales.map((s) => toCents(s.profit))) - gastos;
+    const devolucionesCents = totalCents(returns);
+    const devolucionesPorVia = (method: RefundMethod): number => totalCents(returns.filter((ret) => ret.payment === method));
+    const devolucionesEfectivoCents = devolucionesPorVia("efectivo");
+    const margenDevueltoCents = sumCents(returns.map((ret) => toCents(ret.total) - toCents(ret.cost)));
+    // Ventas netas: a cada forma de pago se le resta lo reembolsado por esa vía.
+    const ventas = totalCents(sales) - devolucionesCents;
+    const efectivo = totalCents(sales.filter((s) => s.payment === "efectivo")) - devolucionesEfectivoCents;
+    // Cobranza de fiado del turno: es efectivo que se recibió y se guardó en
+    // la caja, igual que una venta en efectivo. Sin esto el corte marcaba
+    // sobrante falso cada vez que un cliente pagaba su deuda.
+    let abonosCents = 0;
+    this.repos.customers.list().forEach((customer) => {
+      if (customer.branch_id && customer.branch_id !== branchId) return;
+      (customer.movements ?? []).forEach((movement) => {
+        if (movement.type === "pago" && since(movement.created_at)) abonosCents += toCents(movement.amount);
+      });
+    });
+    const gananciaCents = sumCents(sales.map((s) => toCents(s.profit))) - gastos - margenDevueltoCents;
     const groups = groupTotalsCents(sales, (id) => this.repos.products.byId(id));
+    // Cigarros y cerveza también van netos de lo devuelto.
+    const returnedGroups: Record<SaleGroup, number> = { general: 0, cigarros: 0, cerveza: 0 };
+    for (const ret of returns) {
+      for (const item of ret.items ?? []) {
+        returnedGroups[itemGroup(item, (id) => this.repos.products.byId(id))] += lineTotalCents(item.qty, item.price);
+      }
+    }
     return {
       ventas: toPesos(ventas),
       efectivo: toPesos(efectivo),
-      transferencia: toPesos(totalCents(sales.filter((s) => s.payment === "transferencia"))),
-      tarjeta: toPesos(totalCents(sales.filter((s) => s.payment === "tarjeta"))),
-      fiado: toPesos(totalCents(sales.filter((s) => s.payment === "fiado"))),
-      cigarros: toPesos(groups.cigarros),
-      cerveza: toPesos(groups.cerveza),
+      transferencia: toPesos(totalCents(sales.filter((s) => s.payment === "transferencia")) - devolucionesPorVia("transferencia")),
+      tarjeta: toPesos(totalCents(sales.filter((s) => s.payment === "tarjeta")) - devolucionesPorVia("tarjeta")),
+      fiado: toPesos(totalCents(sales.filter((s) => s.payment === "fiado")) - devolucionesPorVia("fiado")),
+      abonos: toPesos(abonosCents),
+      cigarros: toPesos(groups.cigarros - returnedGroups.cigarros),
+      cerveza: toPesos(groups.cerveza - returnedGroups.cerveza),
       interno: toPesos(sumCents(internal.map((s) => toCents(s.cost)))),
+      devoluciones: toPesos(devolucionesCents),
+      devolucionesEfectivo: toPesos(devolucionesEfectivoCents),
       gastos: toPesos(gastos),
       proveedores: toPesos(proveedores),
       proveedoresAparte: toPesos(proveedoresAparte),
       mermas: toPesos(mermasCents),
       ganancia: toPesos(gananciaCents),
-      efectivoEsperado: toPesos(efectivo - gastos - proveedores)
+      // El efectivo ya viene neto de lo reembolsado en efectivo.
+      efectivoEsperado: toPesos(efectivo + abonosCents - gastos - proveedores)
     };
   }
 

@@ -126,7 +126,7 @@ export function buildApp(ctx: AppContext): void {
           <div class="top-tools">
             <select id="branchSelect" class="input branch-select" aria-label="Sucursal"></select>
             <span id="branchBadge" class="tag hidden"></span>
-            <span class="total-pill" title="Ventas de hoy en esta sucursal">
+            <span class="total-pill" title="Ventas de hoy en esta sucursal (netas de devoluciones)">
               <span class="micro">Hoy</span>
               <strong id="todayTotal">$0.00</strong>
             </span>
@@ -395,18 +395,27 @@ function wireTopbar(ctx: AppContext): void {
   window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => applyTheme(ctx));
 
   ctx.store.watch(
-    (s) => [s.sales, s.branches, s.currentBranchId] as const,
+    (s) => [s.sales, s.returns, s.branches, s.currentBranchId] as const,
     () => {
       const branchId = ctx.branches.operationalId();
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const end = new Date(start);
       end.setDate(end.getDate() + 1);
-      const totalCents = sumCents(
+      const startISO = start.toISOString();
+      const endISO = end.toISOString();
+      let totalCents = sumCents(
         ctx.repos.sales
           .list()
-          .filter((sale) => sale.branch_id === branchId && isRevenueSale(sale) && sale.created_at >= start.toISOString() && sale.created_at < end.toISOString())
+          .filter((sale) => sale.branch_id === branchId && isRevenueSale(sale) && sale.created_at >= startISO && sale.created_at < endISO)
           .map((sale) => toCents(sale.total))
+      );
+      // Las devoluciones de hoy bajan el total del pill "Hoy".
+      totalCents -= sumCents(
+        ctx.repos.returns
+          .list()
+          .filter((ret) => ret.branch_id === branchId && ret.created_at >= startISO && ret.created_at < endISO)
+          .map((ret) => toCents(ret.total))
       );
       const el = document.getElementById("todayTotal");
       if (el) el.textContent = fmtMoneyPesos(toPesos(totalCents));
@@ -647,12 +656,12 @@ function wireSessionMenu(ctx: AppContext): void {
 }
 
 function wireSyncListeners(ctx: AppContext): void {
-  ctx.tracker.onChange = () => {
+  ctx.tracker.addListener(() => {
     ctx.store.update((state) => {
       state.sync = { ...state.sync, pending: ctx.tracker.pendingCount() };
     });
     ctx.sync.schedule();
-  };
+  });
   window.addEventListener("online", () => {
     void ctx.sync.syncNow({ quiet: true });
   });
