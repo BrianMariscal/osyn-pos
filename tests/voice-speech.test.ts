@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { numberToWords, speakPesos } from "../src/core/money";
-import { isSpanishVoice, moneyToWords, pickPreferredVoice, type TtsVoice } from "../src/ui/voice-recognition";
+import { chooseCloudVoice, isSpanishVoice, moneyToWords, pickPreferredVoice, type TtsVoice } from "../src/ui/voice-recognition";
 
 describe("números en palabras", () => {
   it("unidades, decenas y centenas", () => {
@@ -58,5 +58,14 @@ describe("elección de la voz de la nube", () => {
     expect(pickPreferredVoice([jessica, renata])?.voice_id).toBe("b");
     expect(pickPreferredVoice([jessica])?.voice_id).toBe("a");
     expect(pickPreferredVoice([])).toBeNull();
+  });
+
+  it("la voz elegida manda; sin elección, la automática", () => {
+    // Aunque la elegida no sea en español, se respeta.
+    expect(chooseCloudVoice([jessica, renata, ingrid], "a")?.voice_id).toBe("a");
+    expect(chooseCloudVoice([jessica, renata, ingrid], "b")?.voice_id).toBe("b");
+    // Sin elección (o si la guardada ya no existe) se usa la automática.
+    expect(chooseCloudVoice([jessica, renata, ingrid], "")?.voice_id).toBe("c");
+    expect(chooseCloudVoice([jessica, renata, ingrid], "no-existe")?.voice_id).toBe("c");
   });
 });

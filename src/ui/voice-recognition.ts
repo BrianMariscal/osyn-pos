@@ -200,6 +200,12 @@ export function pickPreferredVoice(voices: TtsVoice[]): TtsVoice | null {
   );
 }
 
+/** Voz de la nube a mostrar/usar: la elegida manda; sin elección, la automática. */
+export function chooseCloudVoice(voices: TtsVoice[], savedId: string): TtsVoice | null {
+  const savedVoice = savedId ? voices.find((voice) => voice.voice_id === savedId) : undefined;
+  return savedVoice ?? pickPreferredVoice(voices);
+}
+
 /** Voces de ElevenLabs disponibles (de la biblioteca de la cuenta). */
 export async function fetchTtsVoices(): Promise<TtsVoice[]> {
   const token = sessionToken();
@@ -264,24 +270,18 @@ function stopCurrentSpeech(): void {
 }
 
 /**
- * Voz de la nube: la elegida se respeta si está en español; si no, se prefiere
- * una voz en español (mexicana primero) y se guarda. Si la lista falla, se usa
- * la guardada tal cual.
+ * Voz de la nube: la elegida se respeta SIEMPRE. Si no hay ninguna elegida,
+ * se usa automáticamente una voz en español (mexicana primero) y, si no hay,
+ * Jessica; sin fijarla, para re-evaluar cuando agregues voces nuevas.
  */
 async function getPreferredCloudVoiceId(): Promise<string | null> {
   const saved = cloudVoiceId();
+  if (saved) return saved;
   if (!cloudVoicesPromise) {
     cloudVoicesPromise = fetchTtsVoices().catch(() => null);
   }
   const voices = await cloudVoicesPromise;
-  if (!voices) return saved || null;
-  const savedVoice = voices.find((voice) => voice.voice_id === saved);
-  // Si la guardada no aparece en la lista (lista vieja o voz borrada), se respeta.
-  if (saved && !savedVoice) return saved;
-  const chosen = savedVoice && isSpanishVoice(savedVoice) ? savedVoice : pickPreferredVoice(voices);
-  if (!chosen) return saved || null;
-  if (chosen.voice_id !== saved) setCloudVoiceId(chosen.voice_id);
-  return chosen.voice_id;
+  return voices ? pickPreferredVoice(voices)?.voice_id ?? null : null;
 }
 
 export function speak(message: string, enabled: boolean): void {
