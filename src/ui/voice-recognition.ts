@@ -218,6 +218,28 @@ export async function fetchTtsVoices(): Promise<TtsVoice[]> {
   }));
 }
 
+/** Avisa a la interfaz cuando una voz en la nube falla (para explicar por qué). */
+let voiceErrorHandler: ((message: string) => void) | null = null;
+let lastVoiceError = "";
+
+export function onVoiceError(handler: (message: string) => void): void {
+  voiceErrorHandler = handler;
+}
+
+/** Mensaje claro según la respuesta de /api/tts (p. ej. plan sin voces de Biblioteca). */
+export function cloudVoiceErrorHint(status: number, detail: string): string {
+  if (status === 402 || /paid_plan_required|library voices/i.test(detail)) {
+    return "Esa voz es de la Biblioteca de ElevenLabs y necesita plan de pago o $5 de créditos (elevenlabs.io); mientras, se usa la voz del dispositivo.";
+  }
+  return "No se pudo usar la voz en línea; se usa la voz del dispositivo.";
+}
+
+function reportVoiceError(message: string): void {
+  if (message === lastVoiceError) return;
+  lastVoiceError = message;
+  voiceErrorHandler?.(message);
+}
+
 function postTts(token: string, voiceId: string, text: string): Promise<Response> {
   return fetch("/api/tts", {
     method: "POST",
@@ -233,13 +255,22 @@ async function cloudSpeak(text: string, sequence: number): Promise<boolean> {
   if (!token || !voiceId) return false;
   if (sequence !== speechSequence) return false;
   let res = await postTts(token, voiceId, text);
-  // Si la voz elegida falla (por ejemplo, ya no existe en la cuenta), se
-  // reintenta con la automática SIN borrar la elección del usuario.
-  if (!res.ok && saved && voiceId === saved && sequence === speechSequence) {
+  let detail = res.ok ? "" : await res.text().catch(() => "");
+  // El plan sin acceso a voces de la Biblioteca no se reintenta (fallaría igual).
+  const planError = !res.ok && (res.status === 402 || /paid_plan_required|library voices/i.test(detail));
+  // Si la voz elegida falla por otra razón (por ejemplo, ya no existe en la
+  // cuenta), se reintenta con la automática SIN borrar la elección del usuario.
+  if (!res.ok && !planError && saved && voiceId === saved && sequence === speechSequence) {
     const fallback = await autoCloudVoiceId();
-    if (fallback && fallback !== voiceId) res = await postTts(token, fallback, text);
+    if (fallback && fallback !== voiceId) {
+      res = await postTts(token, fallback, text);
+      if (!res.ok) detail = await res.text().catch(() => "");
+    }
   }
-  if (!res.ok) return false;
+  if (!res.ok) {
+    reportVoiceError(cloudVoiceErrorHint(res.status, detail));
+    return false;
+  }
   const blob = await res.blob();
   if (sequence !== speechSequence) return false;
   const url = URL.createObjectURL(blob);

@@ -91,7 +91,7 @@ export function mountVoiceSettings(host: HTMLElement): void {
   const autoHintFor = (auto: TtsVoice | null): string =>
     auto
       ? isSpanishVoice(auto)
-        ? `Automática: usa ${auto.name} (voz en español).`
+        ? `Automática: prefiere ${auto.name} (voz en español).`
         : `Automática: aún no hay voces en español; usa ${auto.name}. Agrega una (por ejemplo «Ingrid», mexicana) desde la Biblioteca de ElevenLabs.`
       : "Automática: no hay voces en la biblioteca de ElevenLabs.";
 

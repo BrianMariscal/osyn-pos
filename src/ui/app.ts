@@ -10,7 +10,7 @@ import { openVoiceSettings } from "./voice-settings";
 import { iconFor, TAB_ICONS } from "./icons";
 import { initToast } from "./components/toast";
 import { closeAllModals, openModal } from "./components/modal";
-import { isVoiceEnabled, setVoiceEnabled } from "./voice-recognition";
+import { isVoiceEnabled, onVoiceError, setVoiceEnabled } from "./voice-recognition";
 import type { AppContext } from "./context";
 import { inicioTab } from "./tabs/inicio";
 import { ventaTab } from "./tabs/venta";
@@ -178,6 +178,10 @@ export function buildApp(ctx: AppContext): void {
   wireTopbar(ctx);
   wireSessionMenu(ctx);
   wireSyncListeners(ctx);
+
+  // Si una voz en línea falla (p. ej., plan de ElevenLabs sin acceso a voces
+  // de la Biblioteca), se avisa al usuario en vez de fallar en silencio.
+  onVoiceError((message) => ctx.toast(message));
 
   ctx.auth.onSessionChange(() => {
     renderAuthState(ctx);
