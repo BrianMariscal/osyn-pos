@@ -316,6 +316,7 @@ export const inicioTab: TabModule = {
             )}
             <div class="legend-plain"><span>Compras a proveedores</span><strong>${fmtMoneyPesos(month.purchases_total)}</strong></div>
             ${month.mermas_total ? html`<div class="legend-plain"><span>Mermas</span><strong>${fmtMoneyPesos(month.mermas_total)}</strong></div>` : html``}
+            ${month.returns_total ? html`<div class="legend-plain"><span>Devoluciones</span><strong>${fmtMoneyPesos(month.returns_total)}</strong></div>` : html``}
           </div>
         `
       );
@@ -509,7 +510,7 @@ export const inicioTab: TabModule = {
     window.setInterval(schedule, 5 * 60_000);
 
     ctx.store.watch(
-      (s) => [s.sales, s.expenses, s.purchases, s.products, s.product_stocks, s.customers, s.shifts, s.branches, s.viewBranchId, s.settings] as const,
+      (s) => [s.sales, s.returns, s.expenses, s.purchases, s.products, s.product_stocks, s.customers, s.shifts, s.branches, s.viewBranchId, s.settings] as const,
       schedule
     );
   }

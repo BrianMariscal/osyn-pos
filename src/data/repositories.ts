@@ -5,7 +5,7 @@ import type {
   StateTableKey
 } from "../domain/app-state";
 import type { Store } from "../domain/store";
-import type { Branch, Customer, Expense, InventoryCount, Merma, MonthClosing, Product, ProductStock, Purchase, Sale, Shift, Supplier } from "../core/types";
+import type { Branch, Customer, Expense, InventoryCount, Merma, MonthClosing, Product, ProductStock, Purchase, Sale, SaleReturn, Shift, Supplier } from "../core/types";
 import type { ChangeTracker } from "./change-tracker";
 
 export interface BaseRow {
@@ -203,6 +203,7 @@ export class Repositories {
   stocks: Repository<ProductStock>;
   customers: Repository<Customer>;
   sales: Repository<Sale>;
+  returns: Repository<SaleReturn>;
   expenses: Repository<Expense>;
   purchases: Repository<Purchase>;
   mermas: Repository<Merma>;
@@ -217,6 +218,7 @@ export class Repositories {
     this.stocks = new Repository<ProductStock>(store, "product_stocks", tracker, ["stock"]);
     this.customers = new Repository<Customer>(store, "customers", tracker, ["balance"], ["movements"]);
     this.sales = new Repository<Sale>(store, "sales", tracker);
+    this.returns = new Repository<SaleReturn>(store, "returns", tracker);
     this.expenses = new Repository<Expense>(store, "expenses", tracker);
     this.purchases = new Repository<Purchase>(store, "purchases", tracker);
     this.mermas = new Repository<Merma>(store, "mermas", tracker);
@@ -233,6 +235,7 @@ export class Repositories {
       product_stocks: this.stocks,
       customers: this.customers,
       sales: this.sales,
+      returns: this.returns,
       expenses: this.expenses,
       purchases: this.purchases,
       mermas: this.mermas,

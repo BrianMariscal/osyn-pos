@@ -73,6 +73,25 @@ create table if not exists sales (
   data jsonb
 );
 
+create table if not exists returns (
+  id text primary key,
+  branch_id text references branches(id),
+  sale_id text,
+  folio text default '',
+  items jsonb default '[]'::jsonb,
+  total numeric default 0,
+  cost numeric default 0,
+  payment text,
+  customer_id text,
+  reason text default '',
+  note text default '',
+  cashier text default '',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  deleted boolean default false,
+  data jsonb
+);
+
 create table if not exists expenses (
   id text primary key,
   branch_id text references branches(id),
@@ -262,6 +281,7 @@ alter table products enable row level security;
 alter table product_stocks enable row level security;
 alter table customers enable row level security;
 alter table sales enable row level security;
+alter table returns enable row level security;
 alter table expenses enable row level security;
 alter table purchases enable row level security;
 alter table suppliers enable row level security;
@@ -392,6 +412,20 @@ create policy "txn_sales_update" on sales for update to authenticated
 create policy "txn_sales_delete" on sales for delete to authenticated
   using (public.current_user_role() = 'dueno');
 
+drop policy if exists "txn_returns_select" on returns;
+drop policy if exists "txn_returns_insert" on returns;
+drop policy if exists "txn_returns_update" on returns;
+drop policy if exists "txn_returns_delete" on returns;
+create policy "txn_returns_select" on returns for select to authenticated
+  using (public.is_manager() or branch_id = public.current_user_branch());
+create policy "txn_returns_insert" on returns for insert to authenticated
+  with check (public.is_manager() or branch_id = public.current_user_branch());
+create policy "txn_returns_update" on returns for update to authenticated
+  using (public.is_manager() or branch_id = public.current_user_branch())
+  with check (public.is_manager() or branch_id = public.current_user_branch());
+create policy "txn_returns_delete" on returns for delete to authenticated
+  using (public.current_user_role() = 'dueno');
+
 drop policy if exists "txn_expenses_select" on expenses;
 drop policy if exists "txn_expenses_insert" on expenses;
 drop policy if exists "txn_expenses_update" on expenses;
@@ -501,6 +535,9 @@ create index if not exists idx_customers_updated on customers (updated_at);
 create index if not exists idx_customers_branch on customers (branch_id);
 create index if not exists idx_sales_updated on sales (updated_at);
 create index if not exists idx_sales_branch_created on sales (branch_id, created_at);
+create index if not exists idx_returns_updated on returns (updated_at);
+create index if not exists idx_returns_branch_created on returns (branch_id, created_at);
+create index if not exists idx_returns_sale on returns (sale_id);
 create index if not exists idx_expenses_updated on expenses (updated_at);
 create index if not exists idx_expenses_branch on expenses (branch_id);
 create index if not exists idx_purchases_updated on purchases (updated_at);
@@ -543,7 +580,7 @@ begin
     create publication supabase_realtime;
   end if;
   foreach t in array array[
-    'branches', 'suppliers', 'products', 'product_stocks', 'customers', 'sales',
+    'branches', 'suppliers', 'products', 'product_stocks', 'customers', 'sales', 'returns',
     'expenses', 'purchases', 'mermas', 'shifts', 'month_closings', 'inventory_counts'
   ]
   loop

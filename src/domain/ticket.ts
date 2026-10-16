@@ -3,7 +3,7 @@
  */
 import { fmtMoney, lineTotalCents, toCents } from "../core/money";
 import { fmtQty } from "../core/qty";
-import { PAYMENT_LABELS, type Sale, type SaleItem } from "../core/types";
+import { PAYMENT_LABELS, type Sale, type SaleItem, type SaleReturn } from "../core/types";
 
 /** Folio legible y estable: AAMMDD-XXXX (fecha local + final del id). */
 export function saleFolio(sale: Pick<Sale, "id" | "created_at">): string {
@@ -64,4 +64,13 @@ export function ticketText(sale: Sale, storeName: string, branchName = ""): stri
   if (sale.cash_received) lines.push(`Pagó con: ${fmtMoney(toCents(sale.cash_received))}`, `Cambio: ${fmtMoney(toCents(sale.change ?? 0))}`);
   lines.push("", "¡Gracias por su compra!");
   return lines.join("\n");
+}
+
+/** Folio de la nota de devolución: D-AAMMDD-XXXX (mismo día + final del id). */
+export function returnFolio(ret: Pick<SaleReturn, "id" | "created_at">): string {
+  return `D-${saleFolio(ret)}`;
+}
+
+export function returnTotalCents(ret: SaleReturn): number {
+  return (ret.items ?? []).reduce((sum, item) => sum + lineTotalCents(item.qty, item.price), 0);
 }

@@ -1,5 +1,5 @@
-import { toCents, toPesos, sumCents } from "../core/money";
-import { normalizeQty } from "../core/qty";
+import { toCents, toPesos, sumCents, lineTotalCents } from "../core/money";
+import { roundQty4 } from "../core/qty";
 import type { PeriodReport, ProductSaleStat, Sale } from "../core/types";
 import type { Repositories } from "../data/repositories";
 import { VIEW_ALL } from "./app-state";
@@ -26,7 +26,7 @@ export class ReportService {
     private repos: Repositories,
     store: Store<AppState>
   ) {
-    const inputs = (state: AppState): unknown[] => [state.sales, state.expenses, state.purchases, state.mermas, state.products];
+    const inputs = (state: AppState): unknown[] => [state.sales, state.returns, state.expenses, state.purchases, state.mermas, state.products];
     let last = inputs(store.getState());
     store.subscribe(() => {
       const next = inputs(store.getState());
@@ -69,12 +69,16 @@ export class ReportService {
     const fixedCents = fixedCostsForRange(scopedExpenses, start, end);
     const purchases = this.repos.purchases.list().filter((purchase) => inScope(purchase.branch_id) && inRange(purchase.created_at));
     const mermas = this.repos.mermas.list().filter((merma) => inScope(merma.branch_id) && inRange(merma.created_at));
+    const returns = this.repos.returns.list().filter((ret) => inScope(ret.branch_id) && inRange(ret.created_at));
     const centsOf = (rows: Array<{ total: number }>): number => sumCents(rows.map((row) => toCents(row.total)));
     const salesTotalCents = centsOf(sales);
     const salesCostCents = sumCents(sales.map((sale) => toCents(sale.cost)));
     const extraCents = sumCents(extras.map((expense) => toCents(expense.amount)));
     const expensesTotalCents = extraCents + fixedCents;
     const purchasesTotalCents = centsOf(purchases);
+    // Devoluciones: revierten ingreso y costo; su margen baja la ganancia.
+    const returnsTotalCents = centsOf(returns);
+    const returnsCostCents = sumCents(returns.map((ret) => toCents(ret.cost)));
     const groups = groupTotalsCents(sales, (id) => this.repos.products.byId(id));
     const stats = this.productStats(sales);
     return {
@@ -93,7 +97,10 @@ export class ReportService {
       purchases_total: toPesos(purchasesTotalCents),
       mermas_total: toPesos(sumCents(mermas.map((merma) => toCents(merma.cost_impact)))),
       mermas_count: mermas.length,
-      profit_after_expenses: toPesos(salesTotalCents - salesCostCents - expensesTotalCents),
+      returns_total: toPesos(returnsTotalCents),
+      returns_cost: toPesos(returnsCostCents),
+      returns_count: returns.length,
+      profit_after_expenses: toPesos(salesTotalCents - salesCostCents - expensesTotalCents - (returnsTotalCents - returnsCostCents)),
       credit_total: toPesos(centsOf(sales.filter((sale) => sale.payment === "fiado"))),
       sales_count: sales.length,
       expenses_count: extras.length,
@@ -114,9 +121,9 @@ export class ReportService {
           total: 0,
           um: item.um
         };
-        // Cajas cuentan como sus piezas.
-        current.qty = normalizeQty(current.qty + normalizeQty(item.qty) * (item.pack_size || 1));
-        current.total = toPesos(sumCents([toCents(current.total), Math.round(normalizeQty(item.qty) * toCents(item.price))]));
+        // Cajas cuentan como sus piezas; el total cuadra al centavo como la venta.
+        current.qty = roundQty4(current.qty + roundQty4(item.qty) * (item.pack_size || 1));
+        current.total = toPesos(sumCents([toCents(current.total), lineTotalCents(item.qty, item.price)]));
         byProduct.set(item.productId, current);
       });
     });

@@ -6,6 +6,7 @@ import { PAYMENT_LABELS, type PaymentMethod } from "../../core/types";
 import { saleFolio } from "../../domain/ticket";
 import { paginate, pagerClick, pagerMarkup } from "../pager";
 import { openTicket } from "../ticket";
+import { openReturnFlow } from "../return-flow";
 import { VIEW_ALL } from "../../domain/app-state";
 import { confirmDialog } from "../components/modal";
 import { openReportPdf } from "../pdf";
@@ -147,7 +148,7 @@ export const reportesTab: TabModule = {
       }
       const row = target.closest<HTMLElement>("[data-ticket]");
       const sale = row && ctx.repos.sales.byId(row.dataset.ticket!);
-      if (sale) openTicket(ctx, sale);
+      if (sale) openTicket(ctx, sale, { onReturn: () => openReturnFlow(ctx, sale) });
     });
 
     const dateInput = root.querySelector<HTMLInputElement>("#reportDate")!;
@@ -188,6 +189,7 @@ export const reportesTab: TabModule = {
         <div><span>Gastos extra</span><strong>${fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)}</strong></div>
         <div><span>Compras proveedores</span><strong>${fmtMoneyPesos(report.purchases_total)}</strong></div>
         <div><span>Mermas</span><strong>${fmtMoneyPesos(report.mermas_total)}</strong></div>
+        <div><span>Devoluciones</span><strong>${fmtMoneyPesos(report.returns_total ?? 0)}</strong></div>
         <div class="row-strong"><span>Ganancia después de gastos</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
         <div><span>Fiado vendido</span><strong>${fmtMoneyPesos(report.credit_total)}</strong></div>
         <div><span>Consumo interno (a costo)</span><strong>${fmtMoneyPesos(report.internal_total ?? 0)}</strong></div>
@@ -305,7 +307,7 @@ export const reportesTab: TabModule = {
 
     initDates();
     ctx.store.watch(
-      (s) => [s.sales, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId] as const,
+      (s) => [s.sales, s.returns, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId] as const,
       () => {
         render();
         renderSalesDay();

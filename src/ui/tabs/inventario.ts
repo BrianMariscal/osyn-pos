@@ -4,6 +4,7 @@ import { uid } from "../../core/id";
 import { fmtMoneyPesos, sumCents, toCents, toPesos } from "../../core/money";
 import { fmtQty, normalizeQty } from "../../core/qty";
 import { UNITS, type Product, type Unit } from "../../core/types";
+import { isBulkUnit } from "../../core/units";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
 import { openCountPdf } from "../pdf";
@@ -385,13 +386,14 @@ export function openNewProductModal(ctx: AppContext, onDone: (product: Product) 
         </label>
       </div>
       <div class="row">
-        <label class="form-field">Costo
+        <label class="form-field">Costo <span id="pCostUnit" class="muted"></span>
           <input id="pCost" class="input" type="number" step="0.01" min="0" inputmode="decimal">
         </label>
-        <label class="form-field">Precio de venta
+        <label class="form-field">Precio de venta <span id="pPriceUnit" class="muted"></span>
           <input id="pPrice" class="input" type="number" step="0.01" min="0" inputmode="decimal" required>
         </label>
       </div>
+      <p id="pPriceHint" class="hint hidden">Con la unidad Gr el precio se cobra POR GRAMO. Si cobras por kilo, usa la unidad Kg.</p>
       <div class="row">
         <label class="form-field">Proveedor
           <select id="pSupplier" class="input">
@@ -472,6 +474,22 @@ export function openNewProductModal(ctx: AppContext, onDone: (product: Product) 
       const presetSupplier = preset.supplierId ? ctx.repos.suppliers.byId(preset.supplierId) : undefined;
       category = mountCategoryField(modalRoot, "pCategory", ctx);
       if (presetSupplier?.type) category.set(presetSupplier.type);
+      // A granel el precio es por unidad base (Kg, Gr, Lts): se avisa en la etiqueta
+      const unitSelect = modalRoot.querySelector<HTMLSelectElement>("#pUnit");
+      const priceField = modalRoot.querySelector<HTMLInputElement>("#pPrice");
+      const syncLabels = (): void => {
+        const unit = (unitSelect?.value ?? "Pza") as Unit;
+        const bulk = isBulkUnit(unit);
+        const costLabel = modalRoot.querySelector<HTMLElement>("#pCostUnit");
+        const priceLabel = modalRoot.querySelector<HTMLElement>("#pPriceUnit");
+        const hint = modalRoot.querySelector<HTMLElement>("#pPriceHint");
+        if (costLabel) costLabel.textContent = bulk ? `(por ${unit})` : "";
+        if (priceLabel) priceLabel.textContent = bulk ? `(por ${unit})` : "";
+        hint?.classList.toggle("hidden", !(unit === "Gr" && Number(priceField?.value || 0) >= 1));
+      };
+      unitSelect?.addEventListener("change", syncLabels);
+      priceField?.addEventListener("input", syncLabels);
+      syncLabels();
       modalRoot.querySelector<HTMLSelectElement>("#pSupplier")?.addEventListener("change", (event) => {
         const supplier = ctx.repos.suppliers.byId((event.target as HTMLSelectElement).value);
         if (supplier?.type && category?.isDefault()) category.set(supplier.type);

@@ -22,7 +22,7 @@ declare
   t text;
 begin
   foreach t in array array[
-    'branches', 'suppliers', 'products', 'product_stocks', 'customers', 'sales',
+    'branches', 'suppliers', 'products', 'product_stocks', 'customers', 'sales', 'returns',
     'expenses', 'purchases', 'mermas', 'shifts', 'month_closings', 'inventory_counts'
   ]
   loop
@@ -41,7 +41,7 @@ end $$;
 -- Recarga el esquema de PostgREST para que la columna nueva sea visible ya.
 notify pgrst, 'reload schema';
 
--- Verificación: deben salir 12 filas.
+-- Verificación: deben salir 13 filas (returns aparece tras migracion-devoluciones.sql).
 select distinct event_object_table as tabla, trigger_name
 from information_schema.triggers
 where trigger_name like 'trg_%_synced_at'

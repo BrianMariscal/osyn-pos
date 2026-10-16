@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_BRANCH_ID, MERMA_REASONS, PAYMENT_METHODS, SALE_GROUPS, SETTINGS_ROW_ID, UNITS } from "../core/types";
+import { DEFAULT_BRANCH_ID, MERMA_REASONS, PAYMENT_METHODS, REFUND_METHODS, SALE_GROUPS, SETTINGS_ROW_ID, UNITS } from "../core/types";
 import type {
   Branch,
   Customer,
@@ -10,6 +10,7 @@ import type {
   ProductStock,
   Purchase,
   Sale,
+  SaleReturn,
   Settings,
   Shift,
   TabId,
@@ -122,10 +123,11 @@ const productStockSchema = z.object({
 
 const movementSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(["cargo", "pago"]).catch("cargo"),
+  type: z.enum(["cargo", "pago", "devolucion"]).catch("cargo"),
   amount: num,
   note: z.string().catch(""),
   sale_id: optionalString,
+  return_id: optionalString,
   created_at: iso
 });
 
@@ -163,6 +165,37 @@ const saleSchema = z.object({
   profit: num,
   payment: z.enum(PAYMENT_METHODS as unknown as [string, ...string[]]).catch("efectivo"),
   customer_id: z.string().nullable().catch(null),
+  stock_by_server: bool.optional(),
+  created_at: iso,
+  updated_at: iso,
+  deleted: bool.optional()
+});
+
+const saleReturnItemSchema = z.object({
+  index: num,
+  productId: z.string().catch(""),
+  name: z.string().catch(""),
+  qty: num,
+  price: num,
+  cost: num,
+  um: unitSchema,
+  pack_size: optionalPositive,
+  group: saleGroupSchema
+});
+
+const saleReturnSchema = z.object({
+  id: z.string().min(1),
+  branch_id: z.string().catch(""),
+  sale_id: z.string().catch(""),
+  folio: z.string().catch(""),
+  items: z.array(saleReturnItemSchema).catch([]),
+  total: num,
+  cost: num,
+  payment: z.enum(REFUND_METHODS as unknown as [string, ...string[]]).catch("efectivo"),
+  customer_id: z.string().nullable().catch(null),
+  reason: z.string().catch(""),
+  note: z.string().catch(""),
+  cashier: optionalString,
   stock_by_server: bool.optional(),
   created_at: iso,
   updated_at: iso,
@@ -276,6 +309,7 @@ const appStateSchema = z.object({
   product_stocks: z.array(productStockSchema).catch([]),
   customers: z.array(customerSchema).catch([]),
   sales: z.array(saleSchema).catch([]),
+  returns: z.array(saleReturnSchema).catch([]),
   expenses: z.array(expenseSchema).catch([]),
   purchases: z.array(purchaseSchema).catch([]),
   mermas: z.array(mermaSchema).catch([]),
@@ -337,6 +371,7 @@ export function normalizeState(raw: unknown, settingsOverride?: Partial<Settings
     product_stocks: stocks,
     customers: data.customers as unknown as Customer[],
     sales: data.sales as unknown as Sale[],
+    returns: data.returns as unknown as SaleReturn[],
     expenses: data.expenses as unknown as Expense[],
     purchases: data.purchases as unknown as Purchase[],
     mermas: data.mermas as unknown as Merma[],

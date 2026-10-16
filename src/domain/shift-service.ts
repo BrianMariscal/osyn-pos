@@ -57,6 +57,9 @@ export class ShiftService {
       .filter((e) => e.branch_id === branchId && !isFixedCost(e) && since(e.created_at));
     const purchases = this.repos.purchases.list().filter((p) => p.branch_id === branchId && since(p.created_at));
     const mermas = this.repos.mermas.list().filter((m) => m.branch_id === branchId && since(m.created_at));
+    // Devoluciones del turno: bajan el efectivo (si se reembolsaron en efectivo)
+    // y bajan la ganancia por su margen (venta - costo).
+    const returns = this.repos.returns.list().filter((ret) => ret.branch_id === branchId && since(ret.created_at));
     const totalCents = (rows: Array<{ total: number }>): number => sumCents(rows.map((row) => toCents(row.total)));
     const ventas = totalCents(sales);
     const gastos = sumCents(expenses.map((expense) => toCents(expense.amount)));
@@ -64,8 +67,11 @@ export class ShiftService {
     const proveedores = totalCents(purchases.filter((p) => p.paid_from !== "aparte"));
     const proveedoresAparte = totalCents(purchases.filter((p) => p.paid_from === "aparte"));
     const mermasCents = sumCents(mermas.map((merma) => toCents(merma.cost_impact)));
+    const devolucionesCents = totalCents(returns);
+    const devolucionesEfectivoCents = totalCents(returns.filter((ret) => ret.payment === "efectivo"));
+    const margenDevueltoCents = sumCents(returns.map((ret) => toCents(ret.total) - toCents(ret.cost)));
     const efectivo = totalCents(sales.filter((s) => s.payment === "efectivo"));
-    const gananciaCents = sumCents(sales.map((s) => toCents(s.profit))) - gastos;
+    const gananciaCents = sumCents(sales.map((s) => toCents(s.profit))) - gastos - margenDevueltoCents;
     const groups = groupTotalsCents(sales, (id) => this.repos.products.byId(id));
     return {
       ventas: toPesos(ventas),
@@ -76,12 +82,14 @@ export class ShiftService {
       cigarros: toPesos(groups.cigarros),
       cerveza: toPesos(groups.cerveza),
       interno: toPesos(sumCents(internal.map((s) => toCents(s.cost)))),
+      devoluciones: toPesos(devolucionesCents),
+      devolucionesEfectivo: toPesos(devolucionesEfectivoCents),
       gastos: toPesos(gastos),
       proveedores: toPesos(proveedores),
       proveedoresAparte: toPesos(proveedoresAparte),
       mermas: toPesos(mermasCents),
       ganancia: toPesos(gananciaCents),
-      efectivoEsperado: toPesos(efectivo - gastos - proveedores)
+      efectivoEsperado: toPesos(efectivo - gastos - proveedores - devolucionesEfectivoCents)
     };
   }
 

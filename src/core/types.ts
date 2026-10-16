@@ -128,12 +128,63 @@ export interface Sale {
 
 export interface CustomerMovement {
   id: string;
-  type: "cargo" | "pago";
+  type: "cargo" | "pago" | "devolucion";
   amount: number;
   note: string;
   /** Venta que originó el cargo (ventas fiadas). */
   sale_id?: string;
+  /** Devolución que originó el abono. */
+  return_id?: string;
   created_at: string;
+}
+
+/** Cómo se le reembolsa al cliente una devolución. "fiado" = abono a su cuenta. */
+export type RefundMethod = "efectivo" | "transferencia" | "tarjeta" | "fiado";
+export const REFUND_METHODS: readonly RefundMethod[] = ["efectivo", "transferencia", "tarjeta", "fiado"];
+export const REFUND_LABELS: Record<RefundMethod, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+  tarjeta: "Tarjeta",
+  fiado: "Abono a fiado"
+};
+
+export const RETURN_REASONS = ["Se arrepintió", "Producto dañado", "Error de cobro", "Otro"] as const;
+export type ReturnReason = (typeof RETURN_REASONS)[number];
+
+export interface SaleReturnItem {
+  /** Posición del renglón en la venta original (el servidor topa la cantidad ahí). */
+  index: number;
+  productId: string;
+  name: string;
+  qty: number;
+  price: number;
+  cost: number;
+  um: Unit;
+  pack_size?: number;
+  group?: SaleGroup;
+}
+
+/** Devolución de mercancía: regresa stock al inventario y reembolsa al cliente. */
+export interface SaleReturn {
+  id: string;
+  branch_id: string;
+  sale_id: string;
+  /** Folio de la venta original (AAMMDD-XXXX), para buscarla fácil. */
+  folio: string;
+  items: SaleReturnItem[];
+  /** Importe reembolsado, a precio de venta. */
+  total: number;
+  /** Costo de lo devuelto (para la ganancia del periodo). */
+  cost: number;
+  payment: RefundMethod;
+  customer_id: string | null;
+  reason: string;
+  note: string;
+  cashier?: string;
+  stock_by_server?: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted?: boolean;
 }
 
 export interface Customer {
@@ -240,6 +291,10 @@ export interface ShiftSummary {
   cerveza?: number;
   /** Consumo interno de la tienda, valuado a costo (NO incluido en `ventas`). */
   interno?: number;
+  /** Devoluciones del turno (todas las formas de reembolso). */
+  devoluciones?: number;
+  /** Devoluciones reembolsadas EN EFECTIVO: bajan el efectivo esperado. */
+  devolucionesEfectivo?: number;
   gastos: number;
   proveedores: number;
   mermas: number;
@@ -291,6 +346,10 @@ export interface PeriodReport {
   purchases_total: number;
   mermas_total: number;
   mermas_count: number;
+  /** Devoluciones del periodo: importe reembolsado y su costo. */
+  returns_total?: number;
+  returns_cost?: number;
+  returns_count?: number;
   profit_after_expenses: number;
   credit_total: number;
   sales_count: number;
@@ -382,6 +441,7 @@ export type SyncTableKey =
   | "product_stocks"
   | "customers"
   | "sales"
+  | "returns"
   | "expenses"
   | "purchases"
   | "mermas"
@@ -459,8 +519,8 @@ export const DEFAULT_ADMIN_TABS: readonly TabId[] = [...ALL_TABS];
 
 /** Tablas que consume cada pestaña (para limitar la sync de un empleado). */
 export const TAB_TABLES: Record<TabId, readonly SyncTableKey[]> = {
-  inicio: ["products", "product_stocks", "customers", "sales", "expenses", "purchases", "shifts"],
-  venta: ["products", "product_stocks", "customers", "sales", "suppliers"],
+  inicio: ["products", "product_stocks", "customers", "sales", "returns", "expenses", "purchases", "shifts"],
+  venta: ["products", "product_stocks", "customers", "sales", "returns", "suppliers"],
   entradas: ["products", "product_stocks", "purchases", "suppliers"],
   productos: ["products", "product_stocks", "suppliers"],
   inventario: ["products", "product_stocks", "inventory_counts"],
@@ -468,12 +528,13 @@ export const TAB_TABLES: Record<TabId, readonly SyncTableKey[]> = {
   fiado: ["customers", "sales"],
   gastos: ["expenses"],
   proveedores: ["products", "product_stocks", "purchases", "suppliers"],
-  corte: ["sales", "expenses", "purchases", "mermas", "shifts"],
+  corte: ["sales", "returns", "expenses", "purchases", "mermas", "shifts"],
   reportes: [
     "products",
     "product_stocks",
     "customers",
     "sales",
+    "returns",
     "expenses",
     "purchases",
     "shifts",

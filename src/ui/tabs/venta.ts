@@ -1,7 +1,18 @@
-import { html, setHtml } from "../../core/html";
+import { html, setHtml, type SafeHtml } from "../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents, speakPesos, sumCents } from "../../core/money";
 import { fmtQty } from "../../core/qty";
-import { type CartUnit, type PaymentMethod, type Product, type Supplier } from "../../core/types";
+import {
+  AMOUNT_QUICK_PICKS,
+  bulkQuickPicks,
+  bulkSubunits,
+  defaultBulkSubunit,
+  fromBaseQty,
+  isBulkUnit,
+  qtyFromAmount,
+  toBaseQty,
+  type BulkSubunit
+} from "../../core/units";
+import { type CartLine, type CartUnit, type PaymentMethod, type Product, type Supplier } from "../../core/types";
 import { resolveScannedCode, searchProducts } from "../../domain/catalog";
 import { scanBarcode } from "../scanner";
 import { iconFor } from "../icons";
@@ -9,6 +20,7 @@ import { speak, vibrate, isVoiceEnabled } from "../voice-recognition";
 import { openNewProductModal } from "./inventario";
 import { cashChange, quickCashOptions } from "../../domain/ticket";
 import { openTicket } from "../ticket";
+import { openReturnFlow } from "../return-flow";
 import { openModal } from "../components/modal";
 import type { TabModule } from "./tab-module";
 
@@ -47,7 +59,10 @@ export const ventaTab: TabModule = {
 
             <div class="pos-lines-head">
               <h2>Productos de la venta <span class="count-badge" data-tone="blue" id="cartBadge"></span></h2>
-              <button id="clearCart" class="ghost danger small-btn" type="button">${iconFor("trash")} Vaciar</button>
+              <div class="head-actions">
+                <button id="returnSale" class="ghost small-btn" type="button" title="Devolver mercancía de una venta">${iconFor("transfer")}<span class="hide-sm">Devolución</span></button>
+                <button id="clearCart" class="ghost danger small-btn" type="button">${iconFor("trash")} Vaciar</button>
+              </div>
             </div>
             <div class="pos-lines-cols" aria-hidden="true"><span>Producto</span><span>Cantidad</span><span>Importe</span><span></span></div>
             <div id="cartItems" class="pos-lines"></div>
@@ -140,6 +155,61 @@ export const ventaTab: TabModule = {
     const matchesFor = (query: string): Product[] => {
       const suppliers = suppliersById();
       return searchProducts(sellable(), query, (p) => (p.supplier_id ? suppliers.get(p.supplier_id) : undefined));
+    };
+
+    // ---------------- Captura a granel (peso, volumen e importe) ----------------
+
+    /** Preferencia de captura por producto: subunidad (g/kg, ml/L) y modo importe. */
+    const bulkPrefs = new Map<string, { subunitId?: string; amount?: boolean }>();
+    const bulkOf = (product: Product): { subunit: BulkSubunit; amount: boolean } => {
+      const pref = bulkPrefs.get(product.id);
+      const subunits = bulkSubunits(product.um);
+      const subunit = subunits.find((s) => s.id === pref?.subunitId) ?? defaultBulkSubunit(product.um);
+      return { subunit, amount: Boolean(pref?.amount) };
+    };
+    const setBulkPref = (productId: string, pref: { subunitId?: string; amount?: boolean }): void => {
+      bulkPrefs.set(productId, { ...bulkPrefs.get(productId), ...pref });
+    };
+
+    /** Cantidad en unidad base a partir de lo capturado (peso o importe). */
+    const bulkBaseFromInput = (product: Product, amount: boolean, subunit: BulkSubunit, raw: string | number): number => {
+      const value = Number(String(raw).replace(",", "."));
+      if (!Number.isFinite(value) || value <= 0) return 0;
+      return amount ? qtyFromAmount(value, ctx.sales.unitPrice({ productId: product.id, qty: 0 })) : toBaseQty(value, subunit);
+    };
+
+    /** Texto "= …" que se actualiza en vivo mientras se teclea. */
+    const bulkPreviewText = (product: Product, amount: boolean, base: number): string => {
+      if (base <= 0) return "= —";
+      const price = ctx.sales.unitPrice({ productId: product.id, qty: 0 });
+      return amount ? `= ${fmtQty(base)} ${product.um}` : `= ${fmtMoney(lineTotalCents(base, price))}`;
+    };
+
+    /** Campo de báscula: cantidad + unidad (g/kg, ml/L) o importe, con atajos. */
+    const bulkCaptureHtml = (product: Product, line: CartLine): SafeHtml => {
+      const price = ctx.sales.unitPrice(line);
+      const { subunit, amount } = bulkOf(product);
+      const inputValue = amount
+        ? String(Number((lineTotalCents(line.qty, price) / 100).toFixed(2)))
+        : String(Number(fromBaseQty(line.qty, subunit).toFixed(4)));
+      const preview = amount ? `= ${fmtQty(line.qty)} ${product.um}` : `= ${fmtMoney(lineTotalCents(line.qty, price))}`;
+      const chips = amount
+        ? AMOUNT_QUICK_PICKS.map((value) => ({ base: qtyFromAmount(value, price), label: `$${value}` }))
+        : bulkQuickPicks(product.um).map((pick) => ({ base: pick.qty, label: pick.label }));
+      const step = amount ? 0.5 : subunit.id === "g" || subunit.id === "ml" ? 10 : 0.25;
+      return html`
+        <div class="bulk-capture" data-bulk>
+          <div class="bulk-inputs">
+            <input class="input" type="number" min="0" step="${step}" value="${inputValue}" data-qty data-bulk-input inputmode="decimal" aria-label="Cantidad de ${product.name}${amount ? " en pesos" : ` en ${subunit.label}`}">
+            <button type="button" class="bulk-unit ${amount ? "hidden" : ""}" data-bulk-unit title="Cambiar unidad">${subunit.label}</button>
+            <button type="button" class="bulk-mode ${amount ? "active" : ""}" data-bulk-mode aria-pressed="${amount ? "true" : "false"}" title="Capturar por importe (ej. $20 de…)">$</button>
+          </div>
+          <span class="bulk-preview" data-bulk-preview aria-live="polite">${preview}</span>
+          <div class="bulk-chips" data-bulk-chips>
+            ${chips.map((chip) => html`<button type="button" class="bulk-chip" data-bulk-chip="${chip.base}">${chip.label}</button>`)}
+          </div>
+        </div>
+      `;
     };
 
     // ---------------- Búsqueda: escribir o escanear agrega directo ----------------
@@ -376,8 +446,9 @@ export const ventaTab: TabModule = {
           const onOffer = !isBox && unit !== product.price;
           const step = isBox ? 1 : qtyStep(product.um);
           const byPack = ctx.sales.sellsByPack(product.id);
+          const bulk = isBulkUnit(product.um) && !isBox;
           return html`
-            <div class="pos-line" data-line="${line.productId}" data-unit="${lineUnit}">
+            <div class="pos-line ${bulk ? "bulk" : ""}" data-line="${line.productId}" data-unit="${lineUnit}">
               <div class="pos-line-info">
                 <strong>${product.name}</strong>
                 <span class="muted">${isBox
@@ -392,11 +463,13 @@ export const ventaTab: TabModule = {
                     </div>`
                   : html``}
               </div>
-              <div class="qty-stepper" data-step="${step}">
-                <button type="button" data-qty-dec aria-label="Menos cantidad">−</button>
-                <input class="input" type="number" min="0" max="${ctx.sales.availableFor(line.productId, lineUnit)}" step="${step}" value="${line.qty}" data-qty inputmode="decimal" aria-label="Cantidad de ${product.name}${isBox ? " en cajas" : ""}">
-                <button type="button" data-qty-inc aria-label="Más cantidad">+</button>
-              </div>
+              ${bulk
+                ? bulkCaptureHtml(product, line)
+                : html`<div class="qty-stepper" data-step="${step}">
+                    <button type="button" data-qty-dec aria-label="Menos cantidad">−</button>
+                    <input class="input" type="number" min="0" max="${ctx.sales.availableFor(line.productId, lineUnit)}" step="${step}" value="${line.qty}" data-qty inputmode="decimal" aria-label="Cantidad de ${product.name}${isBox ? " en cajas" : ""}">
+                    <button type="button" data-qty-inc aria-label="Más cantidad">+</button>
+                  </div>`}
               <strong class="pos-line-total">${fmtMoney(lineTotalCents(line.qty, unit))}</strong>
               <button class="icon-btn danger" type="button" data-remove aria-label="Quitar ${product.name}">${iconFor("trash")}</button>
             </div>
@@ -430,10 +503,36 @@ export const ventaTab: TabModule = {
       return { productId: row.dataset.line!, unit: row.dataset.unit === "caja" ? "caja" : "pza" };
     };
 
+    // Vista previa en vivo mientras se teclea la captura a granel
+    items.addEventListener("input", (event) => {
+      const input = (event.target as HTMLElement).closest<HTMLInputElement>("[data-bulk-input]");
+      if (!input) return;
+      const line = lineOf(input);
+      const product = line && ctx.repos.products.byId(line.productId);
+      if (!line || !product) return;
+      const { subunit, amount } = bulkOf(product);
+      const base = bulkBaseFromInput(product, amount, subunit, input.value);
+      const preview = input.closest<HTMLElement>("[data-bulk]")?.querySelector<HTMLElement>("[data-bulk-preview]");
+      if (preview) preview.textContent = bulkPreviewText(product, amount, base);
+    });
+
     items.addEventListener("change", (event) => {
       const input = (event.target as HTMLElement).closest<HTMLInputElement>("[data-qty]");
       const line = input && lineOf(input);
       if (!input || !line) return;
+      const product = ctx.repos.products.byId(line.productId);
+      if (input.hasAttribute("data-bulk-input") && product) {
+        // A granel el campo captura gramos/kilos o el importe, no la unidad base
+        const { subunit, amount } = bulkOf(product);
+        const base = bulkBaseFromInput(product, amount, subunit, input.value);
+        if (base <= 0) {
+          ctx.sales.removeFromCart(line.productId, line.unit);
+          return;
+        }
+        const result = ctx.sales.setCartQty(line.productId, base, line.unit);
+        if (!result.ok) ctx.toast(result.error);
+        return;
+      }
       const result = ctx.sales.setCartQty(line.productId, input.value, line.unit);
       if (!result.ok) ctx.toast(result.error);
     });
@@ -452,6 +551,36 @@ export const ventaTab: TabModule = {
         const result = ctx.sales.setLineUnit(line.productId, line.unit, to);
         if (!result.ok) ctx.toast(result.error);
         return;
+      }
+      const bulkBox = target.closest<HTMLElement>("[data-bulk]");
+      if (bulkBox) {
+        const product = ctx.repos.products.byId(line.productId);
+        if (!product) return;
+        if (target.closest("[data-bulk-unit]")) {
+          // Alterna la subunidad: g ↔ kg, ml ↔ L
+          const subunits = bulkSubunits(product.um);
+          const { subunit } = bulkOf(product);
+          const next = subunits[(subunits.findIndex((s) => s.id === subunit.id) + 1) % subunits.length]!;
+          setBulkPref(product.id, { subunitId: next.id });
+          renderCart();
+          return;
+        }
+        if (target.closest("[data-bulk-mode]")) {
+          // Alterna entre capturar peso/volumen o importe
+          setBulkPref(product.id, { amount: !bulkOf(product).amount });
+          renderCart();
+          return;
+        }
+        const chip = target.closest<HTMLElement>("[data-bulk-chip]");
+        if (chip) {
+          const base = Number(chip.dataset.bulkChip);
+          if (base > 0) {
+            const result = ctx.sales.setCartQty(product.id, base, "pza");
+            if (!result.ok) ctx.toast(result.error);
+          }
+          return;
+        }
+        return; // clics dentro de la captura (el input) no son de la escalera
       }
       const inc = target.closest<HTMLElement>("[data-qty-inc]");
       const dec = target.closest<HTMLElement>("[data-qty-dec]");
@@ -492,6 +621,10 @@ export const ventaTab: TabModule = {
     customer.addEventListener("change", () => {
       renderPaymentState();
       if (customer.value === NEW_CUSTOMER) ncName.focus();
+    });
+
+    root.querySelector<HTMLButtonElement>("#returnSale")!.addEventListener("click", () => {
+      openReturnFlow(ctx);
     });
 
     root.querySelector<HTMLButtonElement>("#clearCart")!.addEventListener("click", () => {
@@ -550,7 +683,7 @@ export const ventaTab: TabModule = {
       }
       cashInput.value = "";
       resetSearch();
-      openTicket(ctx, sale, { justSold: true });
+      openTicket(ctx, sale, { justSold: true, onReturn: () => openReturnFlow(ctx, sale) });
       if (sale.change) speak(`Cambio: ${speakPesos(sale.change)}.`, voiceEnabled());
       renderCart();
       window.scrollTo({ top: 0 });

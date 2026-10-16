@@ -5,6 +5,7 @@ import type { BranchService } from "../domain/branch-service";
 import type { CreditService } from "../domain/credit-service";
 import type { InventoryService } from "../domain/inventory-service";
 import type { ReportService } from "../domain/report-service";
+import type { ReturnService } from "../domain/return-service";
 import type { ExpenseService } from "../domain/expense-service";
 import type { SaleService } from "../domain/sale-service";
 import type { SettingsService } from "../domain/settings-service";
@@ -34,6 +35,7 @@ export interface AppContext {
   settings: SettingsService;
   sales: SaleService;
   credit: CreditService;
+  returns: ReturnService;
   inventory: InventoryService;
   shifts: ShiftService;
   reports: ReportService;
