@@ -1,0 +1,146 @@
+/* ---------- Listas plegables (Productos, Proveedores) ---------- */
+.collapsible-list { display: grid; gap: var(--sp-2); margin-top: var(--sp-3); }
+.collapsible-list > .list { margin-top: 0; }
+.row-item { border-bottom: var(--line-w) solid var(--line); background: var(--card); }
+.list > .row-item:last-child, .collapsible-list > .row-item:last-child { border-bottom: 0; }
+.collapsible-list > .row-item { border: var(--line-w) solid var(--line); border-radius: var(--r-sm); }
+.row-item > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  list-style: none;
+  min-height: 52px;
+}
+.row-item > summary::-webkit-details-marker, .group-box > summary::-webkit-details-marker, .form-box > summary::-webkit-details-marker { display: none; }
+.row-item > summary::after, .group-box > summary::after {
+  content: "";
+  width: 8px; height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform var(--t-fast) var(--ease);
+  flex-shrink: 0;
+  margin-left: var(--sp-1);
+}
+.row-item[open] > summary::after, .group-box[open] > summary::after { transform: rotate(225deg) translateY(-2px); }
+.row-item > summary:hover { background: var(--card-2); }
+.row-item[open] > summary { background: var(--card-2); }
+.row-title { display: grid; min-width: 0; flex: 1; }
+.row-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-title small { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-price { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row-body { padding: 0 var(--sp-4) var(--sp-4); background: var(--card-2); }
+.row-body .actions { margin-top: var(--sp-3); }
+.row-item.inactive > summary { opacity: 0.6; }
+.list-more { margin-top: var(--sp-2); }
+
+.group-box { border: var(--line-w) solid var(--line); border-radius: var(--r); background: var(--card); overflow: hidden; }
+.group-box > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 52px;
+  cursor: pointer;
+  list-style: none;
+}
+.group-box > summary strong { flex: 1; }
+.group-box > summary:hover { background: var(--card-2); }
+.group-box > .list { margin: 0; border: 0; border-top: var(--line-w) solid var(--line); border-radius: 0; }
+
+/* Formulario plegable de producto */
+.form-box > summary { display: grid; gap: 2px; cursor: pointer; list-style: none; }
+.form-box[open] > summary .hint { display: none; }
+.form-box > summary h2::before { content: "＋ "; color: var(--primary); }
+.form-box[open] > summary h2::before { content: ""; }
+.form-box > .form, .form-box > .hint { margin-top: var(--sp-3); }
+.form-box-foot { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: var(--line-w) solid var(--line); display: grid; gap: var(--sp-1); }
+.form-box-foot .actions { margin: var(--sp-2) 0 0; }
+
+/* ---------- Venta: vista previa del producto ---------- */
+.preview-card {
+  margin: var(--sp-3) 0;
+  padding: var(--sp-4);
+  border: var(--line-w) solid color-mix(in srgb, var(--primary) 40%, var(--line));
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--primary) 6%, var(--card));
+  display: grid;
+  gap: var(--sp-3);
+  animation: fade-slide var(--t) var(--ease);
+}
+.preview-head { display: flex; justify-content: space-between; align-items: center; }
+.preview-head .icon-btn { width: 34px; height: 34px; min-height: 34px; }
+.preview-item { display: grid; gap: var(--sp-2); }
+.preview-item + .preview-item { padding-top: var(--sp-3); border-top: var(--line-w) solid var(--line); }
+.preview-main { display: flex; justify-content: space-between; gap: var(--sp-3); align-items: flex-start; }
+.preview-info { display: grid; gap: 2px; min-width: 0; }
+.preview-name { font-size: var(--fs-lg); line-height: 1.25; }
+.preview-info .muted { font-size: var(--fs-xs); }
+.preview-price { display: grid; justify-items: end; text-align: right; flex-shrink: 0; }
+.preview-price strong { font-size: 1.6rem; font-weight: 800; color: var(--primary); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.preview-price .muted { font-size: var(--fs-xs); }
+.preview-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; font-size: var(--fs-sm); }
+.preview-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.preview-actions .qty-stepper { width: auto; }
+.preview-actions .qty-stepper .input { width: 64px; }
+.preview-actions .grow { flex: 1; min-width: 160px; }
+
+/* ---------- Compras: buscador de producto ---------- */
+.combo { position: relative; display: grid; gap: var(--sp-1); grid-template-columns: 1fr !important; }
+.combo-list {
+  display: grid;
+  border: var(--line-w) solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.combo-option {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  align-items: center;
+  border: 0;
+  border-bottom: var(--line-w) solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  min-height: 42px;
+  font-weight: 600;
+}
+.combo-option:last-child { border-bottom: 0; }
+.combo-option:hover { background: var(--card-2); }
+.combo-option.active { background: color-mix(in srgb, var(--primary) 12%, var(--card)); color: var(--primary); }
+.combo-option small { font-weight: 500; white-space: nowrap; }
+.combo-empty { padding: var(--sp-3); color: var(--muted); font-size: var(--fs-sm); }
+.combo-picked { font-size: var(--fs-xs); font-weight: 700; color: var(--c-green); }
+.combo-pop:empty { display: none; }
+
+/* Logo: completo, sin recortar, con cualquier proporción */
+.login-logo {
+  width: auto;
+  height: auto;
+  max-width: min(240px, 70vw);
+  max-height: 96px;
+  object-fit: contain;
+  border-radius: 14px;
+  padding: 6px;
+  background: var(--card);
+  border: var(--line-w) solid var(--line);
+  box-shadow: var(--shadow-card);
+}
+.store-logo {
+  width: auto;
+  max-width: 120px;
+  height: 36px;
+  object-fit: contain;
+  padding: 2px;
+  background: var(--card);
+}
+@media (max-width: 520px) { .store-logo { max-width: 84px; } }
+

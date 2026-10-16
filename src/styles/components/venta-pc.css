@@ -1,0 +1,192 @@
+/* ==========================================================================
+   Punto de venta (Venta): buscar + renglones a la izquierda, cobro a la derecha
+   ========================================================================== */
+.pos { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(360px, 1fr); gap: var(--sp-4); align-items: start; }
+.pos-pay { position: sticky; top: 72px; display: grid; gap: var(--sp-3); }
+.pos-pay > .micro { margin-bottom: -4px; }
+
+.pos-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  min-height: 58px;
+  border: 2px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--input-bg);
+  color: var(--muted);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.search-field:focus-within { border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
+.search-field svg { width: 22px; height: 22px; flex-shrink: 0; }
+.search-field input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-lg); padding: 0.6rem 0; }
+.pos-search .primary { min-height: 58px; border-radius: var(--r); padding-inline: 1.1rem; font-size: var(--fs-md); }
+.pos-search .primary svg { width: 22px; height: 22px; }
+
+.search-results { margin-top: var(--sp-2); border: var(--line-w) solid var(--line-strong); border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow-card); background: var(--card); }
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  border: 0;
+  border-bottom: var(--line-w) solid var(--line);
+  border-radius: 0;
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 56px;
+  font-weight: 400;
+}
+.result-row:last-of-type { border-bottom: 0; }
+.result-row:hover, .result-row:focus-visible { background: color-mix(in srgb, var(--primary) 8%, var(--card)); outline: none; }
+.result-row .row-price { font-size: var(--fs-md); min-width: 76px; text-align: right; }
+.search-empty, .search-more { padding: var(--sp-3) var(--sp-4); color: var(--muted); font-size: var(--fs-sm); }
+.search-more { border-top: var(--line-w) solid var(--line); background: var(--card-2); }
+
+/* Vista previa compacta */
+.pos .preview-card { margin: var(--sp-3) 0 0; }
+.pos .preview-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--sp-3); align-items: start; }
+.pos .preview-info { gap: 4px; justify-items: start; }
+.pos .preview-price strong { font-size: 2rem; }
+.preview-close { width: 34px; height: 34px; min-height: 34px; }
+.preview-add { min-height: 48px; font-size: var(--fs-md); }
+
+/* Renglones de la venta */
+.pos-lines-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); margin-top: var(--sp-5); padding-bottom: var(--sp-2); border-bottom: 2px solid var(--line); }
+.pos-lines-head h2 { font-size: var(--fs-md); display: flex; align-items: center; gap: var(--sp-2); }
+.head-actions { display: flex; align-items: center; gap: var(--sp-2); }
+.pos-empty #clearCart { visibility: hidden; }
+.pos-lines-cols, .pos-line { display: grid; grid-template-columns: minmax(0, 1fr) 132px 96px 40px; gap: var(--sp-3); align-items: center; }
+.pos-lines-cols { padding: var(--sp-2) var(--sp-2) var(--sp-1); font-size: var(--fs-2xs); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.pos-lines-cols span:nth-child(3) { text-align: right; }
+.pos-empty .pos-lines-cols { display: none; }
+.pos-line { padding: var(--sp-3) var(--sp-2); border-bottom: var(--line-w) solid var(--line); }
+.pos-line:last-child { border-bottom: 0; }
+.pos-line:hover { background: var(--card-2); }
+.pos-line-info { display: grid; gap: 2px; min-width: 0; }
+.pos-line-info strong { font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pos-line-info .muted { font-size: var(--fs-xs); }
+.pos-line-info .unit-toggle { margin-top: 4px; justify-self: start; }
+.pos-line .qty-stepper { width: 132px; }
+.pos-line.bulk { grid-template-columns: minmax(0, 1fr) 168px 96px 40px; }
+.pos-line-total { text-align: right; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.pos-line .icon-btn { width: 36px; height: 36px; min-height: 36px; }
+.pos-lines .cart-empty-note { padding: var(--sp-5) var(--sp-3); }
+
+/* Barra inferior en celular */
+.pos-bar { display: none; }
+
+@media (max-width: 1100px) {
+  .pos { grid-template-columns: minmax(0, 1fr) minmax(330px, 0.9fr); }
+  .pos-lines-cols, .pos-line { grid-template-columns: minmax(0, 1fr) 118px 84px 36px; gap: var(--sp-2); }
+  .pos-line .qty-stepper { width: 118px; }
+  .pos-line.bulk { grid-template-columns: minmax(0, 1fr) 148px 84px 36px; }
+}
+@media (max-width: 860px) {
+  .pos { grid-template-columns: 1fr; }
+  .pos-pay { position: static; }
+  .pos-lines-cols { display: none; }
+  .pos-line { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "info info del" "qty total total"; row-gap: var(--sp-2); }
+  .pos-line-info { grid-area: info; }
+  .pos-line .qty-stepper { grid-area: qty; }
+  .pos-line .bulk-capture { grid-area: qty; }
+  .pos-line-total { grid-area: total; font-size: var(--fs-lg); }
+  .pos-line .icon-btn { grid-area: del; }
+  .pos .preview-main { grid-template-columns: minmax(0, 1fr) auto; }
+  .pos .preview-close { grid-column: 2; grid-row: 1; }
+  .pos .preview-price { grid-column: 1 / -1; justify-items: start; text-align: left; }
+  .pos-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    z-index: 15;
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--card);
+    border-top: var(--line-w) solid var(--line);
+    box-shadow: 0 -8px 24px rgba(10, 16, 13, 0.14);
+  }
+  .pos-bar.hidden { display: none; }
+  .pos-bar-total { display: grid; }
+  .pos-bar-total span { font-size: var(--fs-xs); color: var(--muted); font-weight: 700; }
+  .pos-bar-total strong { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .pos-bar .pay-button { width: auto; min-height: 52px; padding-inline: 1.6rem; font-size: var(--fs-lg); }
+  #panel-venta.active { padding-bottom: 84px; }
+}
+.pos .pay-methods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pos .pay-methods button { flex-direction: column; display: flex; justify-content: center; align-items: center; gap: 4px; min-height: 58px; min-width: 0; padding-inline: 0.3rem; font-size: var(--fs-xs); }
+/* Con espacio de sobra (≥ 135 px por botón) el ícono va al lado del texto */
+.pos .pos-pay { container-type: inline-size; }
+@container (min-width: 430px) {
+  .pos .pay-methods button { flex-direction: row; gap: 8px; min-height: 50px; font-size: var(--fs-sm); }
+}
+.pos .pay-methods button svg { width: 20px; height: 20px; }
+.pos .cash-quick { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.pos .cash-quick .chip-btn { padding-inline: 0.2rem; }
+.pos-bar.in-view { display: none !important; }
+@media (max-width: 860px) {
+  .pos .pay-methods button { font-size: var(--fs-xs); gap: 6px; }
+}
+
+/* Venta: atajos y renglón recién agregado */
+.kbd-hint { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); }
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  border: var(--line-w) solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--ink);
+  font: 700 var(--fs-2xs)/1.4 var(--font);
+  text-align: center;
+  white-space: nowrap;
+}
+.link-btn { min-height: 0; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: inherit; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+@media (max-width: 860px) { .kbd-hint { display: none; } }
+.result-row.active { background: color-mix(in srgb, var(--primary) 12%, var(--card)); box-shadow: inset 3px 0 0 var(--primary); }
+.search-keys { padding: 6px var(--sp-4); font-size: var(--fs-2xs); color: var(--muted); background: var(--card-2); border-top: var(--line-w) solid var(--line); }
+@media (max-width: 860px) { .search-keys { display: none; } }
+.pos-line.flash { animation: line-flash 900ms var(--ease); }
+@keyframes line-flash { 0% { background: color-mix(in srgb, var(--c-green) 28%, var(--card)); } 100% { background: transparent; } }
+.shortcut-list { display: grid; gap: 6px; }
+.shortcut-list > div { display: grid; grid-template-columns: minmax(150px, auto) 1fr; gap: var(--sp-3); align-items: center; padding: 6px 0; border-bottom: var(--line-w) solid var(--line); font-size: var(--fs-sm); }
+.shortcut-list > div:last-child { border-bottom: 0; }
+.shortcut-list kbd { justify-self: start; font-size: 0.78rem; }
+
+/* Inicio: meta de nómina de la semana */
+.payroll-card { margin-bottom: var(--sp-4); border-top: 4px solid var(--c-violet); }
+.payroll-progress { margin: var(--sp-2) 0 var(--sp-3); }
+.payroll-bar { height: 16px; border-radius: 999px; background: var(--card-2); border: var(--line-w) solid var(--line); overflow: hidden; }
+.payroll-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--c-violet), var(--c-blue)); transition: width var(--t-slow) var(--ease); }
+.payroll-progress.done .payroll-bar > div { background: var(--c-green); }
+.payroll-figures { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; font-size: var(--fs-sm); color: var(--muted); }
+.payroll-figures b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.payroll-figures strong { font-size: var(--fs-xl); color: var(--c-violet); font-variant-numeric: tabular-nums; }
+.payroll-progress.done .payroll-figures strong { color: var(--c-green); }
+.payroll-done { padding: var(--sp-3); border-radius: var(--r-sm); background: color-mix(in srgb, var(--c-green) 13%, var(--card)); color: var(--c-green); font-weight: 700; }
+.payroll-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-2); height: 150px; margin: var(--sp-4) 0 var(--sp-2); }
+.payroll-day { display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 4px; min-width: 0; }
+.payroll-day-val { font-size: var(--fs-2xs); font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1em; white-space: nowrap; }
+.payroll-day-track { position: relative; width: 100%; max-width: 46px; height: 100%; }
+.payroll-day-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 6px 6px 3px 3px; background: color-mix(in srgb, var(--c-violet) 45%, var(--card)); }
+.payroll-day.hit .payroll-day-fill { background: var(--c-green); }
+.payroll-day.today .payroll-day-fill { background: var(--c-violet); }
+.payroll-day.today.hit .payroll-day-fill { background: var(--c-green); }
+.payroll-day.future .payroll-day-track { background: repeating-linear-gradient(-45deg, var(--card-2), var(--card-2) 4px, transparent 4px, transparent 8px); border-radius: 6px; }
+.payroll-day-goal { position: absolute; left: -3px; right: -3px; border-top: 2px dashed var(--c-coral); z-index: 1; }
+.payroll-day.today .chart-label { color: var(--ink); font-weight: 800; }
+
+/* ==========================================================================
+   Responsive: pantallas grandes aprovechadas y celular sin fallas
+   ========================================================================== */
+

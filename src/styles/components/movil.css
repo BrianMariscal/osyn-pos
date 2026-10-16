@@ -1,0 +1,114 @@
+/* ============ Móvil ============ */
+@media (max-width: 860px) {
+  #appShell { display: block; }
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: var(--sp-1);
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .brand h1 { font-size: var(--fs-md); max-width: 42vw; }
+  .top-tools { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+
+  .split, .inline-form, .dashboard-grid { grid-template-columns: 1fr; }
+  .metric-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .checkbox-grid { grid-template-columns: 1fr; }
+
+  .tabs {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: none;
+    overflow: visible;
+    flex-direction: row;
+    align-items: stretch;
+    padding: var(--sp-1) var(--sp-2) calc(var(--sp-1) + env(safe-area-inset-bottom));
+    background: var(--card);
+    border-top: var(--line-w) solid var(--line);
+    border-right: 0;
+    z-index: 20;
+    gap: var(--sp-1);
+  }
+  .nav-group-label { display: none; }
+  .nav-overflow { display: none; }
+  .nav-more { display: flex; }
+  .tab {
+    flex: 1;
+    min-width: 0;
+    padding: 0.45rem 0.2rem;
+    font-size: var(--fs-2xs);
+    font-weight: 650;
+    text-align: center;
+    min-height: 52px;
+    border-radius: var(--r-sm);
+    flex-direction: column;
+    gap: 3px;
+  }
+  .tab.active { background: var(--primary); color: var(--on-primary); box-shadow: none; }
+  .tab .tab-ico { color: inherit; }
+  /* Barra del vendedor: 6 pestañas, "Recibir mercancía" parte en dos líneas */
+  .tabs.tabs-vendor .tab span:last-child { font-size: var(--fs-2xs); line-height: 1.15; white-space: normal; }
+  .tabs.tabs-vendor .tab { min-height: 56px; }
+  main { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px); }
+  #panel-venta.active { padding-bottom: calc(var(--cartbar-h) + 12px); }
+  .toast { bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 66px); }
+  .assistant-fab { bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 76px); }
+
+  .cart-card {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    z-index: 15;
+    border-radius: var(--r) var(--r) 0 0;
+    border-bottom: 0;
+    padding: 0;
+    box-shadow: 0 -8px 24px rgba(10, 16, 13, 0.18);
+  }
+  .cart-toggle {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    align-items: center;
+    background: transparent;
+    color: var(--ink);
+    padding: var(--sp-2) var(--sp-4);
+    min-height: var(--cartbar-h);
+    border-radius: 0;
+    font-size: var(--fs-md);
+    font-weight: 700;
+    border: 0;
+    cursor: pointer;
+    box-shadow: none;
+  }
+  .cart-toggle strong { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; color: var(--primary); }
+  [data-theme="dark"] .cart-toggle strong { color: var(--success); }
+  /* Colapsado por defecto: solo la barra "Ver carrito". Al abrirlo (botón) se
+     despliega el cuerpo como cajón para no tapar la búsqueda ni la cuadrícula. */
+  .cart-body {
+    display: none;
+    grid-template-columns: 1fr;
+    gap: var(--sp-3);
+    padding: 0 var(--sp-4) var(--sp-4);
+    max-height: 62dvh;
+    overflow: auto;
+  }
+  .cart-card.cart-open .cart-body { display: grid; }
+  .cart-card.cart-empty { display: none !important; }
+  .cart-items { margin-top: 0; }
+}
+
+@media (max-width: 430px) {
+  .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inline-form { grid-template-columns: 1fr; }
+  .cart-item { grid-template-columns: 1fr auto; }
+  .cart-item-total { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1500px) {
+  main { padding-inline: var(--sp-5); }
+}
+

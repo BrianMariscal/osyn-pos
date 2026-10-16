@@ -1,0 +1,139 @@
+/* Navegación: cada sección con su color */
+.tab.active { background: color-mix(in srgb, var(--tab-color, var(--primary)) 13%, var(--card)); color: var(--tab-color, var(--primary)); }
+.tab.active:hover { color: var(--tab-color, var(--primary)); }
+@media (max-width: 860px) {
+  .tab.active { background: color-mix(in srgb, var(--tab-color, var(--primary)) 15%, var(--card)); color: var(--tab-color, var(--primary)); }
+}
+
+/* ---------- Tablero de Inicio ---------- */
+.dash-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
+}
+.dash-head h2 { font-size: var(--fs-xl); }
+.dash-date::first-letter { text-transform: uppercase; }
+.dash-head .chips { margin: 0; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.kpi {
+  position: relative;
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--tone); }
+.kpi-top { display: flex; align-items: center; gap: var(--sp-2); }
+.kpi-ico {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  background: var(--tone-soft);
+  color: var(--tone);
+}
+.kpi-ico svg { width: 17px; height: 17px; }
+.kpi-label { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.kpi-value { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.kpi-foot { font-size: var(--fs-xs); color: var(--muted); }
+.delta { font-weight: 700; }
+.delta-up { color: var(--c-green); }
+.delta-down { color: var(--c-coral); }
+
+.dash-row { display: grid; gap: var(--sp-4); margin-bottom: var(--sp-4); align-items: start; }
+.dash-row-2 { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+.dash-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .dash-row-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dash-row-3 > :last-child { grid-column: 1 / -1; } }
+@media (max-width: 860px) { .dash-row-2, .dash-row-3 { grid-template-columns: 1fr; } .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); } .kpi { padding: var(--sp-3); } .kpi-value { font-size: 1.3rem; } }
+
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.card-head h2 { font-size: var(--fs-md); }
+.card-head .chips { margin: 0; }
+.big-num { display: block; font-size: var(--fs-xl); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.empty-note { padding: var(--sp-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); border: var(--line-w) dashed var(--line-strong); border-radius: var(--r-sm); }
+
+/* Gráfica de barras de 7 días */
+.chart-card .chart { height: 170px; gap: var(--sp-2); padding-top: 0; align-items: stretch; }
+.chart-card .chart-col { justify-content: flex-end; gap: 6px; }
+.chart-card .chart-bar {
+  max-width: 44px;
+  min-height: 4px;
+  opacity: 1;
+  background: color-mix(in srgb, var(--c-blue) 32%, var(--card));
+  border-radius: 6px 6px 3px 3px;
+}
+.chart-card .chart-col.today .chart-bar { background: var(--c-blue); }
+.chart-card .chart-col:hover .chart-bar { background: color-mix(in srgb, var(--c-blue) 60%, var(--card)); }
+.chart-card .chart-col.today:hover .chart-bar { background: var(--c-blue); }
+.chart-val { font-size: var(--fs-2xs); font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1em; }
+.chart-col.today .chart-val { color: var(--c-blue); }
+.chart-label { font-size: var(--fs-2xs); color: var(--muted); text-transform: capitalize; }
+.chart-col.today .chart-label { color: var(--ink); font-weight: 700; }
+
+.mini-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-4); }
+.mini-stats > div { display: grid; gap: 2px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--tone-soft); border-left: 3px solid var(--tone); }
+.mini-stats span { font-size: var(--fs-2xs); color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.mini-stats strong { font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .mini-stats { grid-template-columns: 1fr; } }
+
+/* Barras horizontales (más vendidos, cobros) */
+.bar-list { display: grid; gap: var(--sp-3); }
+.bar-row-head { display: flex; justify-content: space-between; gap: var(--sp-2); font-size: var(--fs-sm); margin-bottom: 5px; }
+.bar-row-head span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-row-head strong { font-variant-numeric: tabular-nums; }
+.bar-track { height: 8px; border-radius: 999px; background: var(--card-2); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: inherit; background: var(--tone); transition: width var(--t-slow) var(--ease); }
+
+/* Este mes: barra apilada + leyenda */
+.month-total { margin-bottom: var(--sp-3); }
+.stack-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--card-2); gap: 2px; }
+.stack-bar span { background: var(--tone); min-width: 3px; }
+.legend-list { display: grid; margin-top: var(--sp-3); }
+.legend-list > div { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--sp-2); padding: 7px 0; border-bottom: var(--line-w) solid var(--line); font-size: var(--fs-sm); }
+.legend-list > div:last-child { border-bottom: 0; }
+.legend-list strong { font-variant-numeric: tabular-nums; }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--tone); }
+.legend-plain { grid-template-columns: minmax(0, 1fr) auto !important; color: var(--muted); }
+.legend-plain strong { color: var(--ink); }
+
+/* Por agotarse */
+.count-badge { min-width: 26px; padding: 2px 8px; border-radius: 999px; background: var(--tone-soft); color: var(--tone); font-weight: 800; font-size: var(--fs-xs); text-align: center; }
+.compact-list { display: grid; }
+.compact-item { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: 9px 0; border-bottom: var(--line-w) solid var(--line); }
+.compact-item:last-child { border-bottom: 0; }
+.compact-item > div { display: grid; min-width: 0; }
+.compact-item strong { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-item small { font-size: var(--fs-xs); }
+.stock-pill { flex-shrink: 0; padding: 3px 9px; border-radius: 999px; background: var(--tone-soft); color: var(--tone); font-size: var(--fs-xs); font-weight: 750; font-variant-numeric: tabular-nums; }
+
+/* Meta del día: anillo de avance */
+#dailyTarget { justify-items: stretch; }
+.target-ring {
+  --p: 0;
+  width: 132px; height: 132px;
+  margin: var(--sp-2) auto var(--sp-3);
+  border-radius: 50%;
+  background: conic-gradient(var(--c-blue) calc(var(--p) * 1%), var(--card-2) 0);
+  display: grid; place-items: center;
+}
+.target-ring.done { background: conic-gradient(var(--c-green) 100%, var(--card-2) 0); }
+.target-ring-inner { width: 104px; height: 104px; border-radius: 50%; background: var(--card); display: grid; place-content: center; text-align: center; }
+.target-ring-inner strong { font-size: var(--fs-xl); font-weight: 800; }
+.target-head > div:first-child strong { color: var(--c-blue); }
+
+/* Fluidez: animaciones cortas y solo en la pestaña que se abre */
+.panel.active { animation-duration: 140ms; }
+.panel.active .card { animation: none; }
+.card { box-shadow: var(--shadow-card); }
+.list, .compact-list, .product-grid { contain: content; }
+.card-head-stack { flex-direction: column; align-items: stretch; }
+.card-head-stack .chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.segmented button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
