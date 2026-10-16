@@ -276,6 +276,8 @@ async function getPreferredCloudVoiceId(): Promise<string | null> {
   const voices = await cloudVoicesPromise;
   if (!voices) return saved || null;
   const savedVoice = voices.find((voice) => voice.voice_id === saved);
+  // Si la guardada no aparece en la lista (lista vieja o voz borrada), se respeta.
+  if (saved && !savedVoice) return saved;
   const chosen = savedVoice && isSpanishVoice(savedVoice) ? savedVoice : pickPreferredVoice(voices);
   if (!chosen) return saved || null;
   if (chosen.voice_id !== saved) setCloudVoiceId(chosen.voice_id);
