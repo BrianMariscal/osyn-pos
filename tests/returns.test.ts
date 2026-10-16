@@ -207,6 +207,8 @@ describe("devoluciones en corte y reportes", () => {
     const cash = app.returns.create({ saleId: sale.id, lines: [{ index: 0, qty: 0.5 }], payment: "efectivo", reason: "Producto dañado" });
     expect(cash.ok).toBe(true);
     const afterCash = app.shifts.summarize("sucursal-1");
+    expect(afterCash.ventas).toBe(37.5);
+    expect(afterCash.efectivo).toBe(37.5);
     expect(afterCash.devoluciones).toBe(12.5);
     expect(afterCash.devolucionesEfectivo).toBe(12.5);
     expect(afterCash.efectivoEsperado).toBe(37.5);
@@ -216,6 +218,7 @@ describe("devoluciones en corte y reportes", () => {
     const card = app.returns.create({ saleId: sale.id, lines: [{ index: 0, qty: 0.5 }], payment: "tarjeta", reason: "Producto dañado" });
     expect(card.ok).toBe(true);
     const afterCard = app.shifts.summarize("sucursal-1");
+    expect(afterCard.ventas).toBe(25);
     expect(afterCard.devoluciones).toBe(25);
     expect(afterCard.devolucionesEfectivo).toBe(12.5);
     expect(afterCard.efectivoEsperado).toBe(37.5);

@@ -281,21 +281,26 @@ export interface Merma {
 }
 
 export interface ShiftSummary {
+  /** Ventas del turno, netas de devoluciones. */
   ventas: number;
+  /** Cobrado por ventas en efectivo, neto de lo reembolsado en efectivo. */
   efectivo: number;
+  /** Ventas por transferencia, netas de lo reembolsado por esa vía. */
   transferencia: number;
+  /** Ventas con tarjeta, netas de lo reembolsado por esa vía. */
   tarjeta: number;
+  /** Ventas fiadas, netas de lo reembolsado como abono a fiado. */
   fiado: number;
   /** Abonos de fiado cobrados en efectivo en el turno (entran a la caja). */
   abonos?: number;
-  /** Ventas de cigarros y de cerveza (incluidas en `ventas`). */
+  /** Ventas de cigarros y de cerveza, netas (incluidas en `ventas`). */
   cigarros?: number;
   cerveza?: number;
   /** Consumo interno de la tienda, valuado a costo (NO incluido en `ventas`). */
   interno?: number;
-  /** Devoluciones del turno (todas las formas de reembolso). */
+  /** Devoluciones del turno (todas las formas de reembolso). Ya restadas de `ventas`. */
   devoluciones?: number;
-  /** Devoluciones reembolsadas EN EFECTIVO: bajan el efectivo esperado. */
+  /** Devoluciones reembolsadas EN EFECTIVO (ya restadas de `efectivo`). */
   devolucionesEfectivo?: number;
   gastos: number;
   proveedores: number;

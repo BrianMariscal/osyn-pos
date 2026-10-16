@@ -91,7 +91,16 @@ export const reportesTab: TabModule = {
       const revenue = sales.filter((sale) => sale.payment !== "interno");
       const byPayment = new Map<string, number>();
       for (const sale of revenue) byPayment.set(sale.payment, (byPayment.get(sale.payment) ?? 0) + toCents(sale.total));
-      const totalCents = sumCents(revenue.map((sale) => toCents(sale.total)));
+      // Las devoluciones del día bajan el total y su forma de pago (el abono a fiado, el fiado).
+      const scope = currentScope();
+      const range = dayRange(salesDayInput.value || todayInputValue());
+      let returnsCents = 0;
+      for (const ret of ctx.repos.returns.list()) {
+        if ((scope !== VIEW_ALL && ret.branch_id !== scope) || ret.created_at < range.start || ret.created_at >= range.end) continue;
+        returnsCents += toCents(ret.total);
+        byPayment.set(ret.payment, Math.max(0, (byPayment.get(ret.payment) ?? 0) - toCents(ret.total)));
+      }
+      const totalCents = sumCents(revenue.map((sale) => toCents(sale.total))) - returnsCents;
       const tones: Record<string, string> = { efectivo: "green", transferencia: "blue", tarjeta: "violet", fiado: "amber" };
       setHtml(
         salesDaySummary,
@@ -101,6 +110,7 @@ export const reportesTab: TabModule = {
           ${[...byPayment.entries()].map(
             ([payment, cents]) => html`<div data-tone="${tones[payment] ?? "blue"}"><span>${PAYMENT_LABELS[payment as PaymentMethod] ?? payment}</span><strong>${fmtMoney(cents)}</strong></div>`
           )}
+          ${returnsCents > 0 ? html`<div data-tone="coral"><span>Devoluciones (ya restadas)</span><strong>${fmtMoney(returnsCents)}</strong></div>` : html``}
         `
       );
       if (!sales.length) {
