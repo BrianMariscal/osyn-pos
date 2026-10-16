@@ -135,7 +135,7 @@ Cloudflare → Workers & Pages → osynpos → Settings → Variables and Secret
 | `SUPABASE_ANON_KEY` | Ídem |
 | `SUPABASE_SERVICE_ROLE_KEY` | Crear/editar usuarios desde `api/*` (secreta) |
 | `NVIDIA_API_KEY` o `OPENAI_API_KEY` | Motor del asistente (chat) |
-| `ELEVENLABS_API_KEY` | Voz del asistente |
+| `ELEVENLABS_API_KEY` | Voz del asistente (la clave necesita los permisos `voices_read` y `text_to_speech`) |
 | `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN` | Opcional (Upstash gratis): límite de solicitudes compartido entre instancias. Sin ellas se cuenta en memoria |
 
 Monitoreo de errores (opcional, Sentry gratis): pon el DSN en `sentryDsn` de
