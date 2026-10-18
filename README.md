@@ -23,7 +23,7 @@ en el dispositivo) y se puede instalar como app en Android.
 - **Asistente por chat** que responde con datos reales (ventas, caja, fiado) y puede registrar gastos.
 - **Multi-dispositivo**: PC, celular y tablet sincronizados.
 - **Offline real**: cada venta se guarda en el dispositivo y se sincroniza al volver la conexión; los conflictos de stock/saldo se rebasan sin perder ventas offline.
-- **Sucursales**: una por defecto; el dueño agrega más cuando quiera, cada una con su propio stock, ventas y caja (catálogo compartido), hasta dos números de WhatsApp para recibir sus cortes y cierre automático configurable.
+- **Sucursales**: una por defecto; el dueño agrega más cuando quiera, cada una con su propio stock, ventas y caja (catálogo compartido). En Ajustes › Sucursales se configuran (el dueño, o el administrador en la suya) hasta dos números de WhatsApp para recibir cada corte y el cierre automático a medianoche.
 - **Roles**: admin y vendedor (el admin decide qué pantallas ve cada vendedor).
 
 ## Stack

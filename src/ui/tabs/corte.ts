@@ -245,7 +245,7 @@ export const corteTab: TabModule = {
       return ctx.reports.periodReport(branchId(), start, closedAt);
     };
 
-    /** Envía un corte por WhatsApp a los números de la sucursal (o los de la tienda). */
+    /** Envía un corte por WhatsApp a los números configurados en la sucursal. */
     const sendShift = (shift: Shift): void => {
       const numbers = ctx.branches.shiftWhatsappNumbers(branchId());
       if (!numbers.length) {

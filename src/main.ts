@@ -50,8 +50,8 @@ async function main(): Promise<void> {
   attachTrackerPersistence(tracker, scope);
   const repos = new Repositories(store, tracker);
   const sync = new SyncEngine(store, client, auth, tracker, repos);
-  const branches = new BranchService(store, auth, repos);
   const settings = new SettingsService(store, tracker);
+  const branches = new BranchService(store, auth, repos, settings);
   const sales = new SaleService(store, repos, branches);
   const credit = new CreditService(repos);
   const returns = new ReturnService(store, repos, branches);
