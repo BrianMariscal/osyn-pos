@@ -16,6 +16,7 @@ import { corteTab } from "./tabs/corte";
 import { reportesTab } from "./tabs/reportes";
 import { ajustesTab } from "./tabs/ajustes";
 import { renderAuthState, wireLogin, wirePasswordToggles } from "./shell/auth-ui";
+import { wireAutoClose } from "./shell/auto-close";
 import { activateTab, openMoreSheet, presetActiveTab } from "./shell/nav";
 import { wireSessionMenu } from "./shell/session-menu";
 import { serverVersion, wireSyncListeners } from "./shell/sync";
@@ -131,6 +132,7 @@ export function buildApp(ctx: AppContext): void {
 
   applyTheme(ctx);
   renderAuthState(ctx);
+  wireAutoClose(ctx);
 
   // Al activarse un service worker nuevo solo se recarga si el servidor tiene
   // OTRA versión: la página ya se pide a la red al abrir, así que normalmente
