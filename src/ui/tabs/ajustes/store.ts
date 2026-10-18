@@ -10,9 +10,6 @@ export function createStoreSection(root: HTMLElement, ctx: AppContext): { render
   const storeName = root.querySelector<HTMLInputElement>("#storeName")!;
   const logoFile = root.querySelector<HTMLInputElement>("#logoFile")!;
   const removeLogo = root.querySelector<HTMLButtonElement>("#removeLogo")!;
-  const whatsapp = root.querySelector<HTMLInputElement>("#whatsappNumber")!;
-  const whatsapp2 = root.querySelector<HTMLInputElement>("#whatsapp2")!;
-  const whatsapp3 = root.querySelector<HTMLInputElement>("#whatsapp3")!;
   const logoPreview = root.querySelector<HTMLImageElement>("#logoPreview")!;
   const vendorTabsEl = root.querySelector<HTMLElement>("#vendorTabsSettings")!;
   const adminTabsEl = root.querySelector<HTMLElement>("#adminTabsSettings")!;
@@ -29,16 +26,11 @@ export function createStoreSection(root: HTMLElement, ctx: AppContext): { render
     panelsWrap.classList.toggle("hidden", !owner);
     saveStore.hidden = !owner;
     savePanels.hidden = !owner;
-    [storeName, whatsapp, whatsapp2, whatsapp3].forEach((input) => {
-      input.disabled = !owner;
-    });
+    storeName.disabled = !owner;
     logoFile.disabled = !owner;
     removeLogo.disabled = !owner;
     removeLogo.hidden = !settings.logo;
     storeName.value = settings.storeName || "";
-    whatsapp.value = settings.whatsappNumber || "";
-    whatsapp2.value = settings.whatsapp2 ?? "";
-    whatsapp3.value = settings.whatsapp3 ?? "";
     logoPreview.classList.toggle("hidden", !settings.logo);
     if (settings.logo) logoPreview.src = settings.logo;
     const selected = new Set(settings.vendorTabs ?? []);
@@ -85,9 +77,6 @@ export function createStoreSection(root: HTMLElement, ctx: AppContext): { render
     const settings = ctx.store.getState().settings;
     ctx.settings.save({
       storeName: storeName.value.trim() || "Mi tienda",
-      whatsappNumber: whatsapp.value.trim(),
-      whatsapp2: whatsapp2.value.trim(),
-      whatsapp3: whatsapp3.value.trim(),
       vendorTabs: selected.length ? selected : [...ctx.store.getState().settings.vendorTabs],
       adminTabs: ctx.auth.isOwner() ? (adminSelected.length ? adminSelected : [...ALL_TABS]) : (settings.adminTabs ?? [...ALL_TABS])
     });

@@ -1,12 +1,14 @@
 import { html, setHtml } from "../../core/html";
-import { fmtDateTime, todayInputValue } from "../../core/dates";
+import { dayRange, fmtDateTime, toInputDateValue, todayInputValue } from "../../core/dates";
 import { fmtMoneyPesos, toCents, toPesos } from "../../core/money";
 import { fmtQty } from "../../core/qty";
 import { confirmDialog } from "../components/modal";
 import { openModal } from "../components/modal";
 import { openWhatsapp } from "../whatsapp";
-import type { Shift } from "../../core/types";
+import { summaryHasActivity } from "../../domain/shift-service";
+import type { Shift, ShiftSummary } from "../../core/types";
 import { mountSections } from "../sections";
+import { paginate, pagerClick, pagerMarkup } from "../pager";
 import type { TabModule } from "./tab-module";
 
 export const corteTab: TabModule = {
@@ -42,6 +44,7 @@ export const corteTab: TabModule = {
             <div id="cashSummary" class="summary"></div>
             <div class="actions">
               <button id="closeShift" class="primary" type="button">Cerrar corte</button>
+              <button id="retroShift" class="ghost" type="button">Corte de otro día</button>
               <button id="sendWhatsapp" class="ghost" type="button">Enviar por WhatsApp</button>
             </div>
           </article>
@@ -69,6 +72,7 @@ export const corteTab: TabModule = {
     const historyEl = root.querySelector<HTMLElement>("#shiftsList")!;
 
     const branchId = (): string => ctx.branches.operationalId();
+    let historyPage = 0;
 
     const renderSummary = (): void => {
       const summary = ctx.shifts.summarize(branchId());
@@ -111,24 +115,63 @@ export const corteTab: TabModule = {
       );
     };
 
+    /** Filas del detalle de un corte ya cerrado (historial). */
+    const shiftDetailRows = (shift: Shift): Array<[string, string, string?]> => {
+      const s = shift.summary ?? ({} as ShiftSummary);
+      const rest = toPesos(toCents(s.ventas ?? 0) - toCents(s.cigarros ?? 0) - toCents(s.cerveza ?? 0));
+      return [
+        ["Cerrado", fmtDateTime(shift.closed_at)],
+        ["Base inicial", fmtMoneyPesos(shift.opening_cash || 0)],
+        ["Ventas", fmtMoneyPesos(s.ventas ?? 0), "strong"],
+        ["  Cigarros", fmtMoneyPesos(s.cigarros ?? 0), "group"],
+        ["  Cerveza", fmtMoneyPesos(s.cerveza ?? 0), "group"],
+        ["  Resto de productos", fmtMoneyPesos(rest), "group"],
+        ["Cobrado en efectivo", fmtMoneyPesos(s.efectivo ?? 0)],
+        ["Transferencia", fmtMoneyPesos(s.transferencia ?? 0)],
+        ["Tarjeta", fmtMoneyPesos(s.tarjeta ?? 0)],
+        ["Fiado", fmtMoneyPesos(s.fiado ?? 0)],
+        ["Abonos de fiado (cobrados en caja)", fmtMoneyPesos(s.abonos ?? 0)],
+        ["Consumo interno (a costo, no es venta)", fmtMoneyPesos(s.interno ?? 0)],
+        ["Gastos extra (de caja)", fmtMoneyPesos(s.gastos ?? 0)],
+        ["Proveedores (pagado de caja)", fmtMoneyPesos(s.proveedores ?? 0)],
+        ["Compras pagadas aparte (no salen de caja)", fmtMoneyPesos(s.proveedoresAparte ?? 0)],
+        ["Mermas", fmtMoneyPesos(s.mermas ?? 0)],
+        ["Devoluciones (ya restadas)", fmtMoneyPesos(s.devoluciones ?? 0)],
+        ["  Reembolsadas en efectivo (salieron de caja)", fmtMoneyPesos(s.devolucionesEfectivo ?? 0), "group"],
+        ["Ganancia estimada", fmtMoneyPesos(s.ganancia ?? 0)],
+        ["Efectivo esperado con base", fmtMoneyPesos(shift.expected_cash_with_base || 0), "strong"],
+        ["Efectivo contado", fmtMoneyPesos(shift.counted_cash || 0)],
+        ["Diferencia contra esperado", fmtMoneyPesos(shift.difference || 0), shift.difference < 0 ? "neg" : shift.difference > 0 ? "pos" : "strong"],
+        ["Retirado / entregado", fmtMoneyPesos(shift.withdrawn_cash || 0)],
+        ["Base siguiente día", fmtMoneyPesos(shift.next_opening_cash || 0)],
+        ["Sin repartir (contado − retiro − base)", fmtMoneyPesos(toPesos(toCents(shift.counted_cash || 0) - toCents(shift.withdrawn_cash || 0) - toCents(shift.next_opening_cash || 0)))]
+      ];
+    };
+
     const renderHistory = (): void => {
-      const shifts = ctx.shifts.history(branchId());
+      const shifts = ctx.shifts.history(branchId(), 200);
+      if (!shifts.length) {
+        setHtml(historyEl, html`<p class="muted">Aún no hay cortes cerrados.</p>`);
+        return;
+      }
+      const page = paginate(shifts, historyPage, 10);
       setHtml(
         historyEl,
-        shifts.length
-          ? html`${shifts.map(
-              (shift) => html`
-                <div class="list-item">
-                  <div class="item-line">
-                    <strong>${fmtDateTime(shift.closed_at)}</strong>
-                    <strong>${fmtMoneyPesos(shift.summary?.ventas ?? 0)}</strong>
-                  </div>
-                  <p class="muted">Cigarros ${fmtMoneyPesos(shift.summary?.cigarros ?? 0)} | Cerveza ${fmtMoneyPesos(shift.summary?.cerveza ?? 0)} | Dif ${fmtMoneyPesos(shift.difference)} | Base siguiente ${fmtMoneyPesos(shift.next_opening_cash)}</p>
-                  ${shift.notes ? html`<p class="muted">Notas: ${shift.notes}</p>` : html``}
-                </div>
-              `
-            )}`
-          : html`<p class="muted">Aún no hay cortes cerrados.</p>`
+        html`${page.items.map(
+          (shift) => html`
+            <div class="list-item">
+              <div class="item-line">
+                <strong>${fmtDateTime(shift.closed_at)}</strong>
+                <strong>${fmtMoneyPesos(shift.summary?.ventas ?? 0)}</strong>
+              </div>
+              <p class="muted">Cigarros ${fmtMoneyPesos(shift.summary?.cigarros ?? 0)} | Cerveza ${fmtMoneyPesos(shift.summary?.cerveza ?? 0)} | Dif ${fmtMoneyPesos(shift.difference)} | Base siguiente ${fmtMoneyPesos(shift.next_opening_cash)}</p>
+              ${shift.notes ? html`<p class="muted">Notas: ${shift.notes}</p>` : html``}
+              <div class="actions">
+                <button class="ghost" type="button" data-shift="${shift.id}">Ver corte</button>
+              </div>
+            </div>
+          `
+        )}${pagerMarkup("shifts", page)}`
       );
     };
 
@@ -196,10 +239,153 @@ export const corteTab: TabModule = {
     };
 
     const reportAround = (closedAt: string): { top_products: Array<{ name: string; qty: number; um: string }>; slow_products: Array<{ name: string; qty: number; um: string }> } => {
-      const shifts = ctx.shifts.history(branchId(), 2);
+      const shifts = ctx.shifts.history(branchId(), 200);
       const previous = shifts.find((shift) => shift.closed_at < closedAt);
-      const start = previous?.closed_at ?? new Date(`${todayInputValue()}T00:00:00`).toISOString();
+      const start = previous?.closed_at ?? dayRange(toInputDateValue(new Date(closedAt))).start;
       return ctx.reports.periodReport(branchId(), start, closedAt);
+    };
+
+    /** Envía un corte por WhatsApp a los números configurados en la sucursal. */
+    const sendShift = (shift: Shift): void => {
+      const numbers = ctx.branches.shiftWhatsappNumbers(branchId());
+      if (!numbers.length) {
+        ctx.toast("Configura el WhatsApp de esta sucursal en Ajustes > Sucursales");
+        return;
+      }
+      const message = buildMessage(shift, reportAround(shift.closed_at));
+      if (numbers.length === 1) {
+        openWhatsapp(numbers[0]!, message);
+        return;
+      }
+      // Varios números: enlaces directos (evita el bloqueo de pop-ups)
+      openModal({
+        title: "Enviar corte por WhatsApp",
+        content: html`
+          <p class="muted">Toca cada número para enviarle el corte.</p>
+          <div class="more-list">
+            ${numbers.map(
+              (number) => html`
+                <a class="ghost more-item wa-link" href="https://wa.me/${number.replace(/\D/g, "")}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">${number}</a>
+              `
+            )}
+          </div>
+        `,
+        actions: [{ label: "Cerrar", kind: "primary" }]
+      });
+    };
+
+    const openShiftDetail = (shift: Shift): void => {
+      openModal({
+        title: `Corte del ${fmtDateTime(shift.closed_at)}`,
+        content: html`
+          <div class="summary">
+            ${shiftDetailRows(shift).map(([label, value, kind]) => html`<div class="${kind ? `row-${kind}` : ""}"><span>${label.trim()}</span><strong>${value}</strong></div>`)}
+          </div>
+          ${shift.notes ? html`<p class="muted">Notas: ${shift.notes}</p>` : html``}
+        `,
+        actions: [
+          { label: "Enviar por WhatsApp", kind: "ghost", onClick: (close) => { close(); sendShift(shift); } },
+          { label: "Cerrar", kind: "primary" }
+        ]
+      });
+    };
+
+    const yesterdayValue = (): string => {
+      const date = new Date();
+      date.setDate(date.getDate() - 1);
+      return toInputDateValue(date);
+    };
+
+    /** Corte de un día pasado: cierra el pendiente sin tocar las ventas de hoy. */
+    const openRetroShift = (): void => {
+      openModal({
+        title: "Corte de otro día",
+        content: html`
+          <p class="hint">Cierra el corte de un día que se te quedó pendiente. Queda fechado al final de ese día y las ventas de hoy no se tocan.</p>
+          <label class="form-field">Día del corte
+            <input id="retroDay" class="input" type="date" value="${yesterdayValue()}" max="${yesterdayValue()}">
+          </label>
+          <div id="retroPreview" class="summary"></div>
+          <div class="row">
+            <label class="form-field">Efectivo contado (vacío = esperado)
+              <input id="retroCounted" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+            </label>
+            <label class="form-field">Notas
+              <input id="retroNotes" class="input" placeholder="Ej. cierre pendiente de ayer">
+            </label>
+          </div>
+        `,
+        actions: [
+          { label: "Cancelar", kind: "ghost" },
+          {
+            label: "Cerrar corte del día",
+            kind: "primary",
+            onClick: (close) => {
+              const dayInput = document.querySelector<HTMLInputElement>("#retroDay");
+              const countedInput = document.querySelector<HTMLInputElement>("#retroCounted");
+              const notesInput = document.querySelector<HTMLInputElement>("#retroNotes");
+              const day = dayInput?.value ?? "";
+              if (!day || day >= todayInputValue()) {
+                ctx.toast("Elige un día anterior a hoy");
+                return;
+              }
+              const info = ctx.shifts.dayInfo(branchId(), day);
+              const base = ctx.shifts.lastShiftBefore(branchId(), info.end)?.next_opening_cash ?? 0;
+              const expected = toPesos(toCents(base) + toCents(info.summary.efectivoEsperado));
+              const countedValue = (countedInput?.value ?? "").trim() === "" ? expected : Number(countedInput!.value);
+              const result = ctx.shifts.closeDay(day, {
+                opening_cash: base,
+                counted_cash: countedValue,
+                withdrawn_cash: 0,
+                next_opening_cash: base,
+                notes: (notesInput?.value ?? "").trim() || "Corte de un día pendiente"
+              });
+              if (!result.ok) {
+                ctx.toast(result.error);
+                return;
+              }
+              close();
+              ctx.toast(`Corte del ${day} cerrado: ${fmtMoneyPesos(result.shift.summary.ventas)} en ventas`);
+              historyPage = 0;
+              renderAll();
+            }
+          }
+        ],
+        onOpen: (modalRoot) => {
+          const dayInput = modalRoot.querySelector<HTMLInputElement>("#retroDay")!;
+          const countedInput = modalRoot.querySelector<HTMLInputElement>("#retroCounted")!;
+          const preview = modalRoot.querySelector<HTMLElement>("#retroPreview")!;
+          const renderPreview = (): void => {
+            const day = dayInput.value || yesterdayValue();
+            const info = ctx.shifts.dayInfo(branchId(), day);
+            if (info.alreadyClosed || info.start >= info.end) {
+              setHtml(preview, html`<p class="muted">Ese día ya tiene un corte cerrado.</p>`);
+              return;
+            }
+            const s = info.summary;
+            if (!summaryHasActivity(s)) {
+              setHtml(preview, html`<p class="muted">Ese día no tuvo movimientos.</p>`);
+              return;
+            }
+            const base = ctx.shifts.lastShiftBefore(branchId(), info.end)?.next_opening_cash ?? 0;
+            const expected = toPesos(toCents(base) + toCents(s.efectivoEsperado));
+            const countedValue = countedInput.value.trim() === "" ? null : Number(countedInput.value);
+            const difference = countedValue === null ? null : toPesos(toCents(countedValue) - toCents(expected));
+            setHtml(
+              preview,
+              html`
+                <div><span>Base inicial</span><strong>${fmtMoneyPesos(base)}</strong></div>
+                <div class="row-strong"><span>Ventas del día</span><strong>${fmtMoneyPesos(s.ventas)}</strong></div>
+                <div><span>Efectivo esperado con base</span><strong>${fmtMoneyPesos(expected)}</strong></div>
+                <div><span>Diferencia con lo contado</span><strong>${difference === null ? "—" : fmtMoneyPesos(difference)}</strong></div>
+              `
+            );
+          };
+          dayInput.addEventListener("input", renderPreview);
+          countedInput.addEventListener("input", renderPreview);
+          renderPreview();
+        }
+      });
     };
 
     root.querySelector<HTMLButtonElement>("#closeShift")!.addEventListener("click", async () => {
@@ -223,44 +409,32 @@ export const corteTab: TabModule = {
       withdrawn.value = "";
       nextBase.value = "";
       notes.value = "";
+      historyPage = 0;
       renderAll();
     });
 
+    root.querySelector<HTMLButtonElement>("#retroShift")!.addEventListener("click", openRetroShift);
+
     root.querySelector<HTMLButtonElement>("#sendWhatsapp")!.addEventListener("click", () => {
-      const settings = ctx.store.getState().settings;
-      const numbers = [settings.whatsappNumber, settings.whatsapp2, settings.whatsapp3]
-        .map((number) => (number || "").trim())
-        .filter(Boolean);
-      if (!numbers.length) {
-        ctx.toast("Configura un número de WhatsApp en Ajustes");
-        return;
-      }
       const last = ctx.shifts.lastShift(branchId());
       if (!last) {
         ctx.toast("Primero cierra un corte");
         return;
       }
-      const report = reportAround(last.closed_at);
-      const message = buildMessage(last, report);
-      if (numbers.length === 1) {
-        openWhatsapp(numbers[0]!, message);
+      sendShift(last);
+    });
+
+    historyEl.addEventListener("click", (event) => {
+      const paging = pagerClick(event);
+      if (paging) {
+        historyPage = paging.page;
+        renderHistory();
         return;
       }
-      // Varios números: enlaces directos (evita el bloqueo de pop-ups)
-      openModal({
-        title: "Enviar corte por WhatsApp",
-        content: html`
-          <p class="muted">Toca cada número para enviarle el corte.</p>
-          <div class="more-list">
-            ${numbers.map(
-              (number) => html`
-                <a class="ghost more-item wa-link" href="https://wa.me/${number.replace(/\D/g, "")}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">${number}</a>
-              `
-            )}
-          </div>
-        `,
-        actions: [{ label: "Cerrar", kind: "primary" }]
-      });
+      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-shift]");
+      if (!button) return;
+      const shift = ctx.repos.shifts.byId(button.dataset.shift ?? "");
+      if (shift) openShiftDetail(shift);
     });
 
     // Gancho del asistente IA

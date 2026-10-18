@@ -258,7 +258,7 @@ export const fiadoTab: TabModule = {
       if (waButton) {
         const customer = ctx.repos.customers.byId(waButton.dataset.wa!);
         if (!customer) return;
-        const phone = customer.phone || ctx.store.getState().settings.whatsappNumber;
+        const phone = customer.phone || ctx.branches.shiftWhatsappNumbers(ctx.branches.operationalId())[0] || "";
         if (!phone) {
           ctx.toast("Falta número de WhatsApp");
           return;

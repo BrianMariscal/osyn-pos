@@ -9,7 +9,7 @@ export function ajustesMarkup(): SafeHtml {
         <section class="card-section">
           <div class="section-head">
             <h2>Tienda</h2>
-            <p class="hint" id="storeOwnerHint" hidden>Solo el dueño puede modificar el nombre, el logo y el WhatsApp de la tienda.</p>
+            <p class="hint" id="storeOwnerHint" hidden>Solo el dueño puede modificar el nombre y el logo de la tienda.</p>
           </div>
           <form id="settingsForm" class="form">
             <label class="form-field">Nombre
@@ -23,17 +23,6 @@ export function ajustesMarkup(): SafeHtml {
                 </label>
                 <button id="removeLogo" class="ghost danger" type="button">Quitar logo</button>
               </div>
-            </div>
-            <label class="form-field">WhatsApp para cortes (con lada)
-              <input id="whatsappNumber" class="input" placeholder="5215512345678">
-            </label>
-            <div class="row">
-              <label class="form-field">WhatsApp adicional 2
-                <input id="whatsapp2" class="input" placeholder="Opcional">
-              </label>
-              <label class="form-field">WhatsApp adicional 3
-                <input id="whatsapp3" class="input" placeholder="Opcional">
-              </label>
             </div>
             <button id="saveStore" class="primary" type="submit">Guardar</button>
           </form>

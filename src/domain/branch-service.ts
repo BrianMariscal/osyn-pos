@@ -4,6 +4,7 @@ import { DEFAULT_BRANCH_ID, DEFAULT_BRANCH_NAME, type Branch } from "../core/typ
 import { VIEW_ALL, type AppState } from "./app-state";
 import type { AuthService } from "./auth-service";
 import type { Repositories } from "../data/repositories";
+import type { SettingsService } from "./settings-service";
 import type { Store } from "./store";
 
 /**
@@ -20,22 +21,45 @@ export class BranchService {
   constructor(
     private store: Store<AppState>,
     private auth: AuthService,
-    private repos: Repositories
+    private repos: Repositories,
+    private settings?: SettingsService
   ) {}
 
   /** Dueño sin sucursales en la nube: siembra la sucursal inicial. */
   ensureSeeded(): void {
     if (!this.auth.isOwner()) return;
-    if (this.repos.branches.list().length) return;
-    const ts = nowISO();
-    this.repos.branches.upsert({
-      id: DEFAULT_BRANCH_ID,
-      name: DEFAULT_BRANCH_NAME,
-      address: "",
-      active: true,
-      created_at: ts,
-      updated_at: ts
-    });
+    if (!this.repos.branches.list().length) {
+      const ts = nowISO();
+      this.repos.branches.upsert({
+        id: DEFAULT_BRANCH_ID,
+        name: DEFAULT_BRANCH_NAME,
+        address: "",
+        active: true,
+        created_at: ts,
+        updated_at: ts
+      });
+    }
+    this.migrateStoreNumbers();
+  }
+
+  /**
+   * Una sola vez: los WhatsApp que vivían en los ajustes de la tienda se pasan
+   * a cada sucursal sin números y los ajustes se vacían. Así la sucursal queda
+   * como el único lugar donde se configuran (y ahí los edita también el admin).
+   */
+  private migrateStoreNumbers(): void {
+    const stored = [
+      this.store.getState().settings.whatsappNumber,
+      this.store.getState().settings.whatsapp2,
+      this.store.getState().settings.whatsapp3
+    ]
+      .map((number) => (number || "").trim())
+      .filter(Boolean);
+    if (!stored.length) return;
+    this.list()
+      .filter((branch) => !(branch.whatsapp1 || "").trim() && !(branch.whatsapp2 || "").trim())
+      .forEach((branch) => this.update(branch.id, { whatsapp1: stored[0] ?? "", whatsapp2: stored[1] ?? "" }));
+    this.settings?.save({ whatsappNumber: "", whatsapp2: "", whatsapp3: "" });
   }
 
   list(): Branch[] {
@@ -92,7 +116,7 @@ export class BranchService {
     });
   }
 
-  /** Admin: crea una sucursal nueva. */
+  /** Dueño: crea una sucursal nueva. */
   create(name: string): Branch {
     const ts = nowISO();
     const branch: Branch = { id: `sucursal-${uid().slice(0, 8)}`, name, address: "", active: true, created_at: ts, updated_at: ts };
@@ -102,10 +126,29 @@ export class BranchService {
 
   /** Admin: renombra una sucursal. */
   rename(id: string, name: string): Branch | undefined {
+    return this.update(id, { name });
+  }
+
+  /** Edita nombre, WhatsApp del corte y cierre automático (el admin solo su sucursal). */
+  update(id: string, patch: Partial<Pick<Branch, "name" | "whatsapp1" | "whatsapp2" | "auto_close">>): Branch | undefined {
     const branch = this.byId(id);
     if (!branch || branch.deleted) return undefined;
-    const next = { ...branch, name: name.trim() || branch.name, updated_at: nowISO() };
+    const nextName = patch.name !== undefined ? patch.name.trim() || branch.name : branch.name;
+    const next: Branch = {
+      ...branch,
+      ...patch,
+      name: nextName,
+      whatsapp1: (patch.whatsapp1 ?? branch.whatsapp1 ?? "").trim(),
+      whatsapp2: (patch.whatsapp2 ?? branch.whatsapp2 ?? "").trim(),
+      updated_at: nowISO()
+    };
     this.repos.branches.upsert(next);
     return next;
+  }
+
+  /** Números de WhatsApp del corte configurados en la sucursal (máximo dos). */
+  shiftWhatsappNumbers(branchId: string): string[] {
+    const branch = this.byId(branchId);
+    return [branch?.whatsapp1, branch?.whatsapp2].map((number) => (number || "").trim()).filter(Boolean);
   }
 }
