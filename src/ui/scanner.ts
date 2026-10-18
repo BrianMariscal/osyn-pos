@@ -40,8 +40,8 @@ export function scanBarcode(): Promise<string | null> {
           label: "Cancelar",
           kind: "ghost",
           onClick: (close) => {
-            close();
             finish(null);
+            close();
           }
         }
       ],
@@ -55,13 +55,14 @@ export function scanBarcode(): Promise<string | null> {
           controls = await reader.decodeFromVideoDevice(undefined, video, (result) => {
             if (result) {
               const value = result.getText?.() || String(result);
-              close();
+              // Resolver ANTES de cerrar: close() dispara onClose (finish null).
               finish(value);
+              close();
             }
           });
         } catch (error) {
-          close();
           finish(null, new Error(error instanceof Error && error.name === "NotAllowedError" ? "Permiso de cámara denegado" : "No se pudo abrir la cámara"));
+          close();
         }
       }
     });

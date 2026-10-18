@@ -78,9 +78,12 @@ export function openModal(options: ModalOptions): () => void {
   openCount += 1;
   document.body.classList.add("modal-open");
   options.onOpen?.(backdrop, close);
+  // El foco va al primer campo de captura; si no hay, al primer botón (antes
+  // el ✕ del encabezado se llevaba el foco y en celular no salía el teclado).
   const focusTarget =
     (options.initialFocus ? backdrop.querySelector<HTMLElement>(options.initialFocus) : null) ??
-    backdrop.querySelector<HTMLElement>("input, select, textarea, button");
+    backdrop.querySelector<HTMLElement>("input, select, textarea") ??
+    backdrop.querySelector<HTMLElement>("button");
   focusTarget?.focus();
   return close;
 }
@@ -116,7 +119,7 @@ export function confirmDialog(options: {
       // Descartarlo con ✕/fondo/Escape cuenta como "no".
       onClose: () => finish(false),
       actions: [
-        { label: options.cancelLabel ?? "Cancelar", kind: "ghost", onClick: (close) => { close(); finish(false); } },
+        { label: options.cancelLabel ?? "Cancelar", kind: "ghost", onClick: (close) => { finish(false); close(); } },
         {
           label: options.confirmLabel ?? "Confirmar",
           kind: options.danger ? "danger" : "primary",
@@ -125,8 +128,10 @@ export function confirmDialog(options: {
               const input = document.querySelector<HTMLInputElement>("#confirmKeyword");
               if (!input || input.value.trim() !== options.keyword) return;
             }
-            close();
+            // Primero se resuelve el valor y después se cierra: close() dispara
+            // onClose (finish(false)) y, al ir después, ya no tiene efecto.
             finish(true);
+            close();
           }
         }
       ]
@@ -161,7 +166,7 @@ export function promptDialog(options: {
       // Descartarlo con ✕/fondo/Escape cuenta como cancelar.
       onClose: () => finish(null),
       actions: [
-        { label: "Cancelar", kind: "ghost", onClick: (close) => { close(); finish(null); } },
+        { label: "Cancelar", kind: "ghost", onClick: (close) => { finish(null); close(); } },
         {
           label: options.confirmLabel ?? "Aceptar",
           kind: "primary",
@@ -169,8 +174,9 @@ export function promptDialog(options: {
             const input = document.querySelector<HTMLInputElement>("#promptInput");
             const value = input?.value.trim() ?? "";
             if (options.required && !value) return;
-            close();
+            // Resolver ANTES de cerrar: close() dispara onClose (finish(null)).
             finish(value);
+            close();
           }
         }
       ],
@@ -182,8 +188,8 @@ export function promptDialog(options: {
             event.preventDefault();
             const value = input.value.trim();
             if (options.required && !value) return;
-            close();
             finish(value);
+            close();
           }
         });
       }
