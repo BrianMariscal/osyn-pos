@@ -5,6 +5,12 @@ export interface Branch {
   name: string;
   address: string;
   active: boolean;
+  /** WhatsApp 1 de la sucursal para enviarle sus cortes (opcional). */
+  whatsapp1?: string;
+  /** WhatsApp 2 opcional (se le envía el mismo corte). */
+  whatsapp2?: string;
+  /** Cierre automático del corte a medianoche; sin valor = activado (false lo apaga). */
+  auto_close?: boolean;
   created_at?: string;
   updated_at: string;
   deleted?: boolean;

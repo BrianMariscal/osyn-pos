@@ -21,6 +21,9 @@ export const branchSchema = z.object({
   name: z.string().catch(""),
   address: z.string().catch(""),
   active: bool,
+  whatsapp1: optionalString,
+  whatsapp2: optionalString,
+  auto_close: bool.optional(),
   created_at: iso.optional(),
   updated_at: iso,
   deleted: bool.optional()

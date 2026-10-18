@@ -102,10 +102,32 @@ export class BranchService {
 
   /** Admin: renombra una sucursal. */
   rename(id: string, name: string): Branch | undefined {
+    return this.update(id, { name });
+  }
+
+  /** Admin: edita nombre, WhatsApp del corte y cierre automático de una sucursal. */
+  update(id: string, patch: Partial<Pick<Branch, "name" | "whatsapp1" | "whatsapp2" | "auto_close">>): Branch | undefined {
     const branch = this.byId(id);
     if (!branch || branch.deleted) return undefined;
-    const next = { ...branch, name: name.trim() || branch.name, updated_at: nowISO() };
+    const nextName = patch.name !== undefined ? patch.name.trim() || branch.name : branch.name;
+    const next: Branch = {
+      ...branch,
+      ...patch,
+      name: nextName,
+      whatsapp1: (patch.whatsapp1 ?? branch.whatsapp1 ?? "").trim(),
+      whatsapp2: (patch.whatsapp2 ?? branch.whatsapp2 ?? "").trim(),
+      updated_at: nowISO()
+    };
     this.repos.branches.upsert(next);
     return next;
+  }
+
+  /** Números de WhatsApp del corte: los de la sucursal o, si no tiene, los de la tienda. */
+  shiftWhatsappNumbers(branchId: string): string[] {
+    const branch = this.byId(branchId);
+    const own = [branch?.whatsapp1, branch?.whatsapp2].map((number) => (number || "").trim()).filter(Boolean);
+    if (own.length) return own;
+    const settings = this.store.getState().settings;
+    return [settings.whatsappNumber, settings.whatsapp2, settings.whatsapp3].map((number) => (number || "").trim()).filter(Boolean);
   }
 }
