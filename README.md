@@ -13,14 +13,17 @@ en el dispositivo) y se puede instalar como app en Android.
 - **Devoluciones**: busca la venta por folio, elige los renglones y cantidades
   (acepta devoluciones parciales); el stock regresa al inventario y el reembolso
   se descuenta de la caja, o se abona al fiado del cliente.
-- **Fiado** con clientes, cargos, pagos e historial de movimientos.
+- **Fiado** con clientes, cargos, pagos (incluidos los parciales) e historial de movimientos.
 - **Inventario** con entradas de mercancía, mermas, conteos físicos y aviso de mínimos.
-- **Corte de caja** con arqueo, diferencia y envío del resumen por WhatsApp.
+- **Corte de caja** con arqueo, diferencia, historial con detalle de cada corte,
+  **corte de un día pasado** (cierra pendientes sin tocar las ventas de hoy),
+  **cierre automático a medianoche** si no se hizo manualmente y envío del
+  resumen por WhatsApp a los números de la sucursal.
 - **Reportes** diarios/mensuales, ganancia, y exportación a PDF.
 - **Asistente por chat** que responde con datos reales (ventas, caja, fiado) y puede registrar gastos.
 - **Multi-dispositivo**: PC, celular y tablet sincronizados.
 - **Offline real**: cada venta se guarda en el dispositivo y se sincroniza al volver la conexión; los conflictos de stock/saldo se rebasan sin perder ventas offline.
-- **Sucursales**: una por defecto; el dueño agrega más cuando quiera, cada una con su propio stock, ventas y caja (catálogo compartido).
+- **Sucursales**: una por defecto; el dueño agrega más cuando quiera, cada una con su propio stock, ventas y caja (catálogo compartido), hasta dos números de WhatsApp para recibir sus cortes y cierre automático configurable.
 - **Roles**: admin y vendedor (el admin decide qué pantallas ve cada vendedor).
 
 ## Stack
@@ -28,7 +31,7 @@ en el dispositivo) y se puede instalar como app en Android.
 - Frontend: TypeScript modular + Vite + PWA (service worker offline).
 - Datos: IndexedDB en el dispositivo + Supabase (Postgres + Auth + RLS) como nube.
 - Backend ligero: funciones en `api/` servidas por Cloudflare Pages Functions (asistente IA, voz y usuarios).
-- Tests: Vitest.
+- Tests: Vitest (jsdom para los diálogos de la interfaz).
 
 ## Desarrollo
 
