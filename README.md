@@ -39,8 +39,8 @@ volver la conexión.
   ventas, caja y fiado mediante funciones serverless que validan el JWT; si no
   hay llaves de IA, un parser local mantiene la venta por voz.
 - **CI/CD y respaldos desde el día uno.** GitHub Actions corre lint, tipos,
-  tests y build en cada push, y respalda Supabase a diario con `pg_dump`
-  cifrado y retención de 90 días.
+  tests y build en cada push; el workflow de respaldo diario usa `pg_dump`
+  cifrado con retención de 90 días.
 
 Los límites de estas decisiones están documentados en
 [Limitaciones y trade-offs](#limitaciones-conocidas-y-trade-offs).
@@ -55,7 +55,7 @@ Los límites de estas decisiones están documentados en
 >
 > La secuencia corta la red, vende 3 productos ($45.00), muestra **4 cambios
 > pendientes** y, al reconectar, termina en **Todo sincronizado**. En
-> producción el pull lo dispara Supabase Realtime (~1 s); el polling de
+> producción, con Realtime aplicado, la sync se dispara en ~1 s; el polling de
 > respaldo es de 8 s.
 
 ## Métricas y evidencia
@@ -66,8 +66,8 @@ Los límites de estas decisiones están documentados en
 | Tablas con RLS | **14/14** · 52 políticas | [`supabase/schema.sql`](supabase/schema.sql) |
 | Sync con Realtime | **~1 s** (objetivo) | [`supabase/migracion-realtime.sql`](supabase/migracion-realtime.sql) |
 | Polling de respaldo | **8 s** (60 s con Realtime activo) | [`src/ui/shell/sync.ts`](src/ui/shell/sync.ts) |
-| Respaldo cifrado | diario · AES-256 · **90 días** | [`.github/workflows/backup.yml`](.github/workflows/backup.yml) |
-| RPO de respaldo | **≤ 24 h** (objetivo) | ejecución diaria a las 03:15 CT |
+| Respaldo cifrado | workflow diario · AES-256 · **90 días** | [`.github/workflows/backup.yml`](.github/workflows/backup.yml) · requiere `SUPABASE_DB_URL` |
+| RPO de respaldo | **≤ 24 h** (objetivo) | ejecución diaria a las 03:15 CT, con el workflow en verde |
 | Producción | [osynpos.shop](https://osynpos.shop) | Cloudflare Pages |
 
 > **Datos de negocio:** tiendas activas, ventas sincronizadas y latencia real
@@ -157,12 +157,14 @@ sincronizadas, no con agregaciones SQL en el servidor.
 
 ### Respaldo y durabilidad local
 
-El respaldo es un `pg_dump` diario cifrado con AES-256 y retención de 90 días.
-No hay PITR configurado.
+El respaldo es un workflow de `pg_dump` diario cifrado con AES-256 y retención
+de 90 días; requiere el secreto `SUPABASE_DB_URL` y un run en verde para que el
+RPO de 24 h sea real. No hay PITR configurado.
 
-- **RPO:** hasta 24 h de datos ante un desastre. IndexedDB conserva el estado
-  en cada dispositivo y se puede exportar manualmente; el respaldo diario
-  cubre el resto. Subir a PITR es una decisión de costo, no de código.
+- **RPO:** hasta 24 h de datos ante un desastre **cuando el respaldo corre**.
+  IndexedDB conserva el estado en cada dispositivo y se puede exportar
+  manualmente; el respaldo diario cubre el resto. Subir a PITR es una decisión
+  de costo, no de código.
 - **Durabilidad en el dispositivo:** la app pide almacenamiento persistente
   (`navigator.storage.persist()`), pero el navegador puede desalojarlo si el
   equipo está sin espacio, y borrar los datos del sitio elimina lo no
