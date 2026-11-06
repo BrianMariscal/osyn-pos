@@ -42,6 +42,133 @@ volver la conexión.
   tests y build en cada push, y respalda Supabase a diario con `pg_dump`
   cifrado y retención de 90 días.
 
+Los límites de estas decisiones están documentados en
+[Limitaciones y trade-offs](#limitaciones-conocidas-y-trade-offs).
+
+## Demo: venta offline y sincronización
+
+![Venta de 3 productos sin internet, 4 cambios pendientes y sincronización al reconectar](docs/assets/demo-offline-sync.gif)
+
+> **DEMO · DATOS DE EJEMPLO.** Grabada con el frontend y el Sync Engine reales
+> y un backend Supabase simulado, para mostrar el flujo sin exponer datos de
+> clientes. No es una captura de la instancia de producción.
+>
+> La secuencia corta la red, vende 3 productos ($45.00), muestra **4 cambios
+> pendientes** y, al reconectar, termina en **Todo sincronizado**. En
+> producción el pull lo dispara Supabase Realtime (~1 s); el polling de
+> respaldo es de 8 s.
+
+## Métricas y evidencia
+
+| Métrica | Valor | Cómo verificarla |
+|---|---:|---|
+| Pruebas automatizadas | **185** en 27 archivos | `npm test` y CI en cada push |
+| Tablas con RLS | **14/14** · 52 políticas | [`supabase/schema.sql`](supabase/schema.sql) |
+| Sync con Realtime | **~1 s** (objetivo) | [`supabase/migracion-realtime.sql`](supabase/migracion-realtime.sql) |
+| Polling de respaldo | **8 s** (60 s con Realtime activo) | [`src/ui/shell/sync.ts`](src/ui/shell/sync.ts) |
+| Respaldo cifrado | diario · AES-256 · **90 días** | [`.github/workflows/backup.yml`](.github/workflows/backup.yml) |
+| RPO de respaldo | **≤ 24 h** (objetivo) | ejecución diaria a las 03:15 CT |
+| Producción | [osynpos.shop](https://osynpos.shop) | Cloudflare Pages |
+
+> **Datos de negocio:** tiendas activas, ventas sincronizadas y latencia real
+> medida no se publican aquí para no exponer datos de clientes ni inventar
+> cifras. Son métricas del operador, no del repositorio.
+
+## Limitaciones conocidas y trade-offs
+
+Un sistema maduro no es el que no tiene límites, sino el que sabe dónde están.
+Estos son los que acepté a cambio de velocidad, disponibilidad y aislamiento.
+
+### LWW, no CRDT
+
+La resolución de conflictos es **last-write-wins por fila** usando `updated_at`,
+con rebase por deltas para los contadores mutables (stock y saldo de fiado). No
+hay CRDT.
+
+- **Por qué:** las ventas son append-only, cada sucursal tiene su propio stock y
+  la edición simultánea del mismo campo es rara. Un CRDT (Yjs, Automerge)
+  habría añadido metadatos, almacenamiento y complejidad operativa para un
+  problema que casi no existe en este dominio.
+- **Límite:** si dos dispositivos editan el mismo campo de un producto sin red,
+  gana el `updated_at` más reciente y la otra edición se descarta. Los
+  contadores no se pierden porque se reaplican como delta, pero un cambio de
+  precio o nombre sí puede perderse.
+- **Mitigación:** la UI muestra pendientes y errores de sync; las ventas no
+  compiten entre sí porque cada una es una fila nueva.
+
+### Consistencia eventual, no transacciones distribuidas
+
+Una venta se confirma localmente aunque el servidor no esté disponible. El
+stock y el fiado se ajustan al sincronizar, no en el momento de la venta.
+
+- **Por qué:** disponibilidad primero. Bloquear el cobro sin red es peor para
+  una tienda que reconciliar después.
+- **Límite:** dos cajas offline pueden vender la última pieza y sobrevender
+  hasta que ambas sincronicen. El servidor rechaza filas que violan RLS o
+  restricciones y la app avisa, pero no hay reserva anticipada de stock.
+- **Pendiente:** mover stock y fiado a una función RPC atómica en Postgres. Hoy
+  se mitiga con rebase por deltas y guardias en la base; no es equivalente a
+  una transacción distribuida.
+
+### Una instancia por cliente
+
+Cada tienda tiene su propio proyecto de Supabase y su propio despliegue de
+Cloudflare. No hay un `tenant_id` compartido.
+
+- **Por qué:** aislamiento total con el RLS actual, sin rediseño y con riesgo
+  de fuga entre clientes prácticamente nulo.
+- **Límite:** el costo operativo crece O(n): migraciones, monitoreo, respaldos
+  y rotación de llaves por cliente. Tampoco hay un panel central con métricas
+  de todos los clientes.
+- **Cuándo cambiar:** al llegar a ~10 clientes o cuando el onboarding manual
+  sea el cuello de botella; el plan está en
+  [`docs/decision-comercial.md`](docs/decision-comercial.md).
+
+### Tombstones sin compactación
+
+Los borrados se propagan con `deleted = true`; no se eliminan físicamente ni
+hay un job de compactación.
+
+- **Por qué:** un tombstone es idempotente y sobrevive a dispositivos que
+  estuvieron offline mucho tiempo.
+- **Límite:** las tablas crecen con filas borradas y todas las consultas deben
+  filtrar `deleted`. Con el volumen de una tienda no es un problema hoy; a
+  mayor escala haría falta compactar después de una ventana de sync.
+
+### Reportes calculados en el cliente
+
+Los reportes y cortes se calculan en el dispositivo sobre las ventas ya
+sincronizadas, no con agregaciones SQL en el servidor.
+
+- **Por qué:** funciona offline, es simple y evita otra capa de caché.
+- **Límite:** cada dispositivo descarga las tablas que necesita y agrega en
+  memoria. Con muchos años de ventas o miles de sucursales habría que mover
+  los reportes a vistas materializadas o RPC. Para una tienda de abarrotes con
+  historial acotado, el trade-off es correcto.
+
+### Dependencias externas: IA y Realtime
+
+- **IA y voz:** el asistente en la nube y la voz cloud dependen de llaves de
+  terceros (LLM y ElevenLabs). Sin llaves, la app degrada a un parser local y a
+  la voz del dispositivo; el POS sigue funcionando. Los resultados de IA no son
+  deterministas y están sujetos a rate limit y costo.
+- **Realtime:** si Supabase Realtime no está disponible, la app cae a polling
+  cada 8 s. La sync sigue funcionando, pero la latencia percibida sube.
+
+### Respaldo y durabilidad local
+
+El respaldo es un `pg_dump` diario cifrado con AES-256 y retención de 90 días.
+No hay PITR configurado.
+
+- **RPO:** hasta 24 h de datos ante un desastre. IndexedDB conserva el estado
+  en cada dispositivo y se puede exportar manualmente; el respaldo diario
+  cubre el resto. Subir a PITR es una decisión de costo, no de código.
+- **Durabilidad en el dispositivo:** la app pide almacenamiento persistente
+  (`navigator.storage.persist()`), pero el navegador puede desalojarlo si el
+  equipo está sin espacio, y borrar los datos del sitio elimina lo no
+  sincronizado. Un dispositivo perdido antes de sincronizar puede perder
+  ventas; por eso la UI muestra los pendientes y sincroniza al reconectar.
+
 ## Stack
 
 `TypeScript` · `Vite` · `PWA` · `IndexedDB` · `Supabase (Postgres, Auth, Realtime, RLS)` · `Cloudflare Pages Functions` · `ElevenLabs` · `Vitest`
