@@ -7,6 +7,7 @@ import { SyncEngine } from "../src/data/sync-engine";
 import { SettingsService } from "../src/domain/settings-service";
 import type { AuthService } from "../src/domain/auth-service";
 import type { SupabaseClient } from "../src/data/supabase-client";
+import type { ProductStock } from "../src/core/types";
 
 /**
  * Lectura incremental por synced_at. Simula PostgREST con:
@@ -17,9 +18,10 @@ import type { SupabaseClient } from "../src/data/supabase-client";
 
 type Row = Record<string, unknown>;
 
-function makeServer({ migrated = true, reject = (_row: Row): boolean => false } = {}) {
+function makeServer({ migrated = true, reject = (_row: Row): boolean => false, failPushes = 0 } = {}) {
   const tables = new Map<string, Map<string, Row>>();
   let clock = Date.parse("2026-10-03T12:00:00.000Z");
+  let pendingFailures = failPushes;
   const table = (name: string): Map<string, Row> => {
     let t = tables.get(name);
     if (!t) {
@@ -35,11 +37,18 @@ function makeServer({ migrated = true, reject = (_row: Row): boolean => false } 
     insertRaw(name: string, row: Row): void {
       table(name).set(String(row.id), row);
     },
+    row(name: string, id: string): Row | undefined {
+      return table(name).get(id);
+    },
     async rest(path: string, _token: string, init: RequestInit = {}): Promise<Response> {
       const [tableName = "", query = ""] = path.split("?");
       const params = new URLSearchParams(query);
       const store = table(tableName);
       if ((init.method ?? "GET").toUpperCase() === "POST") {
+        if (pendingFailures > 0) {
+          pendingFailures -= 1;
+          return response({ message: "temporalmente no disponible" }, 503);
+        }
         const body = JSON.parse(String(init.body ?? "[]")) as Row[];
         // Como Postgres: una fila que viola una restricción tumba todo el lote.
         if (body.some(reject)) {
@@ -185,5 +194,45 @@ describe("push con filas rechazadas", () => {
 
     await b.sync.syncNow();
     expect(b.store.getState().expenses.map((row) => row.id).sort()).toEqual(["e1", "e2"]);
+  });
+});
+
+describe("rebase de contadores y reintentos", () => {
+  it("un reintento tras un push fallido no vuelve a aplicar el delta", async () => {
+    const server = makeServer({ failPushes: 1 });
+    const a = makeDevice(server);
+    const stock = (value: number, updatedAt: string): ProductStock => ({
+      id: "p1:sucursal-1",
+      product_id: "p1",
+      branch_id: "sucursal-1",
+      stock: value,
+      min_stock: 2,
+      updated_at: updatedAt
+    });
+
+    // Estado ya sincronizado: stock 10.
+    a.repos.stocks.upsert(stock(10, "2026-01-01T00:00:00.000Z"));
+    a.tracker.reset();
+
+    // Venta offline: 10 → 7, delta local −3.
+    a.repos.stocks.upsert(stock(7, "2026-01-02T00:00:00.000Z"));
+
+    // Otro dispositivo vendió 2: la nube tiene 8 y un updated_at más nuevo.
+    server.insertRaw("product_stocks", {
+      ...stock(8, "2026-01-03T00:00:00.000Z"),
+      synced_at: "2026-10-03T12:00:00.000Z"
+    });
+
+    // El pull rebasa 8 − 3 = 5; el push falla y la fila queda pendiente.
+    const first = await a.sync.syncNow();
+    expect(first.ok).toBe(false);
+    expect(a.store.getState().product_stocks[0]?.stock).toBe(5);
+    expect(a.tracker.takeIds("product_stocks")).toEqual(["p1:sucursal-1"]);
+
+    // El reintento reenvía 5, no vuelve a restar 3 (sería 2).
+    const retry = await a.sync.syncNow();
+    expect(retry.ok).toBe(true);
+    expect(a.store.getState().product_stocks[0]?.stock).toBe(5);
+    expect(server.row("product_stocks", "p1:sucursal-1")?.stock).toBe(5);
   });
 });

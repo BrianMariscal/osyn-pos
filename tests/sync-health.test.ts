@@ -8,7 +8,7 @@ function sync(partial: Partial<SyncState>): SyncState {
   return { lastPulledAt: {}, syncCursors: {}, lastSyncAt: null, error: null, pending: 0, syncing: false, ...partial };
 }
 
-describe("aviso de sincronización en Inicio", () => {
+describe("aviso global de sincronización", () => {
   it("sin pendientes no avisa aunque haya error de red", () => {
     expect(syncAlert(sync({ error: "Failed to fetch" }), NOW)).toBeNull();
   });

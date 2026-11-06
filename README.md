@@ -33,9 +33,12 @@ volver la conexión.
   (dueño, admin, vendedor) limitan cada dato a su sucursal: el catálogo se
   comparte, pero stock, ventas y caja no.
 - **Sincronización distribuida idempotente.** Tombstones para borrados,
-  last-write-wins por `updated_at`, pull de los últimos 10 minutos para tolerar
-  relojes desfasados y descarga de tablas en paralelo. Realtime baja la latencia
-  a ~1 s; sin Realtime, polling cada 8 s.
+  last-write-wins por `updated_at` y pull incremental por `synced_at` del
+  servidor con 60 s de solape; el margen de 10 min queda solo para el fallback
+  legacy por `updated_at`. Realtime baja la latencia a ~1 s; sin Realtime,
+  polling cada 8 s. El orden de escritura sigue dependiendo del reloj del
+  dispositivo; está documentado en
+  [Limitaciones](#limitaciones-conocidas-y-trade-offs).
 - **IA sobre datos reales, con degradación elegante.** El asistente consulta
   ventas, caja y fiado mediante funciones serverless que validan el JWT; si no
   hay llaves de IA, un parser local mantiene la venta por voz.
@@ -63,7 +66,8 @@ Los límites de estas decisiones están documentados en
 
 | Métrica | Valor | Cómo verificarla |
 |---|---:|---|
-| Pruebas automatizadas | **185** en 27 archivos | `npm test` y CI en cada push |
+| Pruebas automatizadas | **186** en 27 archivos | `npm test` y CI en cada push |
+| Pruebas del Sync Engine | **26** en 5 archivos · simulación de 2 dispositivos | [`tests/sync-pull.test.ts`](tests/sync-pull.test.ts) · [`tests/settings-sync.test.ts`](tests/settings-sync.test.ts) |
 | Tablas con RLS | **14/14** · 52 políticas | [`supabase/schema.sql`](supabase/schema.sql) |
 | Sync con Realtime | **~1 s** (objetivo) | [`supabase/migracion-realtime.sql`](supabase/migracion-realtime.sql) |
 | Polling de respaldo | **8 s** (60 s con Realtime activo) | [`src/ui/shell/sync.ts`](src/ui/shell/sync.ts) |
@@ -71,6 +75,11 @@ Los límites de estas decisiones están documentados en
 | RPO de respaldo | **≤ 24 h** | verificado 2026-11-06 · ejecución diaria a las 03:15 CT |
 | Producción | [osynpos.shop](https://osynpos.shop) | Cloudflare Pages |
 
+> Las pruebas del Sync Engine cubren merge/LWW, pull incremental, rebase de
+> contadores, ajustes entre dispositivos y salud del sync. El reintento de un
+> push fallido está probado en [`tests/sync-pull.test.ts`](tests/sync-pull.test.ts):
+> el delta se aplica una sola vez y el reintento reenvía el valor ya rebasado.
+>
 > **Datos de negocio:** tiendas activas, ventas sincronizadas y latencia real
 > medida no se publican aquí para no exponer datos de clientes ni inventar
 > cifras. Son métricas del operador, no del repositorio.
@@ -94,6 +103,15 @@ hay CRDT.
   gana el `updated_at` más reciente y la otra edición se descarta. Los
   contadores no se pierden porque se reaplican como delta, pero un cambio de
   precio o nombre sí puede perderse.
+- **Relojes:** el pull incremental usa `synced_at` del servidor, así que una
+  fila subida tarde no se pierde aunque su `updated_at` sea viejo (hay prueba
+  en [`tests/sync-pull.test.ts`](tests/sync-pull.test.ts)). Pero LWW sigue
+  comparando `updated_at`, que escribe el reloj del dispositivo: un equipo
+  adelantado o atrasado puede ganar o perder una edición no acumulable. El
+  solape de 10 min solo aplica al fallback legacy por `updated_at`; el pull
+  primario usa 60 s sobre `synced_at`. La solución estructural es que el
+  servidor asigne `updated_at` con un trigger y el cliente adopte ese valor;
+  hoy no está implementado.
 - **Mitigación:** la UI muestra pendientes y errores de sync; las ventas no
   compiten entre sí porque cada una es una fila nueva.
 
@@ -107,6 +125,11 @@ stock y el fiado se ajustan al sincronizar, no en el momento de la venta.
 - **Límite:** dos cajas offline pueden vender la última pieza y sobrevender
   hasta que ambas sincronicen. El servidor rechaza filas que violan RLS o
   restricciones y la app avisa, pero no hay reserva anticipada de stock.
+- **Reintentos:** el rebase consume el delta al aplicarlo sobre la nube; si el
+  push falla y se reintenta, se reenvía el valor ya rebasado y no se vuelve a
+  restar. La prueba de regresión está en
+  [`tests/sync-pull.test.ts`](tests/sync-pull.test.ts) (“un reintento tras un
+  push fallido no vuelve a aplicar el delta”).
 - **Pendiente:** mover stock y fiado a una función RPC atómica en Postgres. Hoy
   se mitiga con rebase por deltas y guardias en la base; no es equivalente a
   una transacción distribuida.
@@ -147,6 +170,27 @@ sincronizadas, no con agregaciones SQL en el servidor.
   los reportes a vistas materializadas o RPC. Para una tienda de abarrotes con
   historial acotado, el trade-off es correcto.
 
+### Rate limit por IP
+
+Los endpoints de `api/` aplican un límite por IP: 20 req/min para el asistente,
+40 para voz y 30 para usuarios. Si `UPSTASH_REDIS_REST_URL` y
+`UPSTASH_REDIS_REST_TOKEN` están configurados, el conteo es compartido entre
+instancias y sobrevive a los deploys; si no, es un `Map` en memoria por
+instancia de Cloudflare Pages Functions. No hay WAF ni límite global de
+Cloudflare en el repositorio, así que sin Upstash la protección es parcial.
+
+### Cierre de caja y ventas offline
+
+El cierre automático de medianoche no es un cron del servidor: lo ejecuta un
+dispositivo con sesión de admin cada 60 s y al volver a la app; si no hay
+ninguno abierto, el corte queda pendiente. El corte agrupa por `created_at` de
+la venta (la hora del dispositivo que la registró), no por la hora de
+sincronización. Si una venta offline se sincroniza después de que otro equipo
+cerró el corte de ese periodo, el resumen guardado del corte no se recalcula:
+la venta conserva su fecha y sigue en reportes, pero si su `created_at` es
+anterior al `closed_at` de ese corte tampoco entra en el siguiente resumen.
+Revisar esos casos es manual.
+
 ### Dependencias externas: IA y Realtime
 
 - **IA y voz:** el asistente en la nube y la voz cloud dependen de llaves de
@@ -163,13 +207,17 @@ de 90 días. El primer run verificado fue el 2026-11-06; el RPO de 24 h es real
 mientras el workflow siga corriendo en verde. No hay PITR configurado.
 
 - **RPO:** hasta 24 h de datos ante un desastre. IndexedDB conserva el estado
-  en cada dispositivo y se puede exportar manualmente; el respaldo diario
-  cubre el resto. Subir a PITR es una decisión de costo, no de código.
+  en cada dispositivo y se puede exportar manualmente desde Ajustes › Respaldo;
+  el respaldo diario cubre el resto. Subir a PITR es una decisión de costo, no
+  de código.
 - **Durabilidad en el dispositivo:** la app pide almacenamiento persistente
   (`navigator.storage.persist()`), pero el navegador puede desalojarlo si el
   equipo está sin espacio, y borrar los datos del sitio elimina lo no
-  sincronizado. Un dispositivo perdido antes de sincronizar puede perder
-  ventas; por eso la UI muestra los pendientes y sincroniza al reconectar.
+  sincronizado. En iOS/Safari el riesgo es mayor: el sistema puede desalojar
+  el almacenamiento de una PWA que no se usa. Un dispositivo perdido antes de
+  sincronizar puede perder ventas. La app muestra un aviso global cuando hay
+  cambios pendientes y la última sincronización tiene más de 1 h, además del
+  estado en el menú de cuenta; no sustituye un respaldo manual.
 
 ## Stack
 
@@ -189,13 +237,15 @@ npm run check   # lint + tipos + tests
   sucursal; catálogo y sucursales los administra el admin.
 - **JWT validado en el servidor:** los endpoints de `api/` verifican la sesión
   contra Supabase, comprueban el rol admin cuando aplica y aplican rate limit
-  por IP con límites de entrada.
+  por IP. Con Upstash Redis el conteo es compartido; sin él es por instancia
+  (ver [Limitaciones](#limitaciones-conocidas-y-trade-offs)).
 - **`service_role` aislada:** vive solo como secreto en Cloudflare; nunca en el
   navegador ni en el repositorio.
 - **Cabeceras estrictas en producción:** CSP, `nosniff`, `DENY` para frames y
   política de permisos para micrófono y cámara.
 - **Defensa en profundidad:** guardias en la base para stock, precios,
-  cantidades, fiado y devoluciones, además de respaldos cifrados diarios.
+  cantidades, fiado y devoluciones, además de respaldos cifrados diarios
+  (RPO ≤ 24 h; sin PITR).
 
 ## Documentación
 
@@ -219,8 +269,9 @@ npm run check   # lint + tipos + tests
 - **Inventario** con entradas de mercancía, mermas, conteos físicos y aviso de mínimos.
 - **Corte de caja** con arqueo, diferencia, historial con detalle de cada corte,
   **corte de un día pasado** (cierra pendientes sin tocar las ventas de hoy),
-  **cierre automático a medianoche** si no se hizo manualmente y envío del
-  resumen por WhatsApp a los números de la sucursal.
+  **cierre automático a medianoche** si no se hizo manualmente —lo ejecuta un
+  dispositivo con sesión de admin cada 60 s y al volver a la app, no un cron del
+  servidor— y envío del resumen por WhatsApp a los números de la sucursal.
 - **Reportes** diarios/mensuales, ganancia, y exportación a PDF.
 - **Asistente por chat** que responde con datos reales (ventas, caja, fiado) y puede registrar gastos.
 - **Multi-dispositivo**: PC, celular y tablet sincronizados.
@@ -235,10 +286,13 @@ npm run check   # lint + tipos + tests
 - Tiempo real: con `supabase/migracion-realtime.sql` aplicado, cada cambio en
   otro dispositivo dispara la sync en ~1 s (WebSocket de Supabase Realtime).
   Sin él, se revisa cada 8 s mientras la app está visible.
-- El pull relee los últimos 10 minutos para tolerar relojes desfasados entre
-  dispositivos (el merge es idempotente).
+- El pull incremental usa `synced_at`, la marca que pone el servidor al
+  recibir cada fila, con 60 s de solape para no saltar commits tardíos. Si la
+  migración `synced_at` aún no está aplicada, cae al modo legacy por
+  `updated_at` con 10 min de margen. El merge es idempotente.
 - Los borrados se propagan con tombstones y el conflicto se resuelve
-  last-write-wins por `updated_at`.
+  last-write-wins por `updated_at` (reloj del dispositivo); ver
+  [Limitaciones](#limitaciones-conocidas-y-trade-offs).
 - Los contadores mutables (`stock`, saldo de fiado) se protegen: si hay un
   cambio local sin subir y la nube avanzó, el delta local se aplica sobre el
   valor nuevo de la nube en lugar de perderse.

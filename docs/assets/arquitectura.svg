@@ -72,7 +72,7 @@
   <circle cx="1114" cy="286" r="2.5" fill="#818CF8"/>
   <text x="1126" y="290" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Rebase de stock y saldo de fiado</text>
   <circle cx="1114" cy="310" r="2.5" fill="#818CF8"/>
-  <text x="1126" y="314" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">LWW por updated_at · ventana 10 min</text>
+  <text x="1126" y="314" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">LWW por updated_at · pull synced_at 60 s</text>
 
   <!-- Device arrows -->
   <line x1="520" y1="247" x2="572" y2="247" stroke="#6366F1" stroke-width="1.8" marker-start="url(#arrow-indigo)" marker-end="url(#arrow-indigo)"/>
