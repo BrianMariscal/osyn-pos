@@ -1,9 +1,82 @@
-# Abarrotes POS
+# OSYN POS
 
-Punto de venta web (PWA) para tiendas de abarrotes: venta rápida con voz y
-escáner, inventario, fiado, gastos, compras a proveedores, mermas, corte de
-caja, reportes en PDF y respaldo en la nube. Funciona **offline** (todo queda
-en el dispositivo) y se puede instalar como app en Android.
+**SaaS offline-first** con sincronización distribuida, multi-tenant por instancia, RLS por sucursal y asistente IA en producción.
+
+Punto de venta para tiendas de abarrotes que sigue vendiendo sin internet: cada
+venta se guarda en el dispositivo y se sincroniza entre PC, celular y tablet al
+volver la conexión.
+
+🔴 **En producción:** [osynpos.shop](https://osynpos.shop)
+
+[![CI](https://github.com/BrianMariscal/osyn-pos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/BrianMariscal/osyn-pos/actions/workflows/ci.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](#stack)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3ECF8E?logo=supabase&logoColor=white)](#stack)
+[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages%20Functions-F38020?logo=cloudflare&logoColor=white)](#stack)
+[![PWA](https://img.shields.io/badge/PWA-offline--first-5A0FC8)](#stack)
+
+## Arquitectura
+
+![Arquitectura de OSYN POS: PWA → IndexedDB → Sync Engine → Supabase, con Cloudflare Pages Functions para IA y voz](docs/assets/arquitectura.png)
+
+> En el dispositivo, la PWA escribe primero en IndexedDB y el Sync Engine sube
+> deltas a Supabase. En la nube, Cloudflare Pages sirve la app y las funciones
+> de IA/voz; GitHub Actions ejecuta CI y respaldos cifrados.
+
+## Decisiones clave
+
+- **Offline-first real, no un “modo offline”.** La venta se escribe primero en
+  IndexedDB; el Sync Engine sube cambios incrementales y rebasa contadores
+  mutables (stock y fiado) para no perder operaciones hechas sin red.
+- **Aislamiento por instancia y RLS por sucursal.** Cada cliente tiene su propia
+  instancia de Supabase + Cloudflare. Dentro de la tienda, RLS, JWT y roles
+  (dueño, admin, vendedor) limitan cada dato a su sucursal: el catálogo se
+  comparte, pero stock, ventas y caja no.
+- **Sincronización distribuida idempotente.** Tombstones para borrados,
+  last-write-wins por `updated_at`, pull de los últimos 10 minutos para tolerar
+  relojes desfasados y descarga de tablas en paralelo. Realtime baja la latencia
+  a ~1 s; sin Realtime, polling cada 8 s.
+- **IA sobre datos reales, con degradación elegante.** El asistente consulta
+  ventas, caja y fiado mediante funciones serverless que validan el JWT; si no
+  hay llaves de IA, un parser local mantiene la venta por voz.
+- **CI/CD y respaldos desde el día uno.** GitHub Actions corre lint, tipos,
+  tests y build en cada push, y respalda Supabase a diario con `pg_dump`
+  cifrado y retención de 90 días.
+
+## Stack
+
+`TypeScript` · `Vite` · `PWA` · `IndexedDB` · `Supabase (Postgres, Auth, Realtime, RLS)` · `Cloudflare Pages Functions` · `ElevenLabs` · `Vitest`
+
+## Desarrollo
+
+```bash
+npm install
+npm run dev     # http://localhost:5173
+npm run check   # lint + tipos + tests
+```
+
+## Seguridad
+
+- **RLS en todas las tablas:** cada usuario autenticado solo accede a su
+  sucursal; catálogo y sucursales los administra el admin.
+- **JWT validado en el servidor:** los endpoints de `api/` verifican la sesión
+  contra Supabase, comprueban el rol admin cuando aplica y aplican rate limit
+  por IP con límites de entrada.
+- **`service_role` aislada:** vive solo como secreto en Cloudflare; nunca en el
+  navegador ni en el repositorio.
+- **Cabeceras estrictas en producción:** CSP, `nosniff`, `DENY` para frames y
+  política de permisos para micrófono y cámara.
+- **Defensa en profundidad:** guardias en la base para stock, precios,
+  cantidades, fiado y devoluciones, además de respaldos cifrados diarios.
+
+## Documentación
+
+| Guía | Contenido |
+|---|---|
+| [Instalación de Supabase](docs/setup-supabase.md) | Crear el proyecto, aplicar schema/migraciones y usuarios iniciales |
+| [Despliegue](docs/deploy.md) | Cloudflare Pages, variables, secretos y monitoreo |
+| [Modelo comercial](docs/comercial.md) | Venta por cliente, precios y checklist de alta |
+| [Respaldos](docs/respaldos.md) | Configurar, restaurar y verificar el respaldo diario |
+| [Decisión comercial detallada](docs/decision-comercial.md) | Opciones de arquitectura, cobro y pendientes |
 
 ## Características
 
@@ -26,24 +99,20 @@ en el dispositivo) y se puede instalar como app en Android.
 - **Sucursales**: una por defecto; el dueño agrega más cuando quiera, cada una con su propio stock, ventas y caja (catálogo compartido). En Ajustes › Sucursales se configuran (el dueño, o el administrador en la suya) hasta dos números de WhatsApp para recibir cada corte y el cierre automático a medianoche.
 - **Roles**: admin y vendedor (el admin decide qué pantallas ve cada vendedor).
 
-## Stack
+## Sincronización y offline
 
-- Frontend: TypeScript modular + Vite + PWA (service worker offline).
-- Datos: IndexedDB en el dispositivo + Supabase (Postgres + Auth + RLS) como nube.
-- Backend ligero: funciones en `api/` servidas por Cloudflare Pages Functions (asistente IA, voz y usuarios).
-- Tests: Vitest (jsdom para los diálogos de la interfaz).
-
-## Desarrollo
-
-```bash
-npm install
-npm run dev          # servidor local (http://localhost:5173)
-npm run check        # lint + typecheck + tests (validación pre-producción)
-npm test             # tests (Vitest)
-npm run typecheck    # chequeo de tipos
-npm run lint         # ESLint
-npm run build        # typecheck + build de producción en dist/
-```
+- Todo se guarda primero en IndexedDB y después se sube/baja por tabla con
+  cambios incrementales (las tablas se descargan en paralelo).
+- Tiempo real: con `supabase/migracion-realtime.sql` aplicado, cada cambio en
+  otro dispositivo dispara la sync en ~1 s (WebSocket de Supabase Realtime).
+  Sin él, se revisa cada 8 s mientras la app está visible.
+- El pull relee los últimos 10 minutos para tolerar relojes desfasados entre
+  dispositivos (el merge es idempotente).
+- Los borrados se propagan con tombstones y el conflicto se resuelve
+  last-write-wins por `updated_at`.
+- Los contadores mutables (`stock`, saldo de fiado) se protegen: si hay un
+  cambio local sin subir y la nube avanzó, el delta local se aplica sobre el
+  valor nuevo de la nube en lugar de perderse.
 
 ## Estructura
 
@@ -60,115 +129,6 @@ functions/    adaptador de Cloudflare Pages que sirve api/ en /api/*
 supabase/     schema.sql, migraciones y verificacion.sql (qué protecciones tiene la base)
 public/       config.js (llaves públicas), _headers (seguridad), íconos, assetlinks (Android)
 tests/        pruebas de Vitest
-docs/         decisiones y guías (respaldos, modelo comercial)
+docs/         guías de instalación, despliegue, comercial, respaldos y arquitectura
 .github/      CI (lint, tipos, pruebas, build) y respaldo diario cifrado
 ```
-
-## Supabase (nueva instalación)
-
-1. Crea un proyecto en Supabase.
-2. En **SQL Editor** ejecuta `supabase/schema.sql`. Las bases nuevas crean **una
-   sola sucursal** ("Sucursal 1"); el dueño agrega más desde la app
-   (Ajustes > Sucursales).
-3. Crea el dueño, un administrador y un vendedor inicial (Node 18+):
-   ```bash
-   node scripts/setup-usuarios.mjs --url https://TU-PROYECTO.supabase.co --service-role TU_SERVICE_ROLE --anon TU_ANON_KEY \
-     --dueno-email dueno@tutienda.com --dueno-password Dueno2026 \
-     --admin-email admin@tutienda.com --admin-password Admin2026 \
-     --vendedor-email vendedor@tutienda.com --vendedor-password Vendedor2026
-   ```
-   Roles: **dueño** (gestiona usuarios y sucursales), **administrador** (opera
-   la tienda: ventas, inventario, cortes, reportes y ajustes, sin gestionar
-   usuarios/sucursales) y **vendedor** (solo sus pantallas y su sucursal).
-   La `service_role` es secreta: solo en el servidor, nunca en git.
-4. Sin `--anon`, pega la `Project URL` y la `anon key` en `public/config.js`.
-
- 5. Para que los cambios se vean **al instante** en todos los dispositivos,
-    ejecuta `supabase/migracion-realtime.sql` en el SQL Editor (una sola vez).
-    Sin este paso la app sincroniza igual, revisando cada pocos segundos.
-
- 6. Ejecuta `supabase/migracion-guardias-fiado.sql` y
-    `supabase/migracion-precios-servidor.sql` (después de
-    `supabase/migracion-stock-servidor.sql`): un vendedor ya no puede alterar
-    saldos de fiado ni registrar ventas debajo del costo o con cantidades inválidas.
- 7. Ejecuta `supabase/migracion-devoluciones.sql` (después de las anteriores):
-    crea la tabla de **devoluciones**, valida en el servidor que no se devuelva
-    más de lo vendido y regresa el stock al inventario.
- 8. Corre `supabase/verificacion.sql` (solo lectura): cada renglón debe decir
-    **OK**; si dice **FALTA**, indica qué archivo aplicar.
-
- > ¿Base ya existente con datos? Aplica `supabase/migracion-multisucursal.sql`
- > para pasar a esquema multi-sucursal sin perder información (respáldala antes).
- > Después aplica `supabase/migracion-endurecimiento.sql` para restringir el
- > catálogo de proveedores y validar cantidades y montos no negativos.
- > Para asignar administradores a una sucursal, aplica también
- > `supabase/migracion-admin-sucursal.sql`: un administrador con sucursal solo
- > ve y opera esa sucursal; sin sucursal sigue viendo todas.
-
-## Sincronización y offline
-
-- Todo se guarda primero en IndexedDB y después se sube/baja por tabla con
-  cambios incrementales (las tablas se descargan en paralelo).
-- Tiempo real: con `supabase/migracion-realtime.sql` aplicado, cada cambio en
-  otro dispositivo dispara la sync en ~1 s (WebSocket de Supabase Realtime).
-  Sin él, se revisa cada 8 s mientras la app está visible.
-- El pull relee los últimos 10 minutos para tolerar relojes desfasados entre
-  dispositivos (el merge es idempotente).
-- Los borrados se propagan con tombstones y el conflicto se resuelve
-  last-write-wins por `updated_at`.
-- Los contadores mutables (`stock`, saldo de fiado) se protegen: si hay un
-  cambio local sin subir y la nube avanzó, el delta local se aplica sobre el
-  valor nuevo de la nube en lugar de perderse.
-
-## Despliegue
-
-Producción: **Cloudflare Pages** (proyecto `osynpos`, dominio osynpos.shop), plan
-gratuito con uso comercial permitido.
-
-```bash
-npm run deploy:cf    # build + wrangler pages deploy
-```
-
-Las cabeceras de seguridad viven en `public/_headers`. Las variables se ponen en
-Cloudflare → Workers & Pages → osynpos → Settings → Variables and Secrets:
-
-| Variable | Para qué |
-|---|---|
-| `SUPABASE_URL` | Valida sesiones y usuarios en `api/*` |
-| `SUPABASE_ANON_KEY` | Ídem |
-| `SUPABASE_SERVICE_ROLE_KEY` | Crear/editar usuarios desde `api/*` (secreta) |
-| `NVIDIA_API_KEY` o `OPENAI_API_KEY` | Motor del asistente (chat) |
-| `ELEVENLABS_API_KEY` | Voz del asistente (la clave necesita los permisos `voices_read` y `text_to_speech`) |
-| `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN` | Opcional (Upstash gratis): límite de solicitudes compartido entre instancias. Sin ellas se cuenta en memoria |
-
-Monitoreo de errores (opcional, Sentry gratis): pon el DSN en `sentryDsn` de
-`public/config.js`. Sin DSN no se carga nada.
-
-Respaldos diarios y pruebas automáticas corren en GitHub Actions
-(`.github/workflows/`). Configuración y restauración en `docs/respaldos.md`.
-
-Sin esas llaves el resto de la app funciona normal; el asistente de IA responde
-con el parser local.
-
-## Comercialización
-
-Modelo recomendado: **una copia (Supabase + despliegue) por cliente**. Detalles,
-modelo de cobro y checklist por cliente en `docs/decision-comercial.md`.
-
-## Notas de seguridad
-
-- Las llaves públicas (`anon`) viven en `public/config.js` por diseño.
-- La `service_role` nunca debe ir al navegador ni al repositorio.
-- RLS activo en todas las tablas: cada usuario autenticado solo accede a su
-  sucursal; catálogo y sucursales los administra el admin.
-- Endpoints de `api/` validan sesión (JWT contra Supabase), verifican rol admin
-  cuando corresponde, aplican rate limit por IP y acotan tamaños de entrada.
-- Cabeceras de seguridad en producción (CSP estricta, `nosniff`, `DENY` frames,
-  políticas de permisos para micrófono/cámara).
-
-### Antes de dar de alta un cliente nuevo
-
-1. Rotar/regenerar la `service_role` si estuvo en texto plano en algún
-   respaldo o máquina de desarrollo (Supabase → Settings → API keys).
-2. En la tienda del cliente, decidir si los vendedores pueden crear productos y
-   editar proveedores (hoy sí pueden por política de RLS); si no, restringirlo.

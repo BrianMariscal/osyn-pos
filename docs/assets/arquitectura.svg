@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="790" viewBox="0 0 1600 790" role="img" aria-labelledby="title desc">
+  <title id="title">Arquitectura de OSYN POS</title>
+  <desc id="desc">PWA en el dispositivo con IndexedDB y Sync Engine, conectada a Supabase. Cloudflare Pages Functions atiende la API, el asistente IA y la voz. GitHub Actions ejecuta CI/CD y respaldos cifrados.</desc>
+
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow-indigo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6366F1"/>
+    </marker>
+    <marker id="arrow-slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+    <marker id="arrow-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7C3AED"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="790" fill="#FFFFFF"/>
+
+  <!-- Header -->
+  <text x="40" y="55" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="700" fill="#0F172A">OSYN POS</text>
+  <text x="40" y="82" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#64748B">PWA offline-first para punto de venta · sincronización distribuida · IA en producción</text>
+
+  <rect x="1267" y="31" width="265" height="34" rx="17" fill="#ECFDF5" stroke="#A7F3D0"/>
+  <circle cx="1285" cy="48" r="4" fill="#22C55E"/>
+  <text x="1297" y="53" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#047857">EN PRODUCCIÓN · osynpos.shop</text>
+
+  <!-- Device lane -->
+  <rect x="40" y="110" width="1520" height="250" rx="20" fill="#F5F7FF" stroke="#E0E7FF"/>
+  <circle cx="72" cy="138" r="5" fill="#4F46E5"/>
+  <text x="86" y="143" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" letter-spacing="1.6" fill="#4338CA">DISPOSITIVO · OFFLINE-FIRST</text>
+
+  <!-- PWA card -->
+  <rect x="68" y="162" width="448" height="170" rx="14" fill="#FFFFFF" stroke="#C7D2FE" filter="url(#shadow)"/>
+  <text x="92" y="198" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1E1B4B">PWA</text>
+  <text x="92" y="221" font-family="DejaVu Sans, sans-serif" font-size="12.5" fill="#6366F1">TypeScript · Vite · Service Worker</text>
+  <line x1="92" y1="240" x2="492" y2="240" stroke="#E0E7FF"/>
+  <circle cx="98" cy="262" r="2.5" fill="#818CF8"/>
+  <text x="110" y="266" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Venta, inventario, fiado y corte</text>
+  <circle cx="98" cy="286" r="2.5" fill="#818CF8"/>
+  <text x="110" y="290" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Voz y escáner en el navegador</text>
+  <circle cx="98" cy="310" r="2.5" fill="#818CF8"/>
+  <text x="110" y="314" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Instalable en Android y escritorio</text>
+
+  <!-- IndexedDB card -->
+  <rect x="576" y="162" width="448" height="170" rx="14" fill="#FFFFFF" stroke="#C7D2FE" filter="url(#shadow)"/>
+  <text x="600" y="198" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1E1B4B">IndexedDB</text>
+  <text x="600" y="221" font-family="DejaVu Sans, sans-serif" font-size="12.5" fill="#6366F1">Caché local durable</text>
+  <line x1="600" y1="240" x2="1000" y2="240" stroke="#E0E7FF"/>
+  <circle cx="606" cy="262" r="2.5" fill="#818CF8"/>
+  <text x="618" y="266" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Ventas, stock, saldos y tombstones</text>
+  <circle cx="606" cy="286" r="2.5" fill="#818CF8"/>
+  <text x="618" y="290" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">La app opera 100 % sin red</text>
+  <circle cx="606" cy="310" r="2.5" fill="#818CF8"/>
+  <text x="618" y="314" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Fuente de verdad en el dispositivo</text>
+
+  <!-- Sync Engine card -->
+  <rect x="1084" y="162" width="448" height="170" rx="14" fill="#FFFFFF" stroke="#C7D2FE" filter="url(#shadow)"/>
+  <text x="1108" y="198" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#1E1B4B">Sync Engine</text>
+  <text x="1108" y="221" font-family="DejaVu Sans, sans-serif" font-size="12.5" fill="#6366F1">Push / pull incremental</text>
+  <line x1="1108" y1="240" x2="1508" y2="240" stroke="#E0E7FF"/>
+  <circle cx="1114" cy="262" r="2.5" fill="#818CF8"/>
+  <text x="1126" y="266" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Realtime (~1 s) o polling cada 8 s</text>
+  <circle cx="1114" cy="286" r="2.5" fill="#818CF8"/>
+  <text x="1126" y="290" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Rebase de stock y saldo de fiado</text>
+  <circle cx="1114" cy="310" r="2.5" fill="#818CF8"/>
+  <text x="1126" y="314" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">LWW por updated_at · ventana 10 min</text>
+
+  <!-- Device arrows -->
+  <line x1="520" y1="247" x2="572" y2="247" stroke="#6366F1" stroke-width="1.8" marker-start="url(#arrow-indigo)" marker-end="url(#arrow-indigo)"/>
+  <text x="546" y="235" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#64748B">lee / escribe</text>
+
+  <line x1="1028" y1="247" x2="1080" y2="247" stroke="#6366F1" stroke-width="1.8" marker-start="url(#arrow-indigo)" marker-end="url(#arrow-indigo)"/>
+  <text x="1054" y="235" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#64748B">cola offline</text>
+
+  <!-- Cloud lane -->
+  <rect x="40" y="395" width="1520" height="245" rx="20" fill="#F0FDFA" stroke="#CCFBF1"/>
+  <circle cx="72" cy="423" r="5" fill="#0D9488"/>
+  <text x="86" y="428" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" letter-spacing="1.6" fill="#0F766E">NUBE · MULTI-TENANT POR INSTANCIA</text>
+
+  <!-- Cloudflare card -->
+  <rect x="68" y="447" width="448" height="170" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#shadow)"/>
+  <text x="92" y="483" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#9A3412">Cloudflare Pages</text>
+  <text x="92" y="506" font-family="DejaVu Sans, sans-serif" font-size="12.5" fill="#EA580C">PWA + Pages Functions</text>
+  <line x1="92" y1="525" x2="492" y2="525" stroke="#F1F5F9"/>
+  <circle cx="98" cy="547" r="2.5" fill="#FB923C"/>
+  <text x="110" y="551" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Hosting global con HTTPS y CSP</text>
+  <circle cx="98" cy="571" r="2.5" fill="#FB923C"/>
+  <text x="110" y="575" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">API /api: usuarios, voz e IA</text>
+  <circle cx="98" cy="595" r="2.5" fill="#FB923C"/>
+  <text x="110" y="599" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Rate limit por IP y validación JWT</text>
+
+  <!-- AI card -->
+  <rect x="576" y="447" width="448" height="170" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#shadow)"/>
+  <text x="600" y="483" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#5B21B6">IA / Voz</text>
+  <text x="600" y="506" font-family="DejaVu Sans, sans-serif" font-size="12.5" fill="#7C3AED">LLM + ElevenLabs</text>
+  <line x1="600" y1="525" x2="1000" y2="525" stroke="#F1F5F9"/>
+  <circle cx="606" cy="547" r="2.5" fill="#A78BFA"/>
+  <text x="618" y="551" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Asistente con datos reales</text>
+  <circle cx="606" cy="571" r="2.5" fill="#A78BFA"/>
+  <text x="618" y="575" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Dictado y respuestas por voz</text>
+  <circle cx="606" cy="595" r="2.5" fill="#A78BFA"/>
+  <text x="618" y="599" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Fallback a parser local sin llaves</text>
+
+  <!-- Supabase card -->
+  <rect x="1084" y="447" width="448" height="170" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#shadow)"/>
+  <text x="1108" y="483" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#047857">Supabase</text>
+  <text x="1108" y="506" font-family="DejaVu Sans, sans-serif" font-size="12.5" fill="#059669">Postgres · Auth · Realtime</text>
+  <line x1="1108" y1="525" x2="1508" y2="525" stroke="#F1F5F9"/>
+  <circle cx="1114" cy="547" r="2.5" fill="#34D399"/>
+  <text x="1126" y="551" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">RLS por sucursal y por rol</text>
+  <circle cx="1114" cy="571" r="2.5" fill="#34D399"/>
+  <text x="1126" y="575" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">JWT y políticas en todas las tablas</text>
+  <circle cx="1114" cy="595" r="2.5" fill="#34D399"/>
+  <text x="1126" y="599" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#334155">Fuente de verdad en la nube</text>
+
+  <!-- Cross-lane arrows -->
+  <line x1="292" y1="336" x2="292" y2="443" stroke="#64748B" stroke-width="1.8" marker-end="url(#arrow-slate)"/>
+  <text x="306" y="374" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#475569">HTTPS · PWA</text>
+  <text x="306" y="391" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#475569">hosting global</text>
+
+  <line x1="1308" y1="336" x2="1308" y2="443" stroke="#0D9488" stroke-width="1.8" marker-start="url(#arrow-teal)" marker-end="url(#arrow-teal)"/>
+  <text x="1322" y="374" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#0F766E">push / pull incremental</text>
+  <text x="1322" y="391" font-family="DejaVu Sans, sans-serif" font-size="11.5" fill="#0F766E">Realtime · rebase</text>
+
+  <!-- Cloud arrows -->
+  <line x1="520" y1="532" x2="572" y2="532" stroke="#7C3AED" stroke-width="1.8" marker-end="url(#arrow-violet)"/>
+  <text x="546" y="521" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#6D28D9">API /api</text>
+
+  <line x1="1028" y1="532" x2="1080" y2="532" stroke="#059669" stroke-width="1.8" marker-end="url(#arrow-green)"/>
+  <text x="1054" y="521" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="11" fill="#047857">datos reales</text>
+
+  <!-- Footer -->
+  <rect x="40" y="665" width="1520" height="85" rx="16" fill="#0F172A"/>
+  <text x="68" y="700" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" letter-spacing="1.5" fill="#34D399">CI/CD Y RESPALDOS</text>
+  <text x="68" y="726" font-family="DejaVu Sans, sans-serif" font-size="12.5" fill="#CBD5E1">lint + tipos + tests + build en cada push · respaldo diario cifrado (pg_dump, 90 días)</text>
+  <text x="1532" y="726" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="12" fill="#94A3B8">GitHub Actions → Cloudflare Pages → osynpos.shop</text>
+</svg>
