@@ -4,7 +4,7 @@ import type { SyncState } from "../core/types";
 export const STALE_SYNC_MS = 60 * 60_000;
 
 /**
- * Aviso para Inicio cuando hay ventas o cambios que no llegan a la nube:
+ * Aviso global cuando hay ventas o cambios que no llegan a la nube:
  * la nube rechazó alguno, o lleva más de una hora sin subir. null = todo bien.
  */
 export function syncAlert(sync: SyncState, now = Date.now()): string | null {

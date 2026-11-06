@@ -6,7 +6,6 @@ import type { TabModule } from "../tab-module";
 import { renderGoals, renderHero, renderMonth, renderWeek } from "./cards";
 import { createRankCard, renderCredit, renderLow, renderVendorPayments } from "./lists";
 import { createInicioScene, type InicioScene } from "./scene";
-import { createSyncAlert } from "./sync-alert";
 
 /** Saludo y fecha del encabezado. */
 function renderGreeting(scene: InicioScene, isManager: boolean, isOwner: boolean): void {
@@ -26,7 +25,6 @@ export const inicioTab: TabModule = {
     const { ui } = scene;
     const managerOnly = [ui.weekCard, ui.monthCard, ui.rankCard, ui.lowCard, ui.creditCard];
     const rank = createRankCard(scene);
-    createSyncAlert(scene);
 
     const render = (): void => {
       const scope = ctx.branches.viewScope();

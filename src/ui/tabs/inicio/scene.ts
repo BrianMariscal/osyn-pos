@@ -22,7 +22,6 @@ export interface InicioRefs {
   creditCard: HTMLElement;
   rankBodyEl: HTMLElement;
   rankPeriodEl: HTMLElement;
-  syncAlertEl: HTMLElement;
 }
 
 /** Base compartida del inicio: markup, referencias y consultas por periodo. */
@@ -74,7 +73,6 @@ export function createInicioScene(root: HTMLElement, ctx: AppContext): InicioSce
 
 function inicioMarkup(): SafeHtml {
   return html`
-    <div id="syncAlert" class="notice sync-alert hidden" role="alert"></div>
     <header class="dash-head">
       <div id="greeting"></div>
       <div class="dash-actions"><div id="scopeChips"></div></div>
@@ -113,7 +111,6 @@ function collectRefs(root: HTMLElement): InicioRefs {
     lowCard: root.querySelector<HTMLElement>("#lowCard")!,
     creditCard: root.querySelector<HTMLElement>("#creditCard")!,
     rankBodyEl: root.querySelector<HTMLElement>("#rankBody")!,
-    rankPeriodEl: root.querySelector<HTMLElement>("#rankPeriod")!,
-    syncAlertEl: root.querySelector<HTMLElement>("#syncAlert")!
+    rankPeriodEl: root.querySelector<HTMLElement>("#rankPeriod")!
   };
 }

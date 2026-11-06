@@ -19,6 +19,7 @@ import { renderAuthState, wireLogin, wirePasswordToggles } from "./shell/auth-ui
 import { wireAutoClose } from "./shell/auto-close";
 import { activateTab, openMoreSheet, presetActiveTab } from "./shell/nav";
 import { wireSessionMenu } from "./shell/session-menu";
+import { wireSyncAlert } from "./shell/sync-alert";
 import { serverVersion, wireSyncListeners } from "./shell/sync";
 import { applyTheme, wireThemeToggle } from "./shell/theme";
 import { wireTopbar } from "./shell/topbar";
@@ -76,7 +77,9 @@ export function buildApp(ctx: AppContext): void {
           </div>
         </header>
         <nav class="tabs" aria-label="Módulos" id="tabsNav"></nav>
-        <main id="appMain"></main>
+        <main id="appMain">
+          <div id="globalSyncAlert" class="notice sync-alert hidden" role="alert"></div>
+        </main>
       </div>
       <button id="assistantFab" class="assistant-fab hidden" type="button" aria-label="Asistente IA">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><rect x="4" y="8" width="16" height="12" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg>
@@ -117,6 +120,7 @@ export function buildApp(ctx: AppContext): void {
   wireTopbar(ctx);
   wireSessionMenu(ctx);
   wireSyncListeners(ctx);
+  wireSyncAlert(ctx);
 
   // Si una voz en línea falla (p. ej., plan de ElevenLabs sin acceso a voces
   // de la Biblioteca), se avisa al usuario en vez de fallar en silencio.
