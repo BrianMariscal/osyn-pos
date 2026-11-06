@@ -9,6 +9,7 @@ volver la conexión.
 🔴 **En producción:** [osynpos.shop](https://osynpos.shop)
 
 [![CI](https://github.com/BrianMariscal/osyn-pos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/BrianMariscal/osyn-pos/actions/workflows/ci.yml)
+[![Respaldo diario](https://github.com/BrianMariscal/osyn-pos/actions/workflows/backup.yml/badge.svg?branch=main)](https://github.com/BrianMariscal/osyn-pos/actions/workflows/backup.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](#stack)
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3ECF8E?logo=supabase&logoColor=white)](#stack)
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages%20Functions-F38020?logo=cloudflare&logoColor=white)](#stack)
@@ -66,8 +67,8 @@ Los límites de estas decisiones están documentados en
 | Tablas con RLS | **14/14** · 52 políticas | [`supabase/schema.sql`](supabase/schema.sql) |
 | Sync con Realtime | **~1 s** (objetivo) | [`supabase/migracion-realtime.sql`](supabase/migracion-realtime.sql) |
 | Polling de respaldo | **8 s** (60 s con Realtime activo) | [`src/ui/shell/sync.ts`](src/ui/shell/sync.ts) |
-| Respaldo cifrado | workflow diario · AES-256 · **90 días** | [`.github/workflows/backup.yml`](.github/workflows/backup.yml) · requiere `SUPABASE_DB_URL` |
-| RPO de respaldo | **≤ 24 h** (objetivo) | ejecución diaria a las 03:15 CT, con el workflow en verde |
+| Respaldo cifrado | workflow diario · AES-256 · **90 días** | [run verificado 2026-11-06](https://github.com/BrianMariscal/osyn-pos/actions/runs/42155052758) · [workflow](.github/workflows/backup.yml) |
+| RPO de respaldo | **≤ 24 h** | verificado 2026-11-06 · ejecución diaria a las 03:15 CT |
 | Producción | [osynpos.shop](https://osynpos.shop) | Cloudflare Pages |
 
 > **Datos de negocio:** tiendas activas, ventas sincronizadas y latencia real
@@ -158,13 +159,12 @@ sincronizadas, no con agregaciones SQL en el servidor.
 ### Respaldo y durabilidad local
 
 El respaldo es un workflow de `pg_dump` diario cifrado con AES-256 y retención
-de 90 días; requiere el secreto `SUPABASE_DB_URL` y un run en verde para que el
-RPO de 24 h sea real. No hay PITR configurado.
+de 90 días. El primer run verificado fue el 2026-11-06; el RPO de 24 h es real
+mientras el workflow siga corriendo en verde. No hay PITR configurado.
 
-- **RPO:** hasta 24 h de datos ante un desastre **cuando el respaldo corre**.
-  IndexedDB conserva el estado en cada dispositivo y se puede exportar
-  manualmente; el respaldo diario cubre el resto. Subir a PITR es una decisión
-  de costo, no de código.
+- **RPO:** hasta 24 h de datos ante un desastre. IndexedDB conserva el estado
+  en cada dispositivo y se puede exportar manualmente; el respaldo diario
+  cubre el resto. Subir a PITR es una decisión de costo, no de código.
 - **Durabilidad en el dispositivo:** la app pide almacenamiento persistente
   (`navigator.storage.persist()`), pero el navegador puede desalojarlo si el
   equipo está sin espacio, y borrar los datos del sitio elimina lo no
