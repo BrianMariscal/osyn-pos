@@ -1,5 +1,5 @@
 -- ============================================================================
--- Abarrotes POS — Schema completo MULTI-SUCURSAL (instalaciones nuevas)
+-- OSYN POS — Schema completo MULTI-SUCURSAL (instalaciones nuevas)
 -- Ejecutar en Supabase > SQL Editor.
 -- Para una base YA EXISTENTE con datos, usa supabase/migracion-multisucursal.sql
 -- ============================================================================

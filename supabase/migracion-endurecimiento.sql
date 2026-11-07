@@ -1,4 +1,4 @@
--- Abarrotes POS: endurecimiento de permisos e integridad basica.
+-- OSYN POS: endurecimiento de permisos e integridad basica.
 -- Ejecutar en Supabase SQL Editor despues de supabase/schema.sql.
 
 -- Los vendedores pueden consultar proveedores, pero solo dueño/admin los

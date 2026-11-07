@@ -1,4 +1,4 @@
--- Abarrotes POS: sincronización en TIEMPO REAL entre dispositivos.
+-- OSYN POS: sincronización en TIEMPO REAL entre dispositivos.
 -- Ejecutar UNA vez en Supabase > SQL Editor (se puede repetir sin problema).
 --
 -- Agrega las tablas de la app a la publicación "supabase_realtime". La app solo

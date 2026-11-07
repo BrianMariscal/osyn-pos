@@ -1,4 +1,4 @@
--- Abarrotes POS: ¿qué migraciones de seguridad tiene esta base?
+-- OSYN POS: ¿qué migraciones de seguridad tiene esta base?
 -- Ejecutar en Supabase SQL Editor. Solo LEE, no cambia nada.
 -- Cada renglón debe decir OK. Si alguno dice FALTA, aplica el archivo indicado.
 

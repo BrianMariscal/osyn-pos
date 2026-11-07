@@ -63,7 +63,7 @@ export function rememberedBrand(name: string, logo: string): { name: string; log
 export function showLogo(imgId: string, markId: string, logo: string, name: string): void {
   const img = document.getElementById(imgId) as HTMLImageElement | null;
   const mark = document.getElementById(markId);
-  if (mark) mark.textContent = name.trim().charAt(0).toUpperCase() || "A";
+  if (mark) mark.textContent = name.trim().charAt(0).toUpperCase() || "O";
   const fallback = (): void => {
     img?.classList.add("hidden");
     mark?.classList.remove("hidden");

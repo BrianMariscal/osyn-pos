@@ -1,4 +1,4 @@
--- Abarrotes POS: el servidor lleva el stock y valida ventas.
+-- OSYN POS: el servidor lleva el stock y valida ventas.
 -- Ejecutar en Supabase SQL Editor (se puede correr más de una vez).
 --
 -- Antes cada dispositivo calculaba la existencia y la subía completa; un

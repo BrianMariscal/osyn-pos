@@ -5,6 +5,12 @@
 
 ## [Sin publicar]
 
+### Marca
+
+- Interfaz visible renombrada a **OSYN POS**: login, título del navegador y
+  manifest de la PWA.
+- El título conserva el nombre configurado de la tienda como contexto.
+
 ### Documentación
 
 - Documentación reorientada a la operación interna de OSYN POS.

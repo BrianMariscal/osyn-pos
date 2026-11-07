@@ -1,4 +1,4 @@
--- Abarrotes POS: devoluciones de mercancía (tabla returns) validadas por el servidor.
+-- OSYN POS: devoluciones de mercancía (tabla returns) validadas por el servidor.
 -- Ejecutar en Supabase SQL Editor DESPUÉS de supabase/migracion-stock-servidor.sql
 -- y de supabase/migracion-guardias-fiado.sql (esta migración reemplaza
 -- pos_guard_customer para que las devoluciones abonen al fiado). Se puede correr

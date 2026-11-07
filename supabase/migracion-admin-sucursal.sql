@@ -1,4 +1,4 @@
--- Abarrotes POS: administradores asignados a una sucursal.
+-- OSYN POS: administradores asignados a una sucursal.
 -- Ejecutar UNA vez en Supabase › SQL Editor (después de las migraciones anteriores).
 --
 -- Antes: cualquier administrador leía y escribía datos de TODAS las sucursales.

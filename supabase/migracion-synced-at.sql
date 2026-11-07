@@ -1,4 +1,4 @@
--- Abarrotes POS: marca de sincronización puesta por el servidor.
+-- OSYN POS: marca de sincronización puesta por el servidor.
 -- Ejecutar en Supabase SQL Editor (se puede correr más de una vez).
 --
 -- updated_at lo pone el dispositivo que edita, con su reloj y al momento de

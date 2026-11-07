@@ -7,6 +7,8 @@ import { renderTabsNav } from "./nav";
 import { syncStatus } from "./sync";
 import { applyTheme } from "./theme";
 
+const PRODUCT_NAME = "OSYN POS";
+
 export function wireTopbar(ctx: AppContext): void {
   const branchSelect = document.getElementById("branchSelect") as HTMLSelectElement;
   branchSelect.addEventListener("change", () => {
@@ -22,13 +24,15 @@ export function wireTopbar(ctx: AppContext): void {
     // se usa la recordada, porque los ajustes del invitado vienen vacíos.
     if (ctx.auth.isAuthenticated) rememberBrand(settings.storeName, settings.logo);
     const brand = ctx.auth.isAuthenticated ? { name: settings.storeName, logo: settings.logo } : rememberedBrand(settings.storeName, settings.logo);
-    const name = brand.name || "Abarrotes POS";
-    document.title = name;
+    const name = brand.name || PRODUCT_NAME;
+    // La pestaña y el login muestran la marca del producto; el nombre de la
+    // tienda acompaña en la pestaña para no perder el contexto de la sucursal.
+    document.title = name === PRODUCT_NAME ? PRODUCT_NAME : `${name} · ${PRODUCT_NAME}`;
     const title = document.getElementById("appTitle");
     if (title) title.textContent = name;
     const loginTitle = document.getElementById("loginTitle");
-    if (loginTitle) loginTitle.textContent = name;
-    showLogo("loginLogo", "loginMark", brand.logo, name);
+    if (loginTitle) loginTitle.textContent = PRODUCT_NAME;
+    showLogo("loginLogo", "loginMark", brand.logo, PRODUCT_NAME);
     showLogo("storeLogo", "brandMark", brand.logo, name);
     applyFavicon(brand.logo);
     applyTheme(ctx);

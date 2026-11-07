@@ -1,5 +1,5 @@
 -- ============================================================================
--- Abarrotes POS — MIGRACIÓN MULTI-SUCURSAL para bases YA EXISTENTES
+-- OSYN POS — MIGRACIÓN MULTI-SUCURSAL para bases YA EXISTENTES
 -- Preserva TODOS los datos: productos, clientes, ventas, gastos, cortes, etc.
 --
 -- Ejecutar en Supabase > SQL Editor. Es idempotente (se puede re-ejecutar).

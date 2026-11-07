@@ -1,4 +1,4 @@
--- Abarrotes POS: solo los usuarios con perfil en la tienda leen datos.
+-- OSYN POS: solo los usuarios con perfil en la tienda leen datos.
 -- Ejecutar en Supabase SQL Editor (se puede correr más de una vez).
 --
 -- El registro de Supabase Auth puede quedar abierto: cualquiera con la clave

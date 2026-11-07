@@ -1,4 +1,4 @@
--- Abarrotes POS: los administradores también configuran sus sucursales.
+-- OSYN POS: los administradores también configuran sus sucursales.
 -- Ejecutar UNA vez en Supabase › SQL Editor (después de las migraciones anteriores).
 --
 -- Ajustes › Sucursales ahora lo ven el dueño y los administradores, y ahí se

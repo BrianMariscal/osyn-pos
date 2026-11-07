@@ -36,8 +36,8 @@ export function buildApp(ctx: AppContext): void {
       <section id="loginScreen" class="login-screen hidden">
         <div class="login-brand">
           <img id="loginLogo" class="login-logo hidden" alt="">
-          <div class="login-mark" id="loginMark">A</div>
-          <h1 id="loginTitle">Abarrotes POS</h1>
+          <div class="login-mark" id="loginMark">O</div>
+          <h1 id="loginTitle">OSYN POS</h1>
           <p class="hint">Administración de tu tienda</p>
         </div>
         <form id="loginForm" class="card login-card form">
@@ -59,9 +59,9 @@ export function buildApp(ctx: AppContext): void {
       <div id="appShell" class="hidden">
         <header class="topbar">
           <div class="brand">
-            <span class="brand-mark" id="brandMark" aria-hidden="true">T</span>
+            <span class="brand-mark" id="brandMark" aria-hidden="true">O</span>
             <img id="storeLogo" class="store-logo hidden" alt="">
-            <h1 id="appTitle">Abarrotes POS</h1>
+            <h1 id="appTitle">OSYN POS</h1>
           </div>
           <div class="top-tools">
             <select id="branchSelect" class="input branch-select" aria-label="Sucursal"></select>

@@ -1,4 +1,4 @@
--- Abarrotes POS: el servidor protege el saldo de fiado.
+-- OSYN POS: el servidor protege el saldo de fiado.
 -- Ejecutar en Supabase SQL Editor DESPUÉS de supabase/migracion-stock-servidor.sql
 -- (usa public.pos_is_manager_or_service). Se puede correr más de una vez.
 --

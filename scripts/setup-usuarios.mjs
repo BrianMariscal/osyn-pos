@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Configuración inicial de usuarios para Abarrotes POS (proyecto Supabase NUEVO).
+ * Configuración inicial de usuarios para OSYN POS (proyecto Supabase NUEVO).
  *
  * Qué hace:
  *   1. Valida que el schema ya esté aplicado (tabla profiles).
