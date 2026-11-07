@@ -1,8 +1,14 @@
-# Respaldos de la base (gratis)
+# Respaldos de la base
 
-El flujo `.github/workflows/backup.yml` respalda Supabase todos los días a las
-03:15 (hora del centro) y guarda el archivo cifrado 90 días en GitHub
+> Documento interno de OSYN POS. Uso exclusivo del titular. No se autoriza su
+> reproducción ni distribución a terceros.
+
+El flujo `.github/workflows/backup.yml` respalda la base de OSYN POS todos los
+días a las 03:15 (hora del centro) y guarda el archivo cifrado 90 días en GitHub
 (Actions > Respaldo diario > Artifacts).
+
+El respaldo contiene datos de la operación. Trátalo como información
+confidencial y no lo compartas fuera del equipo autorizado.
 
 ## Configurar (una vez)
 
@@ -26,9 +32,9 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in respaldo-AAAA-MM-DD.dump.en
 # 2. Ver qué contiene
 pg_restore --list respaldo.dump | head
 
-# 3. Restaurar SOLO las tablas de la tienda en un proyecto Supabase nuevo
-#    (después de correr supabase/schema.sql y las migraciones)
-pg_restore --data-only --schema=public --no-owner -d "CADENA_SESSION_POOLER_DEL_PROYECTO_NUEVO" respaldo.dump
+# 3. Restaurar SOLO las tablas de la tienda en una instancia de Supabase de
+#    OSYN POS (después de correr supabase/schema.sql y las migraciones)
+pg_restore --data-only --schema=public --no-owner -d "CADENA_SESSION_POOLER_DE_LA_INSTANCIA" respaldo.dump
 ```
 
 Restaurar `auth` (usuarios) a un proyecto nuevo es más delicado; lo más simple

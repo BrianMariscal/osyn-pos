@@ -1,5 +1,8 @@
 {
   "name": "abarrotes-pos",
+  "description": "OSYN POS: punto de venta offline-first para tiendas de abarrotes.",
+  "author": "Brian Martinez Mariscal",
+  "license": "UNLICENSED",
   "private": true,
   "version": "1.0.0",
   "type": "module",

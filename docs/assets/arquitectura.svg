@@ -84,7 +84,7 @@
   <!-- Cloud lane -->
   <rect x="40" y="395" width="1520" height="245" rx="20" fill="#F0FDFA" stroke="#CCFBF1"/>
   <circle cx="72" cy="423" r="5" fill="#0D9488"/>
-  <text x="86" y="428" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" letter-spacing="1.6" fill="#0F766E">NUBE · MULTI-TENANT POR INSTANCIA</text>
+  <text x="86" y="428" font-family="DejaVu Sans, sans-serif" font-size="13" font-weight="700" letter-spacing="1.6" fill="#0F766E">NUBE · INSTANCIA PRIVADA</text>
 
   <!-- Cloudflare card -->
   <rect x="68" y="447" width="448" height="170" rx="14" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#shadow)"/>

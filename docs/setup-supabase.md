@@ -1,6 +1,9 @@
-# Instalación de Supabase
+# Configuración interna de Supabase
 
-Guía para conectar OSYN POS a un proyecto de Supabase nuevo o existente.
+> Documento interno de OSYN POS. Uso exclusivo del titular. No se autoriza su
+> reproducción ni distribución a terceros.
+
+Guía interna para aprovisionar la base de OSYN POS.
 
 ## Proyecto nuevo
 
@@ -12,15 +15,16 @@ Guía para conectar OSYN POS a un proyecto de Supabase nuevo o existente.
 
    ```bash
    node scripts/setup-usuarios.mjs --url https://TU-PROYECTO.supabase.co --service-role TU_SERVICE_ROLE --anon TU_ANON_KEY \
-     --dueno-email dueno@tutienda.com --dueno-password Dueno2026 \
-     --admin-email admin@tutienda.com --admin-password Admin2026 \
-     --vendedor-email vendedor@tutienda.com --vendedor-password Vendedor2026
+     --dueno-email dueno@ejemplo.com --dueno-password 'CAMBIA_ESTA_CONTRASEÑA' \
+     --admin-email admin@ejemplo.com --admin-password 'CAMBIA_ESTA_CONTRASEÑA' \
+     --vendedor-email vendedor@ejemplo.com --vendedor-password 'CAMBIA_ESTA_CONTRASEÑA'
    ```
 
-   Roles: **dueño** (gestiona usuarios y sucursales), **administrador** (opera
-   la tienda: ventas, inventario, cortes, reportes y ajustes, sin gestionar
-   usuarios/sucursales) y **vendedor** (solo sus pantallas y su sucursal).
-   La `service_role` es secreta: solo en el servidor, nunca en git.
+   Usa contraseñas únicas y largas; no reutilices las de ejemplo. Roles:
+   **dueño** (gestiona usuarios y sucursales), **administrador** (opera la
+   tienda: ventas, inventario, cortes, reportes y ajustes, sin gestionar
+   usuarios/sucursales) y **vendedor** (solo sus pantallas y su sucursal). La
+   `service_role` es secreta: solo en el servidor, nunca en git.
 
 4. Sin `--anon`, pega la `Project URL` y la `anon key` en `public/config.js`.
 

@@ -1,20 +1,18 @@
 # OSYN POS
 
-**SaaS offline-first** con sincronización distribuida, multi-tenant por instancia, RLS por sucursal y asistente IA en producción.
+**Punto de venta offline-first** para tiendas de abarrotes: sincronización
+distribuida, RLS por sucursal y asistente IA en producción.
 
-Punto de venta para tiendas de abarrotes que sigue vendiendo sin internet: cada
-venta se guarda en el dispositivo y se sincroniza entre PC, celular y tablet al
-volver la conexión.
+> **Software propietario.** OSYN POS es un producto de Brian Martinez Mariscal.
+> Todos los derechos reservados. Queda prohibida su reproducción, distribución,
+> adaptación, sublicencia o explotación comercial sin autorización previa por
+> escrito. Consulta [LICENSE](LICENSE).
 
-🔴 **En producción:** [osynpos.shop](https://osynpos.shop)
+**Producción:** [osynpos.shop](https://osynpos.shop)
 
 [![CI](https://github.com/BrianMariscal/osyn-pos/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/BrianMariscal/osyn-pos/actions/workflows/ci.yml)
 [![Respaldo diario](https://github.com/BrianMariscal/osyn-pos/actions/workflows/backup.yml/badge.svg?branch=main)](https://github.com/BrianMariscal/osyn-pos/actions/workflows/backup.yml)
 [![Versión](https://img.shields.io/badge/v1.0.0-estable-2F6398)](https://github.com/BrianMariscal/osyn-pos/releases/tag/v1.0.0)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](#stack)
-[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3ECF8E?logo=supabase&logoColor=white)](#stack)
-[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages%20Functions-F38020?logo=cloudflare&logoColor=white)](#stack)
-[![PWA](https://img.shields.io/badge/PWA-offline--first-5A0FC8)](#stack)
 
 ## Arquitectura
 
@@ -24,13 +22,13 @@ volver la conexión.
 > deltas a Supabase. En la nube, Cloudflare Pages sirve la app y las funciones
 > de IA/voz; GitHub Actions ejecuta CI y respaldos cifrados.
 
-## Decisiones clave
+## Decisiones de arquitectura
 
 - **Offline-first real, no un “modo offline”.** La venta se escribe primero en
   IndexedDB; el Sync Engine sube cambios incrementales y rebasa contadores
   mutables (stock y fiado) para no perder operaciones hechas sin red.
-- **Aislamiento por instancia y RLS por sucursal.** Cada cliente tiene su propia
-  instancia de Supabase + Cloudflare. Dentro de la tienda, RLS, JWT y roles
+- **Instancia dedicada y RLS por sucursal.** La operación corre en una instancia
+  propia de Supabase + Cloudflare. Dentro de la tienda, RLS, JWT y roles
   (dueño, admin, vendedor) limitan cada dato a su sucursal: el catálogo se
   comparte, pero stock, ventas y caja no.
 - **Sincronización distribuida idempotente.** Tombstones para borrados,
@@ -39,7 +37,7 @@ volver la conexión.
   legacy por `updated_at`. Realtime baja la latencia a ~1 s; sin Realtime,
   polling cada 8 s. El orden de escritura sigue dependiendo del reloj del
   dispositivo; está documentado en
-  [Limitaciones](#limitaciones-conocidas-y-trade-offs).
+  [Límites técnicos](#límites-técnicos-conocidos).
 - **IA sobre datos reales, con degradación elegante.** El asistente consulta
   ventas, caja y fiado mediante funciones serverless que validan el JWT; si no
   hay llaves de IA, un parser local mantiene la venta por voz.
@@ -48,22 +46,22 @@ volver la conexión.
   cifrado con retención de 90 días.
 
 Los límites de estas decisiones están documentados en
-[Limitaciones y trade-offs](#limitaciones-conocidas-y-trade-offs).
+[Límites técnicos conocidos](#límites-técnicos-conocidos).
 
-## Demo: venta offline y sincronización
+## Demostración de uso
 
 ![Venta de 3 productos sin internet, 4 cambios pendientes y sincronización al reconectar](docs/assets/demo-offline-sync.gif)
 
 > **DEMO · DATOS DE EJEMPLO.** Grabada con el frontend y el Sync Engine reales
-> y un backend Supabase simulado, para mostrar el flujo sin exponer datos de
-> clientes. No es una captura de la instancia de producción.
+> y un backend Supabase simulado, para mostrar el flujo sin exponer datos
+> reales de la operación. No es una captura de la instancia de producción.
 >
 > La secuencia corta la red, vende 3 productos ($45.00), muestra **4 cambios
 > pendientes** y, al reconectar, termina en **Todo sincronizado**. En
 > producción, con Realtime aplicado, la sync se dispara en ~1 s; el polling de
 > respaldo es de 8 s.
 
-## Métricas y evidencia
+## Calidad y operación
 
 | Métrica | Valor | Cómo verificarla |
 |---|---:|---|
@@ -81,14 +79,12 @@ Los límites de estas decisiones están documentados en
 > push fallido está probado en [`tests/sync-pull.test.ts`](tests/sync-pull.test.ts):
 > el delta se aplica una sola vez y el reintento reenvía el valor ya rebasado.
 >
-> **Datos de negocio:** tiendas activas, ventas sincronizadas y latencia real
-> medida no se publican aquí para no exponer datos de clientes ni inventar
-> cifras. Son métricas del operador, no del repositorio.
+> Las métricas de operación (tiendas activas, ventas sincronizadas y latencia
+> real medida) son información privada y no se publican en este repositorio.
 
-## Limitaciones conocidas y trade-offs
+## Límites técnicos conocidos
 
-Un sistema maduro no es el que no tiene límites, sino el que sabe dónde están.
-Estos son los que acepté a cambio de velocidad, disponibilidad y aislamiento.
+Estos son los límites asumidos y su impacto operativo.
 
 ### LWW, no CRDT
 
@@ -135,19 +131,16 @@ stock y el fiado se ajustan al sincronizar, no en el momento de la venta.
   se mitiga con rebase por deltas y guardias en la base; no es equivalente a
   una transacción distribuida.
 
-### Una instancia por cliente
+### Instancia dedicada
 
-Cada tienda tiene su propio proyecto de Supabase y su propio despliegue de
-Cloudflare. No hay un `tenant_id` compartido.
+La operación corre sobre un proyecto propio de Supabase y un despliegue propio
+de Cloudflare. No hay una base compartida entre operaciones ni un panel central
+para administrarlas.
 
-- **Por qué:** aislamiento total con el RLS actual, sin rediseño y con riesgo
-  de fuga entre clientes prácticamente nulo.
-- **Límite:** el costo operativo crece O(n): migraciones, monitoreo, respaldos
-  y rotación de llaves por cliente. Tampoco hay un panel central con métricas
-  de todos los clientes.
-- **Cuándo cambiar:** al llegar a ~10 clientes o cuando el onboarding manual
-  sea el cuello de botella; el plan está en
-  [`docs/decision-comercial.md`](docs/decision-comercial.md).
+- **Por qué:** aislamiento total con el RLS actual, sin rediseño y con riesgo de
+  fuga entre operaciones prácticamente nulo.
+- **Límite:** migraciones, monitoreo y respaldos se administran por instancia.
+  No hay un panel central con métricas de varias operaciones.
 
 ### Tombstones sin compactación
 
@@ -160,7 +153,7 @@ hay un job de compactación.
   filtrar `deleted`. Con el volumen de una tienda no es un problema hoy; a
   mayor escala haría falta compactar después de una ventana de sync.
 
-### Reportes calculados en el cliente
+### Reportes calculados en el dispositivo
 
 Los reportes y cortes se calculan en el dispositivo sobre las ventas ya
 sincronizadas, no con agregaciones SQL en el servidor.
@@ -239,7 +232,7 @@ npm run check   # lint + tipos + tests
 - **JWT validado en el servidor:** los endpoints de `api/` verifican la sesión
   contra Supabase, comprueban el rol admin cuando aplica y aplican rate limit
   por IP. Con Upstash Redis el conteo es compartido; sin él es por instancia
-  (ver [Limitaciones](#limitaciones-conocidas-y-trade-offs)).
+  (ver [Límites técnicos](#límites-técnicos-conocidos)).
 - **`service_role` aislada:** vive solo como secreto en Cloudflare; nunca en el
   navegador ni en el repositorio.
 - **Cabeceras estrictas en producción:** CSP, `nosniff`, `DENY` para frames y
@@ -250,14 +243,16 @@ npm run check   # lint + tipos + tests
 
 ## Documentación
 
+> Documentación interna de OSYN POS. No se autoriza su reproducción ni
+> distribución a terceros.
+
 | Guía | Contenido |
 |---|---|
-| [Instalación de Supabase](docs/setup-supabase.md) | Crear el proyecto, aplicar schema/migraciones y usuarios iniciales |
-| [Despliegue](docs/deploy.md) | Cloudflare Pages, variables, secretos y monitoreo |
-| [Modelo comercial](docs/comercial.md) | Venta por cliente, precios y checklist de alta |
+| [Instalación de Supabase](docs/setup-supabase.md) | Guía interna del proyecto, schema/migraciones y usuarios iniciales |
+| [Despliegue](docs/deploy.md) | Operación interna en Cloudflare Pages, variables, secretos y monitoreo |
 | [Respaldos](docs/respaldos.md) | Configurar, restaurar y verificar el respaldo diario |
-| [Decisión comercial detallada](docs/decision-comercial.md) | Opciones de arquitectura, cobro y pendientes |
-| [CHANGELOG](CHANGELOG.md) | Hitos, cambios y limitaciones de la versión 1.0.0 |
+| [CHANGELOG](CHANGELOG.md) | Historial de versiones |
+| [LICENSE](LICENSE) | Términos de propiedad intelectual |
 
 ## Características
 
@@ -267,7 +262,8 @@ npm run check   # lint + tipos + tests
 - **Devoluciones**: busca la venta por folio, elige los renglones y cantidades
   (acepta devoluciones parciales); el stock regresa al inventario y el reembolso
   se descuenta de la caja, o se abona al fiado del cliente.
-- **Fiado** con clientes, cargos, pagos (incluidos los parciales) e historial de movimientos.
+- **Fiado** con clientes de la tienda, cargos, pagos (incluidos los parciales) e
+  historial de movimientos.
 - **Inventario** con entradas de mercancía, mermas, conteos físicos y aviso de mínimos.
 - **Corte de caja** con arqueo, diferencia, historial con detalle de cada corte,
   **corte de un día pasado** (cierra pendientes sin tocar las ventas de hoy),
@@ -294,7 +290,7 @@ npm run check   # lint + tipos + tests
   `updated_at` con 10 min de margen. El merge es idempotente.
 - Los borrados se propagan con tombstones y el conflicto se resuelve
   last-write-wins por `updated_at` (reloj del dispositivo); ver
-  [Limitaciones](#limitaciones-conocidas-y-trade-offs).
+  [Límites técnicos](#límites-técnicos-conocidos).
 - Los contadores mutables (`stock`, saldo de fiado) se protegen: si hay un
   cambio local sin subir y la nube avanzó, el delta local se aplica sobre el
   valor nuevo de la nube en lugar de perderse.
@@ -314,6 +310,13 @@ functions/    adaptador de Cloudflare Pages que sirve api/ en /api/*
 supabase/     schema.sql, migraciones y verificacion.sql (qué protecciones tiene la base)
 public/       config.js (llaves públicas), _headers (seguridad), íconos, assetlinks (Android)
 tests/        pruebas de Vitest
-docs/         guías de instalación, despliegue, comercial, respaldos y arquitectura
+docs/         guías internas de instalación, despliegue, respaldos y arquitectura
 .github/      CI (lint, tipos, pruebas, build) y respaldo diario cifrado
 ```
+
+## Propiedad intelectual
+
+OSYN POS, su código fuente, documentación, diseño y marca son propiedad de
+Brian Martinez Mariscal. Todos los derechos reservados. No se concede licencia
+ni derecho de uso sobre el software o su documentación. Consulta
+[LICENSE](LICENSE).

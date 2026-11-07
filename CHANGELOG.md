@@ -1,5 +1,15 @@
 # Changelog
 
+> Documento interno de OSYN POS. Software propietario. Todos los derechos
+> reservados.
+
+## [Sin publicar]
+
+### Documentación
+
+- Documentación reorientada a la operación interna de OSYN POS.
+- Aviso de propiedad intelectual y licencia propietaria.
+
 ## [1.0.0] - 2026-11-05
 
 Primera versión estable de OSYN POS.
@@ -26,8 +36,7 @@ Primera versión estable de OSYN POS.
 - 186 pruebas automatizadas en 27 archivos; 26 del Sync Engine, con
   simulaciones de dos dispositivos.
 - Respaldo diario cifrado con `pg_dump`, retención de 90 días y RPO ≤ 24 h.
-- Documentación de instalación, despliegue, modelo comercial, respaldos y
-  arquitectura.
+- Documentación interna de instalación, despliegue, respaldos y arquitectura.
 
 ### Limitaciones conocidas
 
