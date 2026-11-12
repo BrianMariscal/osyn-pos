@@ -54,7 +54,7 @@ export function renderHero(scene: InicioScene, scope: string, today: PeriodRepor
           ${stat("Ticket promedio", fmtMoney(avg), "teal")}
           ${today.returns_total ? stat("Devoluciones", fmtMoneyPesos(today.returns_total), "coral") : html``}
           ${isManager ? stat("Margen bruto (hoy)", fmtMoneyPesos(today.gross_profit), "green") : html``}
-          ${isManager ? stat("Utilidad del mes", fmtMoneyPesos(month.profit_after_expenses), month.profit_after_expenses < 0 ? "coral" : "green") : html``}
+          ${isManager ? stat("Utilidad mes a la fecha", fmtMoneyPesos(month.profit_after_expenses), month.profit_after_expenses < 0 ? "coral" : "green") : html``}
         </div>
       </div>
       ${isManager
@@ -221,7 +221,7 @@ export function renderMonth(scene: InicioScene, scope: string, month: PeriodRepo
     ui.monthCard,
     html`
       <div class="card-head">
-        <div><h2>Este mes</h2><p class="hint">${scope === VIEW_ALL ? "Todas las sucursales" : ctx.branches.name(scope)}</p></div>
+        <div><h2>Este mes a la fecha</h2><p class="hint">${scope === VIEW_ALL ? "Todas las sucursales" : ctx.branches.name(scope)}</p></div>
         <strong class="big-num">${fmtMoneyPesos(month.sales_total)}</strong>
       </div>
       <div class="stack-bar" role="img" aria-label="Cómo se reparten las ventas del mes">

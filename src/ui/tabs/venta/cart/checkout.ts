@@ -27,7 +27,12 @@ export function createCheckout(scene: VentaScene, search: VentaSearch, renderCar
   });
   // …y se oculta cuando el botón de cobrar del panel ya está a la vista
   if ("IntersectionObserver" in window) {
-    new IntersectionObserver(([entry]) => posBar.classList.toggle("in-view", Boolean(entry?.isIntersecting)), { threshold: 0.6 }).observe(completeButton);
+    new IntersectionObserver(([entry]) => posBar.classList.toggle("in-view", Boolean(entry?.isIntersecting)), {
+      threshold: 0.9,
+      // La barra inferior fija (nav) tapa los últimos ~72 px: no se oculta la
+      // barra de cobro hasta que el botón quede realmente a la vista.
+      rootMargin: "0px 0px -72px 0px"
+    }).observe(completeButton);
   }
 
   // Un doble toque (tablet) o un doble Enter no deben registrar dos ventas.
