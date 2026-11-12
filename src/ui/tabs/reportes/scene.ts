@@ -6,6 +6,7 @@ import { mountSections } from "../../sections";
 /** Referencias de reportes (una por tarjeta y control del markup). */
 export interface ReportesRefs {
   salesDayCard: HTMLElement;
+  weekEl: HTMLElement;
   salesDayInput: HTMLInputElement;
   salesDaySummary: HTMLElement;
   salesDayList: HTMLElement;
@@ -34,8 +35,9 @@ export function createReportesScene(root: HTMLElement, ctx: AppContext): Reporte
   const articles = [...root.querySelectorAll<HTMLElement>(":scope > .split > article")];
   mountSections(root, [
     { id: "ventas", label: "Ventas del día", el: articles[0] ?? null },
-    { id: "reportes", label: "Reportes", el: articles[1] ?? null },
-    { id: "cierre", label: "Cierre mensual", el: articles[2] ?? null }
+    { id: "semana", label: "Últimos 7 días", el: articles[1] ?? null },
+    { id: "reportes", label: "Reportes", el: articles[2] ?? null },
+    { id: "cierre", label: "Cierre mensual", el: articles[3] ?? null }
   ]);
 
   ui.salesDayInput.value = todayInputValue();
@@ -65,6 +67,7 @@ function reportesMarkup(): SafeHtml {
         <div id="salesDaySummary" class="mini-stats"></div>
         <div id="salesDayList" class="list"></div>
       </article>
+      <article class="card span-all" id="weekCard"></article>
       <article class="card">
         <h2>Reportes y PDF</h2>
         <div id="reportScopeChips" class="chips chips-row"></div>
@@ -97,6 +100,7 @@ function reportesMarkup(): SafeHtml {
 function collectRefs(root: HTMLElement): ReportesRefs {
   return {
     salesDayCard: root.querySelector<HTMLElement>("#salesDayCard")!,
+    weekEl: root.querySelector<HTMLElement>("#weekCard")!,
     salesDayInput: root.querySelector<HTMLInputElement>("#salesDay")!,
     salesDaySummary: root.querySelector<HTMLElement>("#salesDaySummary")!,
     salesDayList: root.querySelector<HTMLElement>("#salesDayList")!,

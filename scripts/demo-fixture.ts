@@ -45,7 +45,7 @@ const catalog: Array<[string, string, string, number, number, number, string, st
   ["Coca-Cola 2 L", "Refrescos", "sup-coca", 24, 34, 24, "Pza"],
   ["Sprite 600 ml", "Refrescos", "sup-coca", 13, 18, 30, "Pza"],
   ["Agua Ciel 1 L", "Refrescos", "sup-coca", 8, 14, 40, "Pza"],
-  ["Sabritas Original 45 g", "Botanas", "sup-sabritas", 11, 17, 36, "Pza", "7501011100017"],
+  ["Sabritas Original 45 g", "Botanas", "sup-sabritas", 11, 17, 5, "Pza", "7501011100017"],
   ["Doritos Nacho 45 g", "Botanas", "sup-sabritas", 11, 17, 28, "Pza"],
   ["Galletas Emperador", "Galletas", "sup-central", 9, 15, 22, "Pza"],
   ["Pan Bimbo Blanco", "Pan", "sup-central", 32, 44, 12, "Pza"],

@@ -66,7 +66,7 @@ Los límites de estas decisiones están documentados en
 | Métrica | Valor | Cómo verificarla |
 |---|---:|---|
 | Pruebas automatizadas | **192** unitarias en 27 archivos | `npm test` y CI en cada push |
-| Flujos E2E | **14** con Playwright (venta, escáner, agotados, fiado, corte, offline, conteo, cierre y reapertura de mes, instancia única) | `npm run test:e2e` |
+| Flujos E2E | **16** con Playwright (venta, escáner, agotados, fiado, corte, offline, conteo, rotación, cierre y reapertura de mes, sin desbordes, instancia única) | `npm run test:e2e` |
 | Pruebas del Sync Engine | **26** en 5 archivos · simulación de 2 dispositivos | [`tests/sync-pull.test.ts`](tests/sync-pull.test.ts) · [`tests/settings-sync.test.ts`](tests/settings-sync.test.ts) |
 | Tablas con RLS | **14/14** · 52 políticas | [`supabase/schema.sql`](supabase/schema.sql) |
 | Sync con Realtime | **~1 s** (objetivo) | [`supabase/migracion-realtime.sql`](supabase/migracion-realtime.sql) |

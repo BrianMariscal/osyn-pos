@@ -1,22 +1,8 @@
 import { html, setHtml, type SafeHtml } from "../../../core/html";
-import { fmtMoney, fmtMoneyPesos, sumCents, toCents } from "../../../core/money";
+import { fmtMoney, fmtMoneyPesos, toCents } from "../../../core/money";
 import { type PeriodReport } from "../../../core/types";
 import { VIEW_ALL } from "../../../domain/app-state";
 import { type InicioScene, type Tone } from "./scene";
-
-/** $1,234 → "$1.2k" para etiquetas de gráficas. */
-export function fmtCompact(pesos: number): string {
-  if (Math.abs(pesos) >= 1000) return `$${(pesos / 1000).toFixed(pesos >= 10000 ? 0 : 1)}k`;
-  return `$${Math.round(pesos)}`;
-}
-
-/** Variación porcentual con flecha: ▲ 12 % / ▼ 5 %. */
-export function deltaChip(current: number, previous: number, label: string): SafeHtml {
-  if (previous <= 0) return current > 0 ? html`<span class="delta-chip up">Nuevo ${label}</span>` : html``;
-  const pct = Math.round(((current - previous) / previous) * 100);
-  const dir = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
-  return html`<span class="delta-chip ${dir}">${pct > 0 ? "▲" : pct < 0 ? "▼" : "="} ${Math.abs(pct)}% ${label}</span>`;
-}
 
 // ---------------- Hoy: resumen en cuatro cifras ----------------
 
@@ -83,55 +69,6 @@ export function renderGoals(scene: InicioScene, scope: string, today: PeriodRepo
         </div>
       </div>
       <p class="hint">Los gastos fijos se reparten entre los días del mes; si hoy no alcanza, no significa que pierdas.</p>
-    `
-  );
-}
-
-// ---------------- Semana ----------------
-
-export function renderWeek(scene: InicioScene, scope: string, monthReport: PeriodReport): void {
-  const { ctx, dayReport, dayStart, ui } = scene;
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const offset = 6 - i;
-    const report = dayReport(scope, offset);
-    const date = dayStart(offset);
-    return {
-      weekday: date.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", ""),
-      day: date.getDate(),
-      cents: toCents(report.sales_total),
-      count: report.sales_count
-    };
-  });
-  let prevCents = 0;
-  for (let offset = 7; offset < 14; offset += 1) prevCents += toCents(dayReport(scope, offset).sales_total);
-  const weekCents = sumCents(days.map((d) => d.cents));
-  const max = Math.max(...days.map((d) => d.cents), 1);
-  const avg = Math.round(weekCents / 7);
-  const lastShift = ctx.shifts.lastShift(ctx.branches.operationalId());
-  setHtml(
-    ui.weekCard,
-    html`
-      <div class="card-head">
-        <div><h2>Últimos 7 días</h2><p class="hint">Promedio ${fmtMoney(avg)} por día</p></div>
-        <div class="align-right"><strong class="big-num">${fmtMoney(weekCents)}</strong>${deltaChip(weekCents, prevCents, "vs 7 días antes")}</div>
-      </div>
-      <div class="chart week-chart" role="img" aria-label="Ventas de los últimos 7 días">
-        <div class="chart-avg" style="bottom:${Math.round((avg / max) * 100)}%"><span>prom.</span></div>
-        ${days.map(
-          (day, index) => html`
-            <div class="chart-col ${index === days.length - 1 ? "today" : ""}" title="${day.weekday} ${day.day}: ${fmtMoney(day.cents)} · ${day.count} ventas">
-              <span class="chart-val">${day.cents > 0 ? fmtCompact(day.cents / 100) : ""}</span>
-              <div class="chart-bar" style="height:${Math.max(3, Math.round((day.cents / max) * 100))}%"></div>
-              <span class="chart-label">${index === days.length - 1 ? "Hoy" : `${day.weekday} ${day.day}`}</span>
-            </div>
-          `
-        )}
-      </div>
-      <div class="mini-stats">
-        <div data-tone="blue"><span>Ventas del mes</span><strong>${fmtMoneyPesos(monthReport.sales_total)}</strong></div>
-        <div data-tone="coral"><span>Gastos extra hoy</span><strong>${fmtMoneyPesos(dayReport(scope, 0).extra_expenses_total ?? 0)}</strong></div>
-        <div data-tone="teal"><span>Base para el siguiente turno</span><strong>${fmtMoneyPesos(lastShift?.next_opening_cash ?? 0)}</strong></div>
-      </div>
     `
   );
 }

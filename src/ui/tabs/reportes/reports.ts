@@ -4,12 +4,13 @@ import { fmtMoneyPesos } from "../../../core/money";
 import { VIEW_ALL } from "../../../domain/app-state";
 import { confirmDialog } from "../../components/modal";
 import { openReportPdf } from "../../pdf";
+import { renderWeekReport } from "./week";
 import type { ReportesScene } from "./scene";
 
 /** Reportes diario/mensual con PDF, alcance por sucursal y cierre de mes. */
 export function mountReports(scene: ReportesScene): { renderReports(): void } {
   const { ctx, root, ui, currentScope } = scene;
-  const { dateInput, monthInput, scopeChips, dailyEl, monthEl, closingsEl } = ui;
+  const { dateInput, monthInput, scopeChips, dailyEl, monthEl, closingsEl, weekEl } = ui;
 
   const renderChips = (): void => {
     if (!ctx.auth.isAdmin() || !ctx.branches.canSwitch()) {
@@ -51,6 +52,7 @@ export function mountReports(scene: ReportesScene): { renderReports(): void } {
 
   const render = (): void => {
     renderChips();
+    renderWeekReport(ctx, weekEl, currentScope());
     if (dateInput.value) {
       const range = dayRange(dateInput.value);
       setHtml(dailyEl, summaryRows(ctx.reports.periodReport(currentScope(), range.start, range.end), "dia"));

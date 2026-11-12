@@ -52,6 +52,7 @@ test("captura de pantallas del producto (escritorio)", async ({ page }) => {
 test("captura de pantallas del producto (móvil)", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepare(page);
+  await page.screenshot({ path: "e2e/fixtures/shots/06-movil-inicio.png" });
   await page.locator('[data-tab="venta"]').click();
   await page.waitForTimeout(400);
   await page.screenshot({ path: "e2e/fixtures/shots/06-movil-venta.png" });

@@ -11,7 +11,7 @@ export const reportesTab: TabModule = {
     const { renderReports } = mountReports(scene);
 
     ctx.store.watch(
-      (s) => [s.sales, s.returns, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId] as const,
+      (s) => [s.sales, s.returns, s.expenses, s.purchases, s.mermas, s.month_closings, s.branches, s.viewBranchId, s.shifts] as const,
       () => {
         renderReports();
         renderSalesDay();

@@ -3,8 +3,9 @@ import { html, setHtml } from "../../../core/html";
 import { VIEW_ALL } from "../../../domain/app-state";
 import { lazyRender } from "../../lazy-render";
 import type { TabModule } from "../tab-module";
-import { renderGoals, renderHero, renderMonth, renderWeek } from "./cards";
-import { createRankCard, renderCredit, renderLow, renderVendorPayments } from "./lists";
+import { renderGoals, renderHero, renderMonth } from "./cards";
+import { createRankCard, renderCredit, renderVendorPayments } from "./lists";
+import { renderRotation } from "./rotation";
 import { createInicioScene, type InicioScene } from "./scene";
 
 /** Saludo y fecha del encabezado. */
@@ -23,7 +24,7 @@ export const inicioTab: TabModule = {
   render(root, ctx) {
     const scene = createInicioScene(root, ctx);
     const { ui } = scene;
-    const managerOnly = [ui.weekCard, ui.monthCard, ui.rankCard, ui.lowCard, ui.creditCard];
+    const managerOnly = [ui.monthCard, ui.rotationCard, ui.rankCard, ui.creditCard];
     const rank = createRankCard(scene);
 
     const render = (): void => {
@@ -48,10 +49,9 @@ export const inicioTab: TabModule = {
         return;
       }
       renderGoals(scene, scope, today, monthReport);
-      renderWeek(scene, scope, monthReport);
       renderMonth(scene, scope, monthReport);
+      renderRotation(scene, scope);
       rank.renderRank(scope);
-      renderLow(scene, scope);
       renderCredit(scene, scope);
     };
 

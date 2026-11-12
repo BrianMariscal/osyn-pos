@@ -157,3 +157,24 @@ test("el mes no se cierra solo y se puede reabrir si fue un error", async ({ pag
   await expect(page.locator("#monthClosingsList")).toContainText("Aún no hay meses cerrados.");
   await expect(page.locator("#closeMonth")).toHaveText("Cerrar mes");
 });
+
+test("Inicio muestra productos con rotación que están en su mínimo", async ({ page }) => {
+  await expect(page.locator("#rotationCard")).toContainText("Se venden y están por agotarse");
+  await expect(page.locator("#rotationCard")).toContainText("Sabritas Original 45 g");
+  await expect(page.locator("#rotationCard")).toContainText("Stock 5 · Mín 6");
+});
+
+test("las tarjetas del inicio no desbordan su contenido", async ({ page }) => {
+  for (const [width, height] of [[1440, 960], [1366, 768], [1280, 800], [1024, 768], [768, 1024], [390, 844], [360, 740]] as const) {
+    await page.setViewportSize({ width, height });
+    await prepare(page);
+    const overflowing = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".dash .card")]
+        .filter((card) => card.scrollWidth > card.clientWidth + 1)
+        .map((card) => card.id || card.className)
+    );
+    const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+    expect(overflowing, `tarjetas desbordadas a ${width}px`).toEqual([]);
+    expect(pageOverflow, `scroll horizontal a ${width}px`).toBe(false);
+  }
+});

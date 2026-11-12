@@ -103,14 +103,20 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* ---------- Inicio: resumen ---------- */
 #heroCard { grid-column: 1 / -1; }
 #monthCard { grid-column: span 2; }
+#rotationCard { grid-column: 1 / -1; }
+#rankCard { grid-column: span 2; }
+.dash > * { min-width: 0; }
+
 .hero-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--sp-3);
 }
 .hero-kpi {
   display: grid;
   gap: 2px;
+  min-width: 0;
+  overflow: hidden;
   padding: var(--sp-3) var(--sp-4);
   border-left: 3px solid var(--tone);
   border-radius: var(--r-sm);
@@ -124,12 +130,20 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   color: var(--muted);
 }
 .hero-kpi strong {
-  font-size: 1.8rem;
+  font-size: clamp(1.25rem, 1.6vw, 1.8rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
+  white-space: nowrap;
 }
-.hero-kpi small { font-size: var(--fs-xs); color: var(--muted); }
+.hero-kpi small { font-size: var(--fs-xs); color: var(--muted); overflow-wrap: anywhere; }
+
+.goal { grid-template-columns: auto minmax(0, 1fr); }
+.goal-text { min-width: 0; }
+.goal-text strong { font-size: clamp(1.05rem, 1.2vw, 1.375rem); }
+.goal-text .hint { overflow-wrap: anywhere; }
+.goal-ring { width: clamp(64px, 6vw, 84px); height: clamp(64px, 6vw, 84px); }
+
 .month-lines { display: grid; margin-top: var(--sp-3); }
 .month-lines > div {
   display: grid;
@@ -139,7 +153,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   padding: 8px 0;
   border-bottom: var(--line-w) solid var(--line);
 }
-.month-lines strong { font-variant-numeric: tabular-nums; }
+.month-lines > div > span { min-width: 0; overflow-wrap: anywhere; }
+.month-lines strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .month-net {
   margin-top: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
@@ -147,20 +162,61 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border-radius: var(--r-sm);
   background: var(--card-2);
   font-weight: 800;
+  overflow: hidden;
 }
-.month-net span, .month-net strong { font-size: var(--fs-lg); }
+.month-net span, .month-net strong { font-size: clamp(1rem, 1.2vw, 1.125rem); }
 .month-net.neg { background: color-mix(in srgb, var(--danger) 8%, var(--card)); color: var(--danger); }
 .month-net.pos { background: color-mix(in srgb, var(--success) 9%, var(--card)); color: var(--success); }
-.month-progress { margin-top: var(--sp-3); }
+.month-progress { min-width: 0; margin-top: var(--sp-3); }
+.month-progress .bar-track { width: 100%; max-width: 100%; }
+
+/* Rotación: productos que se venden y están en su mínimo */
+.rotation-list { display: grid; }
+.rotation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: var(--line-w) solid var(--line);
+}
+.rotation-name { display: grid; min-width: 0; }
+.rotation-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rotation-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rotation-sold { color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; }
+.rotation-stock { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 700; }
+.rotation-stock[data-tone="coral"] { color: var(--danger); }
+.rotation-stock[data-tone="amber"] { color: var(--accent); }
+.rotation-more summary {
+  padding: 8px 0;
+  color: var(--primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+
 @media (max-width: 1100px) {
   .hero-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
-  #heroCard, #monthCard { grid-column: auto; }
+  #heroCard, #monthCard, #rotationCard, #rankCard { grid-column: auto; }
   .hero-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@media (max-width: 640px) {
+  .rotation-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name name"
+      "sold stock";
+    row-gap: 2px;
+  }
+  .rotation-name { grid-area: name; }
+  .rotation-sold { grid-area: sold; }
+  .rotation-stock { grid-area: stock; justify-self: end; }
+}
 @media (max-width: 520px) {
-  .hero-kpis { grid-template-columns: 1fr; }
+  .hero-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .goal { grid-template-columns: 1fr; justify-items: start; }
+  .goal-ring { width: 64px; height: 64px; }
 }
 
 /* Aviso de mes cerrado: azul, no el tono de advertencia general. */

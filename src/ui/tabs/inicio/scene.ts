@@ -15,10 +15,9 @@ export interface InicioRefs {
   greetingEl: HTMLElement;
   heroCard: HTMLElement;
   goalsCard: HTMLElement;
-  weekCard: HTMLElement;
   monthCard: HTMLElement;
+  rotationCard: HTMLElement;
   rankCard: HTMLElement;
-  lowCard: HTMLElement;
   creditCard: HTMLElement;
   rankBodyEl: HTMLElement;
   rankPeriodEl: HTMLElement;
@@ -81,7 +80,7 @@ function inicioMarkup(): SafeHtml {
       <section class="card hero-card span-2" id="heroCard"></section>
       <section class="card goals-card" id="goalsCard"></section>
       <section class="card" id="monthCard"></section>
-      <section class="card span-2" id="weekCard"></section>
+      <section class="card" id="rotationCard"></section>
       <section class="card" id="rankCard">
         <div class="card-head card-head-stack">
           <h2>Lo más vendido</h2>
@@ -93,13 +92,7 @@ function inicioMarkup(): SafeHtml {
         </div>
         <div id="rankBody"></div>
       </section>
-      <section class="card" id="lowCard"></section>
       <section class="card" id="creditCard"></section>
-      <section class="card">
-        <div class="card-head"><h2>Reportes</h2></div>
-        <p class="hint">El detalle de ventas, gastos y ganancias del día, del mes o acumulado está en Reportes.</p>
-        <button class="primary block" type="button" data-go="reportes">Ver reportes</button>
-      </section>
     </div>
   `;
 }
@@ -110,10 +103,9 @@ function collectRefs(root: HTMLElement): InicioRefs {
     greetingEl: root.querySelector<HTMLElement>("#greeting")!,
     heroCard: root.querySelector<HTMLElement>("#heroCard")!,
     goalsCard: root.querySelector<HTMLElement>("#goalsCard")!,
-    weekCard: root.querySelector<HTMLElement>("#weekCard")!,
     monthCard: root.querySelector<HTMLElement>("#monthCard")!,
+    rotationCard: root.querySelector<HTMLElement>("#rotationCard")!,
     rankCard: root.querySelector<HTMLElement>("#rankCard")!,
-    lowCard: root.querySelector<HTMLElement>("#lowCard")!,
     creditCard: root.querySelector<HTMLElement>("#creditCard")!,
     rankBodyEl: root.querySelector<HTMLElement>("#rankBody")!,
     rankPeriodEl: root.querySelector<HTMLElement>("#rankPeriod")!

@@ -4,7 +4,6 @@ import { fmtMoney, fmtMoneyPesos, sumCents, toCents } from "../../../core/money"
 import { fmtQty } from "../../../core/qty";
 import { PAYMENT_LABELS, type PaymentMethod, type PeriodReport } from "../../../core/types";
 import { isRevenueSale } from "../../../domain/sale-groups";
-import { VIEW_ALL } from "../../../domain/app-state";
 import { type InicioScene, type RankPeriod, type Tone } from "./scene";
 
 const PAYMENT_TONES: Record<string, Tone> = { efectivo: "green", transferencia: "blue", tarjeta: "violet", fiado: "amber", interno: "teal" };
@@ -74,39 +73,6 @@ export function createRankCard(scene: InicioScene): { renderRank(scope: string):
 }
 
 // ---------------- Por agotarse ----------------
-
-export function renderLow(scene: InicioScene, scope: string): void {
-  const { ctx, inScope, ui } = scene;
-  const lowStock = ctx.repos.stocks
-    .list()
-    .filter((row) => inScope(scope, row.branch_id) && row.stock <= row.min_stock && ctx.repos.products.byId(row.product_id)?.active !== false)
-    .sort((a, b) => a.stock - b.stock);
-  setHtml(
-    ui.lowCard,
-    html`
-      <div class="card-head">
-        <h2>Por agotarse</h2>
-        ${lowStock.length ? html`<span class="count-badge" data-tone="coral">${lowStock.length}</span>` : html``}
-      </div>
-      ${lowStock.length
-        ? html`<div class="compact-list">
-            ${lowStock.slice(0, 6).map((row) => {
-              const product = ctx.repos.products.byId(row.product_id);
-              const out = row.stock <= 0;
-              return html`
-                <div class="compact-item">
-                  <div><strong>${product?.name ?? row.product_id}</strong>
-                    <small class="muted">Mín. ${fmtQty(row.min_stock)}${scope === VIEW_ALL ? ` · ${ctx.branches.name(row.branch_id)}` : ""}</small></div>
-                  <span class="stock-pill" data-tone="${out ? "coral" : "amber"}">${out ? "Agotado" : `${fmtQty(row.stock)} ${product?.um ?? "Pza"}`}</span>
-                </div>
-              `;
-            })}
-          </div>
-          <button class="ghost block section-gap" type="button" data-go="inventario">Ver inventario${lowStock.length > 6 ? ` (${lowStock.length - 6} más)` : ""}</button>`
-        : html`<p class="empty-note">Todo con existencia suficiente.</p>`}
-    `
-  );
-}
 
 // ---------------- Fiado ----------------
 
