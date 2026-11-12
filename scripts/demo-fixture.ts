@@ -40,16 +40,16 @@ const suppliers = [
 ];
 suppliers.forEach((supplier) => repos.suppliers.upsert(supplier));
 
-const catalog: Array<[string, string, string, number, number, number, string]> = [
-  ["Coca-Cola 600 ml", "Refrescos", "sup-coca", 13, 18, 48, "Pza"],
+const catalog: Array<[string, string, string, number, number, number, string, string?]> = [
+  ["Coca-Cola 600 ml", "Refrescos", "sup-coca", 13, 18, 48, "Pza", "7501055300017"],
   ["Coca-Cola 2 L", "Refrescos", "sup-coca", 24, 34, 24, "Pza"],
   ["Sprite 600 ml", "Refrescos", "sup-coca", 13, 18, 30, "Pza"],
   ["Agua Ciel 1 L", "Refrescos", "sup-coca", 8, 14, 40, "Pza"],
-  ["Sabritas Original 45 g", "Botanas", "sup-sabritas", 11, 17, 36, "Pza"],
+  ["Sabritas Original 45 g", "Botanas", "sup-sabritas", 11, 17, 36, "Pza", "7501011100017"],
   ["Doritos Nacho 45 g", "Botanas", "sup-sabritas", 11, 17, 28, "Pza"],
   ["Galletas Emperador", "Galletas", "sup-central", 9, 15, 22, "Pza"],
   ["Pan Bimbo Blanco", "Pan", "sup-central", 32, 44, 12, "Pza"],
-  ["Leche Lala 1 L", "Lácteos", "sup-central", 20, 27, 18, "Pza"],
+  ["Leche Lala 1 L", "Lácteos", "sup-central", 20, 27, 18, "Pza", "7501020500015"],
   ["Yogurt Danone 900 g", "Lácteos", "sup-central", 28, 39, 8, "Pza"],
   ["Huevo San Juan 12 pzas", "Abarrotes", "sup-central", 38, 48, 15, "Pza"],
   ["Arroz Verde Valle 1 kg", "Abarrotes", "sup-central", 24, 33, 20, "Pza"],
@@ -67,7 +67,7 @@ const catalog: Array<[string, string, string, number, number, number, string]> =
   ["Plátano Tabasco", "Frutas y verduras", "sup-central", 14, 22, 0, "Kg"]
 ];
 
-const products: Product[] = catalog.map(([name, category, supplier_id, cost, price, stock, um], index) => {
+const products: Product[] = catalog.map(([name, category, supplier_id, cost, price, stock, um, barcode], index) => {
   const product: Product = {
     id: `prod-${index + 1}`,
     name,
@@ -76,6 +76,7 @@ const products: Product[] = catalog.map(([name, category, supplier_id, cost, pri
     cost,
     price,
     supplier_id,
+    barcode,
     active: true,
     created_at: ts,
     updated_at: ts
