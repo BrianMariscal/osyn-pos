@@ -149,6 +149,13 @@ export function renderHistory(scene: InventarioScene): void {
 export function renderAll(scene: InventarioScene): void {
   renderSummary(scene);
   renderCountSummary(scene);
+  const counting = Boolean(scene.ctx.inventory.activeCount());
+  const start = scene.root.querySelector<HTMLButtonElement>("#startInventoryCount");
+  const apply = scene.root.querySelector<HTMLButtonElement>("#applyInventoryCount");
+  const cancel = scene.root.querySelector<HTMLButtonElement>("#cancelInventoryCount");
+  if (start) start.disabled = counting;
+  if (apply) apply.disabled = !counting;
+  if (cancel) cancel.disabled = !counting;
   if (scene.isTypingCount()) scene.state.pendingListRender = true;
   else renderList(scene);
   renderHistory(scene);

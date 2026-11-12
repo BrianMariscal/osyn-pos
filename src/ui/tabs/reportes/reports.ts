@@ -29,7 +29,7 @@ export function mountReports(scene: ReportesScene): { renderReports(): void } {
     );
   };
 
-  const summaryRows = (report: ReturnType<typeof ctx.reports.periodReport>): ReturnType<typeof html> =>
+  const summaryRows = (report: ReturnType<typeof ctx.reports.periodReport>, period: "dia" | "mes" = "mes"): ReturnType<typeof html> =>
     html`
       <div class="row-strong"><span>Ventas</span><strong>${fmtMoneyPesos(report.sales_total)}</strong></div>
       <div class="row-group"><span>Cigarros</span><strong>${fmtMoneyPesos(report.cigarros_total ?? 0)}</strong></div>
@@ -44,14 +44,16 @@ export function mountReports(scene: ReportesScene): { renderReports(): void } {
       <div class="row-strong"><span>Utilidad después de gastos</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
       <div><span>Fiado vendido</span><strong>${fmtMoneyPesos(report.credit_total)}</strong></div>
       <div><span>Consumo interno (a costo)</span><strong>${fmtMoneyPesos(report.internal_total ?? 0)}</strong></div>
-      <p class="hint">La utilidad resta el costo de lo vendido, los costos fijos del periodo y los gastos extra. No resta las compras de mercancía porque ya están incluidas en el costo de cada venta.</p>
+      <p class="hint">${period === "dia"
+        ? "El día descuenta su parte proporcional de costos fijos; es normal que el resultado sea negativo hasta cubrir la meta diaria (Inicio › Metas)."
+        : "La utilidad resta el costo de lo vendido, los costos fijos del periodo y los gastos extra. No resta las compras de mercancía porque ya están incluidas en el costo de cada venta."}</p>
     `;
 
   const render = (): void => {
     renderChips();
     if (dateInput.value) {
       const range = dayRange(dateInput.value);
-      setHtml(dailyEl, summaryRows(ctx.reports.periodReport(currentScope(), range.start, range.end)));
+      setHtml(dailyEl, summaryRows(ctx.reports.periodReport(currentScope(), range.start, range.end), "dia"));
     }
     if (monthInput.value) {
       setHtml(monthEl, summaryRows(ctx.reports.monthReport(currentScope(), monthInput.value)));

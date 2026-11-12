@@ -29,6 +29,7 @@ export const corteTab: TabModule = {
                   <input id="cashCounted" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
                 </label>
               </div>
+              <p class="hint">Si dejas la base inicial en 0, el fondo de cambio aparecerá como sobrante.</p>
               <div class="row">
                 <label class="form-field">Retirado / entregado
                   <input id="cashWithdrawn" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">

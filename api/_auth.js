@@ -20,7 +20,7 @@ export default async function authenticate(req) {
   const cached = tokenCache.get(token);
   const now = Date.now();
   if (cached && cached.expires > now) {
-    return cached.ok ? { ok: true, user: cached.user } : { ok: false, status: 401, body: { error: "Sesion invalida o expirada" } };
+    return cached.ok ? { ok: true, user: cached.user } : { ok: false, status: 401, body: { error: "Sesión inválida o expirada" } };
   }
 
   const base = process.env.SUPABASE_URL;
@@ -35,7 +35,7 @@ export default async function authenticate(req) {
     });
     if (!res.ok) {
       tokenCache.set(token, { ok: false, expires: now + CACHE_TTL_MS });
-      return { ok: false, status: 401, body: { error: "Sesion invalida o expirada" } };
+      return { ok: false, status: 401, body: { error: "Sesión inválida o expirada" } };
     }
     const user = await res.json();
     tokenCache.set(token, { ok: true, user, expires: now + CACHE_TTL_MS });

@@ -31,6 +31,22 @@ test("captura de pantallas del producto (escritorio)", async ({ page }) => {
   await page.locator('[data-tab="corte"]').click();
   await page.waitForTimeout(400);
   await page.screenshot({ path: "e2e/fixtures/shots/05-corte.png", fullPage: true });
+
+  await page.locator('[data-tab="fiado"]').click();
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: "e2e/fixtures/shots/09-fiado.png", fullPage: true });
+
+  for (const [tab, file] of [
+    ["productos", "10-productos"],
+    ["inventario", "11-inventario"],
+    ["reportes", "12-reportes"],
+    ["ajustes", "13-ajustes"]
+  ] as const) {
+    await page.locator("[data-more]").click();
+    await page.locator(`.modal [data-tab="${tab}"]`).click();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `e2e/fixtures/shots/${file}.png`, fullPage: true });
+  }
 });
 
 test("captura de pantallas del producto (móvil)", async ({ page }) => {

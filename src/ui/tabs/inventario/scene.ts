@@ -99,7 +99,7 @@ function inventarioMarkup(): SafeHtml {
         </div>
 
         <h2>Conteo físico</h2>
-        <p class="hint">Captura lo que realmente hay en tienda (Enter pasa al siguiente). Lo capturado se guarda solo; el sistema compara contra la existencia de esta sucursal.</p>
+        <p class="hint">Captura lo que realmente hay en tienda (Enter pasa al siguiente). Lo capturado se guarda solo; el sistema compara contra la existencia que había cuando capturaste cada producto.</p>
         <div class="actions wrap-actions">
           <button id="startInventoryCount" class="primary" type="button">${iconFor("layers")} Iniciar conteo</button>
           <button id="applyInventoryCount" class="danger ghost" type="button">${iconFor("edit")} Aplicar ajustes</button>
