@@ -5,3 +5,8 @@ dist
 .dev.vars
 .vercel
 .wrangler
+
+# Playwright
+playwright-report
+test-results
+.playwright
