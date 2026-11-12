@@ -235,7 +235,10 @@ export class ShiftService {
       withdrawn_cash: input.withdrawn_cash,
       next_opening_cash: input.next_opening_cash,
       expected_cash_with_base: expectedWithBase,
-      difference: toPesos(toCents(input.counted_cash) - toCents(expectedWithBase)),
+      // El efectivo retirado/entregado ya no está en el conteo, pero salió de
+      // la caja: se suma al contado para comparar contra lo esperado. Antes un
+      // retiro de $1,000 marcaba un faltante falso de $1,000.
+      difference: toPesos(toCents(input.counted_cash) + toCents(input.withdrawn_cash) - toCents(expectedWithBase)),
       distribution_difference: toPesos(toCents(input.counted_cash) - toCents(expectedDistribution)),
       notes: input.notes,
       closed_at: closedAt,

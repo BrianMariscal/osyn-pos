@@ -134,6 +134,31 @@ describe("funciones de la tienda", () => {
     expect(fixedCostsForRange(fixed, sep.start, sep.end)).toBe(0);
   });
 
+  it("volver a capturar un costo fijo lo actualiza en vez de duplicarlo", () => {
+    expect(expenses.add("fijo", "Renta", 3100, "Renta").ok).toBe(true);
+    const second = expenses.add("fijo", "  renta  ", 3500, "Renta");
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.replaced).toBe(true);
+    expect(repos.expenses.list()).toHaveLength(1);
+    expect(expenses.monthlyFixedCents()).toBe(350_000);
+    // Un gasto extra con el mismo nombre sí es un movimiento nuevo.
+    expect(expenses.add("extra", "Renta", 100, "Renta").ok).toBe(true);
+    expect(repos.expenses.list()).toHaveLength(2);
+  });
+
+  it("detecta y unifica costos fijos duplicados de datos viejos", () => {
+    const now = nowISO();
+    const later = new Date(Date.parse(now) + 1000).toISOString();
+    repos.expenses.upsert({ id: "r1", branch_id: "sucursal-1", concept: "Renta", amount: 3000, category: "Renta", kind: "fijo", period: "mensual", created_at: now, updated_at: now });
+    repos.expenses.upsert({ id: "r2", branch_id: "sucursal-1", concept: "RENTA", amount: 3000, category: "Renta", kind: "fijo", period: "mensual", created_at: now, updated_at: later });
+
+    expect(expenses.duplicateFixedCosts()).toHaveLength(1);
+    expect(expenses.mergeDuplicateFixedCosts()).toBe(1);
+    expect(repos.expenses.list()).toHaveLength(1);
+    expect(repos.expenses.list()[0]!.id).toBe("r2");
+    expect(expenses.monthlyFixedCents()).toBe(300_000);
+  });
+
   it("el corte solo descuenta de caja los gastos extra, no los fijos", () => {
     expenses.add("fijo", "Renta", 3000, "Renta");
     expenses.add("extra", "Garrafón", 40, "Varios");

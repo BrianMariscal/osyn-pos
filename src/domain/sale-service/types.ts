@@ -19,4 +19,4 @@ export interface CompleteSaleInput {
 
 export type CompleteSaleResult = { ok: true; sale: Sale } | { ok: false; error: string };
 
-export type SimpleResult = { ok: true } | { ok: false; error: string };
+export type SimpleResult = { ok: true; replaced?: boolean } | { ok: false; error: string };

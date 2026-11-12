@@ -42,6 +42,7 @@ export const gastosTab: TabModule = {
               </label>
               <button class="primary" type="submit">${iconFor("plus")} Agregar</button>
             </form>
+            <div id="fixedDuplicates" class="hint notice hidden"></div>
             <div id="fixedList" class="list"></div>
           </article>
 
@@ -81,6 +82,7 @@ export const gastosTab: TabModule = {
       if (fixedCategory.value === "Sueldos") fixedPeriod.value = "semanal";
     });
     const fixedList = root.querySelector<HTMLElement>("#fixedList")!;
+    const fixedDuplicates = root.querySelector<HTMLElement>("#fixedDuplicates")!;
     const fixedTarget = root.querySelector<HTMLElement>("#fixedTarget")!;
     const form = root.querySelector<HTMLFormElement>("#expenseForm")!;
     const concept = root.querySelector<HTMLInputElement>("#expenseConcept")!;
@@ -124,6 +126,24 @@ export const gastosTab: TabModule = {
             `
           : html`<p class="hint">Aún no hay costos fijos. Agrega el primero para ver tu meta diaria.</p>`
       );
+
+      // Capturar el mismo costo fijo cada mes lo duplicaba y hundía la
+      // utilidad. Los datos viejos se pueden unificar desde aquí.
+      const duplicates = ctx.expenses.duplicateFixedCosts();
+      const duplicateCount = duplicates.reduce((sum, group) => sum + group.items.length - 1, 0);
+      fixedDuplicates.classList.toggle("hidden", duplicateCount === 0);
+      setHtml(
+        fixedDuplicates,
+        duplicateCount
+          ? html`
+              <strong>Hay costos fijos repetidos (${duplicateCount}).</strong>
+              <p>Se están sumando cada mes y hacen ver la utilidad más negativa de lo real: ${duplicates
+                .map((group) => `${group.concept} ×${group.items.length}`)
+                .join(", ")}.</p>
+              <button type="button" class="ghost small-btn" id="mergeFixedDuplicates">Unificar y conservar el más reciente</button>
+            `
+          : html``
+      );
       setHtml(
         fixedList,
         fixed.length
@@ -147,8 +167,24 @@ export const gastosTab: TabModule = {
         return;
       }
       fixedForm.reset();
-      ctx.toast("Costo fijo agregado");
+      ctx.toast(result.replaced ? "Costo fijo actualizado" : "Costo fijo agregado");
       fixedConcept.focus();
+    });
+
+    fixedDuplicates.addEventListener("click", async (event) => {
+      if (!(event.target as HTMLElement).closest("#mergeFixedDuplicates")) return;
+      const removed = ctx.expenses.duplicateFixedCosts().reduce((sum, group) => sum + group.items.length - 1, 0);
+      if (!removed) return;
+      const confirmed = await confirmDialog({
+        title: "Unificar costos fijos",
+        message: `Se eliminarán ${removed} registro(s) repetidos y se conservará el más reciente de cada concepto. La utilidad dejará de contar dobles.`,
+        confirmLabel: "Unificar",
+        danger: true
+      });
+      if (!confirmed) return;
+      const deleted = ctx.expenses.mergeDuplicateFixedCosts();
+      ctx.toast(`${deleted} costo(s) duplicado(s) eliminados`);
+      render();
     });
 
     form.addEventListener("submit", (event) => {

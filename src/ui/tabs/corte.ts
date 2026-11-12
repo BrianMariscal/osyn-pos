@@ -81,7 +81,7 @@ export const corteTab: TabModule = {
       const withdrawnValue = Number(withdrawn.value || 0);
       const nextValue = Number(nextBase.value || 0);
       const expectedWithBase = toPesos(toCents(openingValue) + toCents(summary.efectivoEsperado));
-      const difference = toPesos(toCents(countedValue) - toCents(expectedWithBase));
+      const difference = toPesos(toCents(countedValue) + toCents(withdrawnValue) - toCents(expectedWithBase));
       const rest = toPesos(toCents(summary.ventas) - toCents(summary.cigarros ?? 0) - toCents(summary.cerveza ?? 0));
       const rows: Array<[string, string, string?]> = [
         ["Base inicial", fmtMoneyPesos(openingValue)],
@@ -104,7 +104,7 @@ export const corteTab: TabModule = {
         ["Ganancia estimada", fmtMoneyPesos(summary.ganancia)],
         ["Efectivo esperado con base", fmtMoneyPesos(expectedWithBase), "strong"],
         ["Efectivo contado", fmtMoneyPesos(countedValue)],
-        ["Diferencia contra esperado", fmtMoneyPesos(difference), difference < 0 ? "neg" : difference > 0 ? "pos" : "strong"],
+        ["Diferencia (contado + retirado − esperado)", fmtMoneyPesos(difference), difference < 0 ? "neg" : difference > 0 ? "pos" : "strong"],
         ["Retirado / entregado", fmtMoneyPesos(withdrawnValue)],
         ["Base siguiente día", fmtMoneyPesos(nextValue)],
         ["Sin repartir (contado − retiro − base)", fmtMoneyPesos(toPesos(toCents(countedValue) - toCents(withdrawnValue) - toCents(nextValue)))]
@@ -141,7 +141,7 @@ export const corteTab: TabModule = {
         ["Ganancia estimada", fmtMoneyPesos(s.ganancia ?? 0)],
         ["Efectivo esperado con base", fmtMoneyPesos(shift.expected_cash_with_base || 0), "strong"],
         ["Efectivo contado", fmtMoneyPesos(shift.counted_cash || 0)],
-        ["Diferencia contra esperado", fmtMoneyPesos(shift.difference || 0), shift.difference < 0 ? "neg" : shift.difference > 0 ? "pos" : "strong"],
+        ["Diferencia (contado + retirado − esperado)", fmtMoneyPesos(shift.difference || 0), shift.difference < 0 ? "neg" : shift.difference > 0 ? "pos" : "strong"],
         ["Retirado / entregado", fmtMoneyPesos(shift.withdrawn_cash || 0)],
         ["Base siguiente día", fmtMoneyPesos(shift.next_opening_cash || 0)],
         ["Sin repartir (contado − retiro − base)", fmtMoneyPesos(toPesos(toCents(shift.counted_cash || 0) - toCents(shift.withdrawn_cash || 0) - toCents(shift.next_opening_cash || 0)))]
@@ -225,7 +225,7 @@ export const corteTab: TabModule = {
         `Efectivo contado: ${fmtMoneyPesos(shift.counted_cash)}`,
         `Dinero retirado/entregado: ${fmtMoneyPesos(shift.withdrawn_cash)}`,
         `Base para siguiente día: ${fmtMoneyPesos(shift.next_opening_cash)}`,
-        `Diferencia contra esperado: ${fmtMoneyPesos(shift.difference)}`,
+        `Diferencia (contado + retirado − esperado): ${fmtMoneyPesos(shift.difference)}`,
         `Diferencia contado vs retirado+base: ${fmtMoneyPesos(shift.distribution_difference)}`,
         "",
         "TOP 10 MÁS VENDIDOS",
