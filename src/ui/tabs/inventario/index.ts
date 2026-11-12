@@ -93,8 +93,7 @@ export const inventarioTab: TabModule = {
       ctx.inventory.start();
       ui.onlyDiff.checked = false;
       saveCount();
-      renderCountSummary(scene);
-      renderList(scene);
+      renderAll(scene);
       // En celular las casillas de conteo están en Existencias
       sections.show("existencias");
       ctx.toast("Conteo físico iniciado: captura en Existencias");

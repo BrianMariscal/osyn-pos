@@ -77,3 +77,63 @@ test("una venta fiada suma al saldo del cliente", async ({ page }) => {
   await expect(page.locator("#customersList")).toContainText("María López");
   await expect(page.locator("#customersList")).toContainText("$212.50");
 });
+
+test("cerrar el corte con el efectivo contado deja diferencia cero", async ({ page }) => {
+  await page.locator('[data-tab="corte"]').click();
+  const expectedText = await page
+    .locator("#cashSummary .row-strong", { hasText: "Efectivo esperado con base" })
+    .locator("strong")
+    .textContent();
+  const expected = Number((expectedText ?? "0").replace(/[^\d.-]/g, ""));
+
+  await page.locator("#openingCash").fill("0");
+  await page.locator("#cashCounted").fill(String(expected));
+  await expect(page.locator("#cashSummary")).toContainText("Diferencia (contado + retirado − esperado)");
+
+  const before = await page.locator("#shiftsList .list-item").count();
+  await page.locator("#closeShift").click();
+  await page.locator('.modal [data-modal-action="Cerrar corte"]').click();
+
+  await expect(page.locator("#toastRoot")).toContainText("Corte cerrado");
+  await expect(page.locator("#shiftsList .list-item")).toHaveCount(before + 1);
+  await expect(page.locator("#shiftsList .list-item").first()).toContainText("Dif $0.00");
+});
+
+test("una venta hecha sin red se sube al reconectar", async ({ page }) => {
+  await page.context().setOffline(true);
+  await page.locator("#productSearch").fill("coca 600");
+  await page.locator("[data-result]").first().click();
+  await page.locator("#completeSale").click();
+  await expect(page.locator("#toastRoot")).toContainText("Venta registrada");
+  await page.locator(".modal-close").last().click();
+  await expect(page.locator("#syncDot")).toHaveAttribute("data-state", "offline");
+
+  await page.context().setOffline(false);
+  // En Ajustes se fuerza la sincronización y se ve el estado real.
+  await page.locator("[data-more]").click();
+  await page.locator('.modal [data-tab="ajustes"]').click();
+  await page.locator("#syncNow").click();
+  await expect(page.locator("#toastRoot")).toContainText("Respaldo sincronizado");
+  await expect(page.locator("#syncInfo")).toContainText("Pendientes 0");
+});
+
+test("el conteo físico ajusta la existencia y queda en el historial", async ({ page }) => {
+  page.on("popup", (popup) => void popup.close());
+  await page.evaluate(() => {
+    window.print = () => undefined;
+  });
+
+  await page.locator("[data-more]").click();
+  await page.locator('.modal [data-tab="inventario"]').click();
+  await page.locator("#startInventoryCount").click();
+  // prod-1 = Coca-Cola 600 ml en el fixture; su existencia es 48.
+  await page.locator('[data-count-product="prod-1"]').fill("46");
+  await expect(page.locator('[data-diff-for="prod-1"]')).toContainText("-2");
+
+  await page.locator("#applyInventoryCount").click();
+  await page.locator('.modal [data-modal-action="Aplicar"]').click();
+
+  await expect(page.locator("#toastRoot")).toContainText("Inventario ajustado");
+  await expect(page.locator("#inventoryList")).toContainText("46 Pza");
+  await expect(page.locator("#inventoryCountsHistory")).toContainText("1 ajustes");
+});
