@@ -199,6 +199,37 @@ describe("funciones de la tienda", () => {
     expect(sales.stockOf("nuevo")).toBe(7);
   });
 
+  it("el conteo compara contra la existencia al capturar y conserva ventas posteriores", () => {
+    inventory.start();
+    // Existencia del sistema al capturar: 20.
+    inventory.setCount("coca", "18");
+    expect(inventory.baselineFor("coca")).toBe(20);
+
+    // Venta después del conteo: el sistema baja a 17, el físico sigue en 18.
+    sales.addToCart("coca", 3);
+    expect(sales.completeSale({ payment: "efectivo", customerId: null }).ok).toBe(true);
+    expect(sales.stockOf("coca")).toBe(17);
+
+    // Corregir la captura no vuelve a tomar la base.
+    inventory.setCount("coca", "18");
+    expect(inventory.baselineFor("coca")).toBe(20);
+
+    const summary = inventory.summary();
+    expect(summary?.incidences.find((row) => row.product_id === "coca")?.difference).toBe(-2);
+
+    // 18 físicos − 20 al contar = −2; sobre los 17 actuales quedan 15.
+    const applied = inventory.apply();
+    expect(applied.ok).toBe(true);
+    expect(sales.stockOf("coca")).toBe(15);
+  });
+
+  it("borrar una captura permite volver a tomar la base", () => {
+    inventory.start();
+    inventory.setCount("coca", "19");
+    inventory.setCount("coca", "");
+    expect(inventory.baselineFor("coca")).toBeUndefined();
+  });
+
   it("el conteo activo se puede guardar y recuperar", () => {
     inventory.start();
     inventory.setCount("coca", "15");
@@ -206,6 +237,7 @@ describe("funciones de la tienda", () => {
     const other = new InventoryService(repos, new BranchService(store, fakeAdminAuth(), repos));
     other.restore(saved);
     expect(other.countedValue("coca")).toBe("15");
+    expect(other.baselineFor("coca")).toBe(20);
     other.restore({ basura: true });
     expect(other.countedValue("coca")).toBe("15");
   });

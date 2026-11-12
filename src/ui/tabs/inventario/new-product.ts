@@ -86,14 +86,6 @@ export function openNewProductModal(ctx: AppContext, onDone: (product: Product) 
         <input id="pName" class="input" required>
       </label>
       <div class="row">
-        ${categoryFieldMarkup("pCategory")}
-        <label class="form-field">Unidad
-          <select id="pUnit" class="input">
-            ${UNITS.map((unit) => html`<option value="${unit}">${unit}</option>`)}
-          </select>
-        </label>
-      </div>
-      <div class="row">
         <label class="form-field">Costo <span id="pCostUnit" class="muted"></span>
           <input id="pCost" class="input" type="number" step="0.01" min="0" inputmode="decimal">
         </label>
@@ -102,31 +94,44 @@ export function openNewProductModal(ctx: AppContext, onDone: (product: Product) 
         </label>
       </div>
       <p id="pPriceHint" class="hint hidden">Con la unidad Gr el precio se cobra POR GRAMO. Si cobras por kilo, usa la unidad Kg.</p>
-      <div class="row">
-        <label class="form-field">Proveedor
-          <select id="pSupplier" class="input">
-            <option value="">Sin proveedor</option>
-            ${suppliers.map((s) => html`<option value="${s.id}" ${s.id === preset.supplierId ? "selected" : null}>${supplierLabel(s)}</option>`)}
-          </select>
-        </label>
-        <label class="form-field">Piezas por caja
-          <input id="pPack" class="input" type="number" step="1" min="0" inputmode="numeric" placeholder="Opcional">
-        </label>
-      </div>
       <div class="search-row">
         <label class="form-field">Código de barras / QR (opcional)
           <input id="pBarcode" class="input" inputmode="numeric" value="${preset.barcode ?? ""}">
         </label>
         <button id="pScan" class="ghost align-end" type="button">${iconFor("barcode")} Escanear</button>
       </div>
-      <div class="row">
-        <label class="form-field">Existencia inicial (esta sucursal)
-          <input id="pStock" class="input" type="number" step="0.01" min="0" value="0" inputmode="decimal">
-        </label>
-        <label class="form-field">Mínimo
-          <input id="pMin" class="input" type="number" step="0.01" min="0" value="2" inputmode="decimal">
-        </label>
-      </div>
+      <label class="form-field">Existencia inicial (esta sucursal)
+        <input id="pStock" class="input" type="number" step="0.01" min="0" value="0" inputmode="decimal">
+      </label>
+      <details class="form-box">
+        <summary><h2>Más opciones</h2><span class="hint">Categoría, unidad, proveedor, caja y mínimo</span></summary>
+        <div class="form">
+          <div class="row">
+            ${categoryFieldMarkup("pCategory")}
+            <label class="form-field">Unidad
+              <select id="pUnit" class="input">
+                ${UNITS.map((unit) => html`<option value="${unit}">${unit}</option>`)}
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label class="form-field">Proveedor
+              <select id="pSupplier" class="input">
+                <option value="">Sin proveedor</option>
+                ${suppliers.map((s) => html`<option value="${s.id}" ${s.id === preset.supplierId ? "selected" : null}>${supplierLabel(s)}</option>`)}
+              </select>
+            </label>
+            <label class="form-field">Piezas por caja
+              <input id="pPack" class="input" type="number" step="1" min="0" inputmode="numeric" placeholder="Opcional">
+            </label>
+          </div>
+          <div class="row">
+            <label class="form-field">Mínimo
+              <input id="pMin" class="input" type="number" step="0.01" min="0" value="2" inputmode="decimal">
+            </label>
+          </div>
+        </div>
+      </details>
     `,
     actions: [
       { label: "Cancelar", kind: "ghost", onClick: (close) => close() },

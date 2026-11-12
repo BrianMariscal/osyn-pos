@@ -26,6 +26,7 @@ export const inventarioTab: TabModule = {
       renderList(scene);
       ui.listEl.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+    ui.onlyDiff.addEventListener("change", () => renderList(scene));
     ui.search.addEventListener("input", () => {
       state.listPage = 0;
       if (searchTimer) clearTimeout(searchTimer);
@@ -37,10 +38,11 @@ export const inventarioTab: TabModule = {
       const row = ctx.repos.stocks.list().find((stock) => stock.product_id === productId && stock.branch_id === branchId);
       const product = ctx.repos.products.byId(productId);
       const counted = ctx.inventory.countedValue(productId);
+      const systemStock = ctx.inventory.baselineFor(productId) ?? row?.stock ?? 0;
       const diff =
         counted === undefined || counted === "" || !product
           ? null
-          : Math.round((normalizeQty(counted) - normalizeQty(row?.stock ?? 0)) * 100) / 100;
+          : Math.round((normalizeQty(counted) - normalizeQty(systemStock)) * 100) / 100;
       const label = ui.listEl.querySelector<HTMLElement>(`[data-diff-for="${CSS.escape(productId)}"]`);
       if (label) setHtml(label, diffText(diff, product?.um ?? "Pza"));
       renderCountSummary(scene);
@@ -89,6 +91,7 @@ export const inventarioTab: TabModule = {
         return;
       }
       ctx.inventory.start();
+      ui.onlyDiff.checked = false;
       saveCount();
       renderCountSummary(scene);
       renderList(scene);
