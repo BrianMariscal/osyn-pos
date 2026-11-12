@@ -213,7 +213,10 @@ export class ShiftService {
         opening_cash: base,
         counted_cash: expected,
         withdrawn_cash: 0,
-        next_opening_cash: base,
+        // No hubo retiro: todo el efectivo sigue en el cajón y pasa a ser la
+        // base del día siguiente. Antes se dejaba la base vieja y el sobrante
+        // aparecía como "dinero que no cuadra" al día siguiente.
+        next_opening_cash: Math.max(0, expected),
         notes: "Corte automático de medianoche (no se hizo manualmente)"
       },
       info.end,

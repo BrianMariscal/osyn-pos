@@ -147,6 +147,9 @@ describe("cortes por rango, de días pasados y automáticos", () => {
     expect(auto.summary.ventas).toBe(150);
     expect(auto.closed_at).toBe(dayRange(day(-1)).end);
     expect(auto.difference).toBe(0);
+    // Sin retiro, todo el efectivo queda como base del día siguiente.
+    expect(auto.next_opening_cash).toBe(150);
+    expect(auto.distribution_difference).toBe(0);
     // Idempotente: una segunda pasada no duplica el corte.
     expect(shifts.autoCloseIfNeeded(BRANCH)).toBeNull();
   });

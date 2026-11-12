@@ -25,6 +25,7 @@ import { ReportService } from "./domain/report-service";
 import { ExpenseService } from "./domain/expense-service";
 import { UserAdminService } from "./domain/user-admin-service";
 import { buildApp } from "./ui/app";
+import { bootSingleInstance } from "./ui/single-instance";
 import { applyTheme } from "./ui/shell/theme";
 import { toast } from "./ui/components/toast";
 import { speak } from "./ui/voice-recognition";
@@ -114,4 +115,6 @@ async function main(): Promise<void> {
   window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => applyTheme(ctx));
 }
 
-void main();
+void bootSingleInstance(() => {
+  void main();
+});

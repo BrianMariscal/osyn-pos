@@ -393,12 +393,26 @@ export const corteTab: TabModule = {
 
     root.querySelector<HTMLButtonElement>("#closeShift")!.addEventListener("click", async () => {
       const summary = ctx.shifts.summarize(branchId());
-      const confirmed = await confirmDialog({
-        title: "Cerrar corte",
-        message: `Ventas: ${fmtMoneyPesos(summary.ventas)} | Efectivo esperado: ${fmtMoneyPesos(summary.efectivoEsperado)}. Se cerrará el corte de esta sucursal.`,
-        confirmLabel: "Cerrar corte"
-      });
-      if (!confirmed) return;
+      const pending = ctx.store.getState().sync.pending;
+      // Cerrar con ventas offline pendientes deja el efectivo esperado
+      // incompleto y produce un sobrante/faltante falso. Se avisa y se pide
+      // confirmación explícita; la tienda puede seguir vendiendo sin red.
+      if (pending > 0) {
+        const proceed = await confirmDialog({
+          title: "Hay cambios sin sincronizar",
+          message: `Quedan ${pending} cambio(s) por subir. El efectivo esperado puede no incluir ventas de este u otros equipos. Conecta y espera a "Todo sincronizado" antes de cerrar. ¿Cerrar de todos modos?`,
+          confirmLabel: "Cerrar de todos modos",
+          danger: true
+        });
+        if (!proceed) return;
+      } else {
+        const confirmed = await confirmDialog({
+          title: "Cerrar corte",
+          message: `Ventas: ${fmtMoneyPesos(summary.ventas)} | Efectivo esperado: ${fmtMoneyPesos(summary.efectivoEsperado)}. Se cerrará el corte de esta sucursal.`,
+          confirmLabel: "Cerrar corte"
+        });
+        if (!confirmed) return;
+      }
       const shift = ctx.shifts.closeShift({
         opening_cash: Number(opening.value || 0),
         counted_cash: Number(counted.value || 0),
