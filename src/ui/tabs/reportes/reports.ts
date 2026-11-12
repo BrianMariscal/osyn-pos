@@ -34,19 +34,19 @@ export function mountReports(scene: ReportesScene): { renderReports(): void } {
       <div class="row-strong"><span>Ventas</span><strong>${fmtMoneyPesos(report.sales_total)}</strong></div>
       <div class="row-group"><span>Cigarros</span><strong>${fmtMoneyPesos(report.cigarros_total ?? 0)}</strong></div>
       <div class="row-group"><span>Cerveza</span><strong>${fmtMoneyPesos(report.cerveza_total ?? 0)}</strong></div>
-      <div><span>Costo vendido</span><strong>${fmtMoneyPesos(report.sales_cost)}</strong></div>
-      <div><span>Margen bruto (ventas − costo)</span><strong>${fmtMoneyPesos(report.gross_profit)}</strong></div>
-      <div><span>Costos fijos (proporcional)</span><strong>${fmtMoneyPesos(report.fixed_costs_total ?? 0)}</strong></div>
-      <div><span>Gastos extra</span><strong>${fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)}</strong></div>
-      <div><span>Compras de mercancía (no se resta: es inventario)</span><strong>${fmtMoneyPesos(report.purchases_total)}</strong></div>
-      <div><span>Mermas (informativo)</span><strong>${fmtMoneyPesos(report.mermas_total)}</strong></div>
+      <div><span>Costo de la mercancía</span><strong>${fmtMoneyPesos(report.sales_cost)}</strong></div>
+      <div><span>Ganancia de la mercancía</span><strong>${fmtMoneyPesos(report.gross_profit)}</strong></div>
+      <div><span>Gastos fijos del periodo</span><strong>${fmtMoneyPesos(report.fixed_costs_total ?? 0)}</strong></div>
+      <div><span>Otros gastos</span><strong>${fmtMoneyPesos(report.extra_expenses_total ?? report.expenses_total)}</strong></div>
+      <div><span>Compras de mercancía (inventario, no se resta)</span><strong>${fmtMoneyPesos(report.purchases_total)}</strong></div>
+      <div><span>Mermas (pérdida, no restada)</span><strong>${fmtMoneyPesos(report.mermas_total)}</strong></div>
       <div><span>Devoluciones (ya restadas)</span><strong>${fmtMoneyPesos(report.returns_total ?? 0)}</strong></div>
-      <div class="row-strong"><span>Utilidad después de gastos</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
+      <div class="row-strong"><span>Lo que te queda libre</span><strong>${fmtMoneyPesos(report.profit_after_expenses)}</strong></div>
       <div><span>Fiado vendido</span><strong>${fmtMoneyPesos(report.credit_total)}</strong></div>
       <div><span>Consumo interno (a costo)</span><strong>${fmtMoneyPesos(report.internal_total ?? 0)}</strong></div>
       <p class="hint">${period === "dia"
-        ? "El día descuenta su parte proporcional de costos fijos; es normal que el resultado sea negativo hasta cubrir la meta diaria (Inicio › Metas)."
-        : "La utilidad resta el costo de lo vendido, los costos fijos del periodo y los gastos extra. No resta las compras de mercancía porque ya están incluidas en el costo de cada venta."}</p>
+        ? "El día descuenta su parte de gastos fijos; es normal que salga negativo hasta cubrir la meta diaria (Inicio › Metas)."
+        : "Lo que te queda libre = ganancia de la mercancía − gastos fijos − otros gastos. No se restan las compras de mercancía porque ya están incluidas en el costo de cada venta."}</p>
     `;
 
   const render = (): void => {

@@ -107,3 +107,65 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   }
   .toast.show { transform: translateX(-50%); }
 }
+
+/* ---------- Resumen del negocio (Inicio) ---------- */
+#monthCard { grid-column: 1 / -1; }
+.pnl-result {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 10%, var(--card));
+  color: var(--success);
+}
+.pnl-result span {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pnl-result.neg { background: color-mix(in srgb, var(--danger) 9%, var(--card)); color: var(--danger); }
+.pnl-result.pos { color: var(--success); }
+.pnl { display: grid; margin-top: var(--sp-3); max-width: 860px; }
+.pnl-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-3);
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: var(--line-w) solid var(--line);
+}
+.pnl-row strong { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.pnl-row.sub span { padding-left: var(--sp-4); color: var(--muted); }
+.pnl-row.sub strong { color: var(--muted); font-weight: 600; }
+.pnl-row.total { border-bottom: 2px solid var(--line-strong); }
+.pnl-row.total span, .pnl-row.total strong { font-weight: 800; }
+.pnl-row.result {
+  margin-top: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  border-radius: var(--r-sm);
+}
+.pnl-row.result span, .pnl-row.result strong { font-size: var(--fs-xl); font-weight: 800; }
+.pnl-row.result.neg { background: color-mix(in srgb, var(--danger) 8%, var(--card)); color: var(--danger); }
+.pnl-row.result.pos { background: color-mix(in srgb, var(--success) 9%, var(--card)); color: var(--success); }
+.pnl-progress { margin-top: var(--sp-3); max-width: 860px; }
+.pnl-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: 6px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.pnl-progress-head strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.pnl-note { max-width: 860px; margin-top: var(--sp-3); }
+.pnl-notes { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.pnl-notes span {
+  padding: 3px 10px;
+  border: var(--line-w) solid var(--line);
+  border-radius: 999px;
+  background: var(--card-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}

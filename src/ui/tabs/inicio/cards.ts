@@ -1,7 +1,7 @@
 import { html, setHtml, type SafeHtml } from "../../../core/html";
 import { fmtMoney, fmtMoneyPesos, sumCents, toCents } from "../../../core/money";
 import { type PeriodReport } from "../../../core/types";
-import { daysInMonth, payrollProgress } from "../../../domain/expense-service";
+import { payrollProgress } from "../../../domain/expense-service";
 import { VIEW_ALL } from "../../../domain/app-state";
 import { type InicioScene, type Tone } from "./scene";
 
@@ -21,7 +21,7 @@ export function deltaChip(current: number, previous: number, label: string): Saf
 
 // ---------------- Hoy (tarjeta principal) ----------------
 
-export function renderHero(scene: InicioScene, scope: string, today: PeriodReport, month: PeriodReport, isManager: boolean): void {
+export function renderHero(scene: InicioScene, scope: string, today: PeriodReport, isManager: boolean): void {
   const { hourly, ui } = scene;
   const todayHours = hourly(scope, 0);
   const yesterdayHours = hourly(scope, 1);
@@ -53,12 +53,11 @@ export function renderHero(scene: InicioScene, scope: string, today: PeriodRepor
           ${stat("Ventas", String(today.sales_count), "violet")}
           ${stat("Ticket promedio", fmtMoney(avg), "teal")}
           ${today.returns_total ? stat("Devoluciones", fmtMoneyPesos(today.returns_total), "coral") : html``}
-          ${isManager ? stat("Margen bruto (hoy)", fmtMoneyPesos(today.gross_profit), "green") : html``}
-          ${isManager ? stat("Utilidad mes a la fecha", fmtMoneyPesos(month.profit_after_expenses), month.profit_after_expenses < 0 ? "coral" : "green") : html``}
+          ${isManager ? stat("Ganancia de la mercancía (hoy)", fmtMoneyPesos(today.gross_profit), "green") : html``}
         </div>
       </div>
       ${isManager
-        ? html`<p class="hint">Margen bruto = ventas − costo de lo vendido. Utilidad del mes = margen − costos fijos − gastos extra. Las compras de mercancía y las mermas se muestran aparte.</p>`
+        ? html`<p class="hint">Ganancia de la mercancía = ventas − costo. Lo que te queda libre = ganancia − gastos del mes. Las compras de mercancía y las mermas se muestran aparte.</p>`
         : html``}
       <div class="hour-chart" role="img" aria-label="Ventas por hora: hoy contra ayer">
         ${hours.map((h) => {
@@ -84,10 +83,11 @@ export function renderHero(scene: InicioScene, scope: string, today: PeriodRepor
 
 function targetBreakdown(scene: InicioScene, scope: string): string {
   const parts = scene.ctx.expenses.fixedBreakdown(scope);
-  return [
-    parts.monthly > 0 ? `Mensuales ${fmtMoney(parts.monthly)} ÷ ${daysInMonth(new Date())} días` : "",
-    parts.weekly > 0 ? `Semanales ${fmtMoney(parts.weekly)} ÷ 7` : ""
+  const partsText = [
+    parts.monthly > 0 ? `${fmtMoney(parts.monthly)} al mes` : "",
+    parts.weekly > 0 ? `${fmtMoney(parts.weekly)} por semana` : ""
   ].filter(Boolean).join(" + ");
+  return partsText ? `Gastos fijos: ${partsText}` : "";
 }
 
 export function renderGoals(scene: InicioScene, scope: string, today: PeriodReport, month: PeriodReport): void {
@@ -113,7 +113,7 @@ export function renderGoals(scene: InicioScene, scope: string, today: PeriodRepo
   const dayPct = target > 0 ? Math.max(0, Math.min(100, Math.round((earned / target) * 100))) : 0;
   const dayMissing = Math.max(0, target - earned);
 
-  // Nómina de la semana (lunes a domingo)
+  // Sueldos de la semana (lunes a domingo)
   const now = new Date();
   const dayIndex = (now.getDay() + 6) % 7;
   let weekEarned = 0;
@@ -128,10 +128,10 @@ export function renderGoals(scene: InicioScene, scope: string, today: PeriodRepo
         ? html`<div class="goal">
             <div class="goal-ring ${dayPct >= 100 ? "done" : ""}" style="--p:${dayPct}"><strong>${dayPct}%</strong></div>
             <div class="goal-text">
-              <span class="micro">Meta del día · costos fijos</span>
+              <span class="micro">Para cubrir gastos hoy</span>
               <strong>${fmtMoney(earned)} <small class="muted">de ${fmtMoney(target)}</small></strong>
               <span class="hint">${dayMissing > 0
-                ? `Faltan ${fmtMoney(dayMissing)} de ganancia${margin > 0 ? ` (≈ vender ${fmtMoney(Math.round(dayMissing / margin))})` : ""}.`
+                ? `Te faltan ${fmtMoney(dayMissing)} de ganancia${margin > 0 ? ` (≈ vender ${fmtMoney(Math.round(dayMissing / margin))})` : ""}.`
                 : "¡Meta del día cubierta!"}</span>
             </div>
           </div>`
@@ -139,13 +139,13 @@ export function renderGoals(scene: InicioScene, scope: string, today: PeriodRepo
       ${payroll.weekly > 0
         ? html`<div class="goal goal-payroll">
             <div class="goal-text">
-              <span class="micro">Nómina de la semana</span>
+              <span class="micro">Sueldos de la semana</span>
               <strong>${fmtMoney(p.earned)} <small class="muted">de ${fmtMoney(p.goal)}</small></strong>
             </div>
             <div class="payroll-bar"><div style="width:${p.progress}%"></div></div>
             <span class="hint">${p.missing > 0
-              ? `Faltan ${fmtMoney(p.missing)}: ${fmtMoney(p.perDay)} de ganancia por día ${p.daysLeft === 1 ? "(hoy es el último)" : `en los ${p.daysLeft} días que quedan`}.`
-              : "✓ Nómina de la semana cubierta."}</span>
+              ? `Te faltan ${fmtMoney(p.missing)}: ${fmtMoney(p.perDay)} por día ${p.daysLeft === 1 ? "(hoy es el último)" : `en los ${p.daysLeft} días que quedan`}.`
+              : "✓ Sueldos de la semana cubiertos."}</span>
           </div>`
         : html`<button class="ghost block" type="button" data-go="gastos">Registrar nómina semanal</button>`}
       ${monthly > 0 ? html`<p class="micro goal-foot">${targetBreakdown(scene, scope)}</p>` : html``}
@@ -206,34 +206,65 @@ export function renderWeek(scene: InicioScene, scope: string, monthReport: Perio
 
 export function renderMonth(scene: InicioScene, scope: string, month: PeriodReport): void {
   const { ctx, ui } = scene;
+  const money = fmtMoneyPesos;
   const sales = Math.max(month.sales_total, 0);
+  const cost = Math.max(month.sales_cost, 0);
+  const gross = month.gross_profit;
   const fixed = month.fixed_costs_total ?? 0;
   const extra = month.extra_expenses_total ?? month.expenses_total;
+  const expenses = fixed + extra;
   const net = month.profit_after_expenses;
-  const parts: Array<{ tone: Tone; label: string; value: number }> = [
-    { tone: "amber", label: "Costo de mercancía", value: month.sales_cost },
-    { tone: "coral", label: "Costos fijos", value: fixed },
-    { tone: "violet", label: "Gastos extra", value: extra },
-    { tone: "green", label: "Utilidad del mes", value: net }
-  ];
-  const base = Math.max(sales, month.sales_cost + fixed + extra, 1);
+  const coverage = expenses > 0 ? Math.max(0, Math.min(100, Math.round((gross / expenses) * 100))) : 100;
+  const start = new Date(month.start);
+  const now = new Date();
+  const current = start.getFullYear() === now.getFullYear() && start.getMonth() === now.getMonth();
+  const period = current
+    ? "Este mes a la fecha"
+    : start.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+  const owed = Math.round(
+    ctx.repos.customers
+      .list()
+      .filter((customer) => scene.inScope(scope, customer.branch_id))
+      .reduce((sum, customer) => sum + customer.balance, 0) * 100
+  ) / 100;
   setHtml(
     ui.monthCard,
     html`
       <div class="card-head">
-        <div><h2>Este mes a la fecha</h2><p class="hint">${scope === VIEW_ALL ? "Todas las sucursales" : ctx.branches.name(scope)}</p></div>
-        <strong class="big-num">${fmtMoneyPesos(month.sales_total)}</strong>
+        <div>
+          <h2>¿Cómo va mi negocio?</h2>
+          <p class="hint">${period} · ${scope === VIEW_ALL ? "Todas las sucursales" : ctx.branches.name(scope)}</p>
+        </div>
+        <div class="pnl-result ${net < 0 ? "neg" : "pos"}">
+          <span>${net < 0 ? "Aún no cubres los gastos" : "Vas bien"}</span>
+        </div>
       </div>
-      <div class="stack-bar" role="img" aria-label="Cómo se reparten las ventas del mes">
-        ${parts.filter((p) => p.value > 0).map((p) => html`<span data-tone="${p.tone}" style="width:${(p.value / base) * 100}%" title="${p.label}: ${fmtMoneyPesos(p.value)}"></span>`)}
+      <div class="pnl">
+        <div class="pnl-row"><span>Vendiste</span><strong>${money(sales)}</strong></div>
+        <div class="pnl-row sub"><span>− Lo que costó la mercancía</span><strong>${money(cost)}</strong></div>
+        <div class="pnl-row total"><span>= Ganancia de la mercancía</span><strong>${money(gross)}</strong></div>
+        <div class="pnl-row sub"><span>− Gastos fijos (parte de estos días)</span><strong>${money(fixed)}</strong></div>
+        <div class="pnl-row sub"><span>− Otros gastos</span><strong>${money(extra)}</strong></div>
+        <div class="pnl-row result ${net < 0 ? "neg" : "pos"}"><span>= Lo que te queda libre</span><strong>${money(net)}</strong></div>
       </div>
-      <div class="legend-list">
-        ${parts.map(
-          (p) => html`<div data-tone="${p.tone}"><span class="legend-dot"></span><span>${p.label}</span><strong class="${p.tone === "green" && p.value < 0 ? "diff-negative" : ""}">${fmtMoneyPesos(p.value)}</strong></div>`
-        )}
-        <div class="legend-plain"><span>Compras a proveedores</span><strong>${fmtMoneyPesos(month.purchases_total)}</strong></div>
-        ${month.mermas_total ? html`<div class="legend-plain"><span>Mermas</span><strong>${fmtMoneyPesos(month.mermas_total)}</strong></div>` : html``}
-        ${month.returns_total ? html`<div class="legend-plain"><span>Devoluciones (ya restadas)</span><strong>${fmtMoneyPesos(month.returns_total)}</strong></div>` : html``}
+      ${expenses > 0
+        ? html`<div class="pnl-progress">
+            <div class="pnl-progress-head">
+              <span>Tu ganancia de la mercancía cubre ${coverage}% de los gastos del mes</span>
+              <strong>${money(gross)} de ${money(expenses)}</strong>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:${coverage}%"></div></div>
+          </div>`
+        : html``}
+      <p class="hint pnl-note">${net < 0
+        ? `Todavía no cubres los gastos del mes: te faltan ${money(Math.abs(net))} de ganancia. No significa que la caja esté vacía; las compras de mercancía y el fiado no cobrado no se cuentan aquí.`
+        : `Ya cubriste los gastos del mes. Te quedan ${money(net)} libres después de pagar la mercancía y los gastos.`}</p>
+      <div class="pnl-notes">
+        <span>Gastos fijos prorrateados a los días transcurridos</span>
+        <span>Compras de mercancía (inventario): ${money(month.purchases_total)}</span>
+        <span>Mermas: ${money(month.mermas_total)}</span>
+        <span>Fiado pendiente: ${money(owed)}</span>
+        ${month.returns_total ? html`<span>Devoluciones (ya restadas): ${money(month.returns_total)}</span>` : html``}
       </div>
     `
   );

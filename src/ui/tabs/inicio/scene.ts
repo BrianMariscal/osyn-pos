@@ -80,8 +80,8 @@ function inicioMarkup(): SafeHtml {
     <div class="dash">
       <section class="card hero-card span-2" id="heroCard"></section>
       <section class="card goals-card" id="goalsCard"></section>
-      <section class="card span-2" id="weekCard"></section>
       <section class="card" id="monthCard"></section>
+      <section class="card span-2" id="weekCard"></section>
       <section class="card" id="rankCard">
         <div class="card-head card-head-stack">
           <h2>Lo más vendido</h2>
