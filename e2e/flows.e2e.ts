@@ -137,3 +137,23 @@ test("el conteo físico ajusta la existencia y queda en el historial", async ({ 
   await expect(page.locator("#inventoryList")).toContainText("46 Pza");
   await expect(page.locator("#inventoryCountsHistory")).toContainText("1 ajustes");
 });
+
+test("el mes no se cierra solo y se puede reabrir si fue un error", async ({ page }) => {
+  await page.locator("[data-more]").click();
+  await page.locator('.modal [data-tab="reportes"]').click();
+  await expect(page.locator("#monthClosingsList")).toContainText("Aún no hay meses cerrados.");
+
+  await page.locator("#closeMonth").click();
+  await page.locator('.modal [data-modal-action="Continuar"]').click();
+  await page.locator("#confirmKeyword").fill("CERRAR MES");
+  await page.locator('.modal [data-modal-action="Cerrar mes"]').click();
+  await expect(page.locator("#toastRoot")).toContainText("cerrado");
+  await expect(page.locator("#monthReportSummary")).toContainText("Este mes está cerrado.");
+
+  await page.locator('#monthReportSummary [data-reopen]').click();
+  await page.locator('.modal [data-modal-action="Reabrir"]').click();
+  await expect(page.locator("#toastRoot")).toContainText("reabierto");
+  await expect(page.locator("#monthReportSummary")).not.toContainText("Este mes está cerrado.");
+  await expect(page.locator("#monthClosingsList")).toContainText("Aún no hay meses cerrados.");
+  await expect(page.locator("#closeMonth")).toHaveText("Cerrar mes");
+});

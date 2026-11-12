@@ -169,3 +169,9 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   color: var(--muted);
   font-size: var(--fs-xs);
 }
+
+/* Aviso de mes cerrado: azul, no el tono de advertencia general. */
+.closing-open {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--line));
+  background: var(--primary-soft);
+}

@@ -56,7 +56,23 @@ export function mountReports(scene: ReportesScene): { renderReports(): void } {
       setHtml(dailyEl, summaryRows(ctx.reports.periodReport(currentScope(), range.start, range.end), "dia"));
     }
     if (monthInput.value) {
-      setHtml(monthEl, summaryRows(ctx.reports.monthReport(currentScope(), monthInput.value)));
+      const month = monthInput.value;
+      const closing = ctx.repos.closings.list().find((row) => row.month === month && row.branch_id === currentScope());
+      setHtml(
+        monthEl,
+        html`
+          ${closing
+            ? html`<div class="notice closing-open">
+                <strong>Este mes está cerrado.</strong>
+                <p class="hint">Se cerró el ${fmtDateTime(closing.closed_at)}. Si fue un error, reábrelo; las ventas y gastos no cambian.</p>
+                ${ctx.auth.isAdmin() ? html`<button class="ghost small-btn" type="button" data-reopen="${closing.id}">Reabrir mes</button>` : html``}
+              </div>`
+            : html``}
+          ${summaryRows(ctx.reports.monthReport(currentScope(), month))}
+        `
+      );
+      const closeButton = root.querySelector<HTMLButtonElement>("#closeMonth");
+      if (closeButton) closeButton.textContent = closing ? "Reemplazar cierre" : "Cerrar mes";
     }
     const scope = currentScope();
     const closings = ctx.repos.closings
@@ -77,12 +93,42 @@ export function mountReports(scene: ReportesScene): { renderReports(): void } {
                   Ventas ${fmtMoneyPesos(closing.report?.sales_total ?? 0)} | Gastos ${fmtMoneyPesos(closing.report?.expenses_total ?? 0)}
                   | ${ctx.branches.name(closing.branch_id)} | Cerrado ${fmtDateTime(closing.closed_at)}
                 </p>
+                ${ctx.auth.isAdmin()
+                  ? html`<div class="actions"><button class="ghost small-btn" type="button" data-reopen="${closing.id}">Reabrir</button></div>`
+                  : html``}
               </div>
             `
           )}`
         : html`<p class="muted">Aún no hay meses cerrados.</p>`
     );
   };
+
+  const reopenMonth = async (id: string): Promise<void> => {
+    if (!ctx.auth.isAdmin()) {
+      ctx.toast("Solo el administrador puede reabrir meses");
+      return;
+    }
+    const closing = ctx.repos.closings.byId(id);
+    if (!closing) return;
+    const confirmed = await confirmDialog({
+      title: "Reabrir mes",
+      message: `Se quitará el cierre de ${closing.month} (${ctx.branches.name(closing.branch_id)}). Las ventas y los gastos no cambian.`,
+      confirmLabel: "Reabrir",
+      danger: true
+    });
+    if (!confirmed) return;
+    ctx.repos.closings.softDelete(closing.id);
+    ctx.toast(`Mes ${closing.month} reabierto`);
+    render();
+  };
+  const wireReopen = (element: HTMLElement): void => {
+    element.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>("[data-reopen]");
+      if (button) void reopenMonth(button.dataset.reopen!);
+    });
+  };
+  wireReopen(monthEl);
+  wireReopen(closingsEl);
 
   const initDates = (): void => {
     if (!dateInput.value) dateInput.value = todayInputValue();
@@ -116,6 +162,15 @@ export function mountReports(scene: ReportesScene): { renderReports(): void } {
     if (!month) {
       ctx.toast("Selecciona mes");
       return;
+    }
+    if (month >= monthInputValue()) {
+      const proceed = await confirmDialog({
+        title: "Mes en curso",
+        message: `Estás cerrando ${month}, que todavía no termina. El cierre guarda solo lo que va hasta hoy; las ventas de los días restantes no se incluirán. ¿Continuar?`,
+        confirmLabel: "Continuar",
+        danger: true
+      });
+      if (!proceed) return;
     }
     const existing = ctx.repos.closings.list().find((closing) => closing.month === month && closing.branch_id === currentScope());
     if (existing) {
