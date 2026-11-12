@@ -12,7 +12,7 @@ import { ExpenseService, dailyTargetCents, fixedCostsForRange } from "../src/dom
 import { detectSaleGroup } from "../src/domain/sale-groups";
 import { assignMissingSupplierNumbers, nextSupplierNumber, productMatches, resolveScannedCode } from "../src/domain/catalog";
 import { normalizeState } from "../src/domain/normalize";
-import { dayRange, monthRange, nowISO } from "../src/core/dates";
+import { dayRange, monthInputValue, monthRange, nowISO } from "../src/core/dates";
 import type { AuthService } from "../src/domain/auth-service";
 import type { Expense, Product } from "../src/core/types";
 
@@ -157,6 +157,13 @@ describe("funciones de la tienda", () => {
     expect(repos.expenses.list()).toHaveLength(1);
     expect(repos.expenses.list()[0]!.id).toBe("r2");
     expect(expenses.monthlyFixedCents()).toBe(300_000);
+  });
+
+  it("el mes en curso se reporta a la fecha, no con costos futuros", () => {
+    expenses.add("fijo", "Renta", 3100, "Renta");
+    const report = reports.monthReport("sucursal-1", monthInputValue());
+    expect(Date.parse(report.start)).toBeLessThanOrEqual(Date.parse(report.end));
+    expect(Date.parse(report.end)).toBeLessThanOrEqual(Date.now() + 1000);
   });
 
   it("el corte solo descuenta de caja los gastos extra, no los fijos", () => {
