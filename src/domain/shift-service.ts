@@ -106,6 +106,11 @@ export class ShiftService {
     const returns = this.repos.returns.list().filter((ret) => ret.branch_id === branchId && since(ret.created_at));
     const totalCents = (rows: Array<{ total: number }>): number => sumCents(rows.map((row) => toCents(row.total)));
     const gastos = sumCents(expenses.map((expense) => toCents(expense.amount)));
+    // Solo los gastos pagados con efectivo de la caja reducen el efectivo
+    // esperado. Los pagados con transferencia/tarjeta van "aparte" (igual que
+    // las compras) y solo se informan.
+    const gastosCaja = sumCents(expenses.filter((expense) => expense.paid_from !== "aparte").map((expense) => toCents(expense.amount)));
+    const gastosAparte = gastos - gastosCaja;
     // Solo las compras pagadas con dinero de la caja salen del efectivo.
     const proveedores = totalCents(purchases.filter((p) => p.paid_from !== "aparte"));
     const proveedoresAparte = totalCents(purchases.filter((p) => p.paid_from === "aparte"));
@@ -148,13 +153,14 @@ export class ShiftService {
       interno: toPesos(sumCents(internal.map((s) => toCents(s.cost)))),
       devoluciones: toPesos(devolucionesCents),
       devolucionesEfectivo: toPesos(devolucionesEfectivoCents),
-      gastos: toPesos(gastos),
+      gastos: toPesos(gastosCaja),
+      ...(gastosAparte ? { gastosAparte: toPesos(gastosAparte) } : {}),
       proveedores: toPesos(proveedores),
       proveedoresAparte: toPesos(proveedoresAparte),
       mermas: toPesos(mermasCents),
       ganancia: toPesos(gananciaCents),
       // El efectivo ya viene neto de lo reembolsado en efectivo.
-      efectivoEsperado: toPesos(efectivo + abonosCents - gastos - proveedores)
+      efectivoEsperado: toPesos(efectivo + abonosCents - gastosCaja - proveedores)
     };
   }
 
@@ -207,7 +213,10 @@ export class ShiftService {
         opening_cash: base,
         counted_cash: expected,
         withdrawn_cash: 0,
-        next_opening_cash: base,
+        // No hubo retiro: todo el efectivo sigue en el cajón y pasa a ser la
+        // base del día siguiente. Antes se dejaba la base vieja y el sobrante
+        // aparecía como "dinero que no cuadra" al día siguiente.
+        next_opening_cash: Math.max(0, expected),
         notes: "Corte automático de medianoche (no se hizo manualmente)"
       },
       info.end,
@@ -235,7 +244,10 @@ export class ShiftService {
       withdrawn_cash: input.withdrawn_cash,
       next_opening_cash: input.next_opening_cash,
       expected_cash_with_base: expectedWithBase,
-      difference: toPesos(toCents(input.counted_cash) - toCents(expectedWithBase)),
+      // El efectivo retirado/entregado ya no está en el conteo, pero salió de
+      // la caja: se suma al contado para comparar contra lo esperado. Antes un
+      // retiro de $1,000 marcaba un faltante falso de $1,000.
+      difference: toPesos(toCents(input.counted_cash) + toCents(input.withdrawn_cash) - toCents(expectedWithBase)),
       distribution_difference: toPesos(toCents(input.counted_cash) - toCents(expectedDistribution)),
       notes: input.notes,
       closed_at: closedAt,

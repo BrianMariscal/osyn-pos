@@ -21,7 +21,7 @@ export function deltaChip(current: number, previous: number, label: string): Saf
 
 // ---------------- Hoy (tarjeta principal) ----------------
 
-export function renderHero(scene: InicioScene, scope: string, today: PeriodReport, isManager: boolean): void {
+export function renderHero(scene: InicioScene, scope: string, today: PeriodReport, month: PeriodReport, isManager: boolean): void {
   const { hourly, ui } = scene;
   const todayHours = hourly(scope, 0);
   const yesterdayHours = hourly(scope, 1);
@@ -53,10 +53,13 @@ export function renderHero(scene: InicioScene, scope: string, today: PeriodRepor
           ${stat("Ventas", String(today.sales_count), "violet")}
           ${stat("Ticket promedio", fmtMoney(avg), "teal")}
           ${today.returns_total ? stat("Devoluciones", fmtMoneyPesos(today.returns_total), "coral") : html``}
-          ${isManager ? stat("Ganancia bruta", fmtMoneyPesos(today.gross_profit), "green") : html``}
-          ${isManager ? stat("Ganancia neta", fmtMoneyPesos(today.profit_after_expenses), today.profit_after_expenses < 0 ? "coral" : "green") : html``}
+          ${isManager ? stat("Margen bruto (hoy)", fmtMoneyPesos(today.gross_profit), "green") : html``}
+          ${isManager ? stat("Utilidad mes a la fecha", fmtMoneyPesos(month.profit_after_expenses), month.profit_after_expenses < 0 ? "coral" : "green") : html``}
         </div>
       </div>
+      ${isManager
+        ? html`<p class="hint">Margen bruto = ventas − costo de lo vendido. Utilidad del mes = margen − costos fijos − gastos extra. Las compras de mercancía y las mermas se muestran aparte.</p>`
+        : html``}
       <div class="hour-chart" role="img" aria-label="Ventas por hora: hoy contra ayer">
         ${hours.map((h) => {
           const t = todayHours[h]!;
@@ -211,14 +214,14 @@ export function renderMonth(scene: InicioScene, scope: string, month: PeriodRepo
     { tone: "amber", label: "Costo de mercancía", value: month.sales_cost },
     { tone: "coral", label: "Costos fijos", value: fixed },
     { tone: "violet", label: "Gastos extra", value: extra },
-    { tone: "green", label: "Ganancia neta", value: net }
+    { tone: "green", label: "Utilidad del mes", value: net }
   ];
   const base = Math.max(sales, month.sales_cost + fixed + extra, 1);
   setHtml(
     ui.monthCard,
     html`
       <div class="card-head">
-        <div><h2>Este mes</h2><p class="hint">${scope === VIEW_ALL ? "Todas las sucursales" : ctx.branches.name(scope)}</p></div>
+        <div><h2>Este mes a la fecha</h2><p class="hint">${scope === VIEW_ALL ? "Todas las sucursales" : ctx.branches.name(scope)}</p></div>
         <strong class="big-num">${fmtMoneyPesos(month.sales_total)}</strong>
       </div>
       <div class="stack-bar" role="img" aria-label="Cómo se reparten las ventas del mes">

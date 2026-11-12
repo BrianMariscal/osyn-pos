@@ -5,3 +5,12 @@ dist
 .dev.vars
 .vercel
 .wrangler
+
+# Playwright
+playwright-report
+test-results
+.playwright
+
+# Fixtures generados para E2E
+/e2e/fixtures/demo-state.json
+/e2e/fixtures/shots/

@@ -61,13 +61,36 @@ export class InventoryService {
   }
 
   start(): void {
-    this.active = { id: uid(), branch_id: this.branches.operationalId(), started_at: nowISO(), items: {} };
+    this.active = { id: uid(), branch_id: this.branches.operationalId(), started_at: nowISO(), items: {}, baselines: {} };
+  }
+
+  /** Existencia del sistema ahora mismo para la sucursal del conteo. */
+  private currentStock(productId: string): number {
+    const branchId = this.active?.branch_id ?? this.branches.operationalId();
+    const row = this.repos.stocks.list().find((stock) => stock.product_id === productId && stock.branch_id === branchId);
+    return row?.stock ?? 0;
   }
 
   setCount(productId: string, value: string): void {
     if (!this.active) return;
+    const previous = this.active.items[productId];
     this.active.items = { ...this.active.items, [productId]: value };
+    const baselines = { ...(this.active.baselines ?? {}) };
+    if (value.trim() === "") {
+      // Si se borra la captura, la próxima vez se vuelve a tomar la foto.
+      delete baselines[productId];
+    } else if (previous === undefined || previous.trim() === "" || baselines[productId] === undefined) {
+      // La primera captura fija la existencia del sistema. Editar la cantidad
+      // después NO cambia la base: solo se corrige lo contado.
+      baselines[productId] = this.currentStock(productId);
+    }
+    this.active.baselines = baselines;
     this.onCountChange?.(productId);
+  }
+
+  /** Existencia del sistema cuando se capturó el producto (undefined si aún no). */
+  baselineFor(productId: string): number | undefined {
+    return this.activeCount()?.baselines?.[productId];
   }
 
   cancel(): void {
@@ -76,7 +99,9 @@ export class InventoryService {
 
   /** Copia del conteo en curso (para guardarlo y no perderlo al recargar). */
   snapshot(): ActiveCount | null {
-    return this.active ? { ...this.active, items: { ...this.active.items } } : null;
+    return this.active
+      ? { ...this.active, items: { ...this.active.items }, baselines: { ...(this.active.baselines ?? {}) } }
+      : null;
   }
 
   /** Recupera un conteo guardado (solo si sigue siendo válido). */
@@ -88,7 +113,11 @@ export class InventoryService {
     Object.entries(candidate.items ?? {}).forEach(([key, value]) => {
       if (typeof value === "string") items[key] = value;
     });
-    this.active = { id: candidate.id, branch_id: candidate.branch_id, started_at: candidate.started_at, items };
+    const baselines: Record<string, number> = {};
+    Object.entries(candidate.baselines ?? {}).forEach(([key, value]) => {
+      if (typeof value === "number" && Number.isFinite(value)) baselines[key] = value;
+    });
+    this.active = { id: candidate.id, branch_id: candidate.branch_id, started_at: candidate.started_at, items, baselines };
   }
 
   countedValue(productId: string): string | undefined {

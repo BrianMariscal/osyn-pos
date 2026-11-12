@@ -1,7 +1,7 @@
 import { nowISO } from "../core/dates";
 import { uid } from "../core/id";
 import { sumCents, toCents, toPesos, type Cents } from "../core/money";
-import type { Expense, ExpensePeriod } from "../core/types";
+import type { Expense, ExpensePeriod, PurchasePayment } from "../core/types";
 import type { Repositories } from "../data/repositories";
 import { VIEW_ALL } from "./app-state";
 import type { BranchService } from "./branch-service";
@@ -9,6 +9,16 @@ import type { SimpleResult } from "./sale-service";
 
 export function isFixedCost(expense: Pick<Expense, "kind">): boolean {
   return expense.kind === "fijo";
+}
+
+/** Clave para comparar conceptos: sin acentos, minúsculas y espacios simples. */
+function conceptKey(concept: string): string {
+  return concept
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 function monthStart(d: Date): Date {
@@ -128,6 +138,32 @@ export class ExpenseService {
       .sort((a, b) => b.amount - a.amount || a.concept.localeCompare(b.concept));
   }
 
+  /** Conceptos de costo fijo repetidos (típico: recapturar la renta cada mes). */
+  duplicateFixedCosts(scope: string = this.branches.operationalId()): Array<{ concept: string; items: Expense[] }> {
+    const groups = new Map<string, Expense[]>();
+    for (const expense of this.fixedCosts(scope)) {
+      const key = conceptKey(expense.concept);
+      groups.set(key, [...(groups.get(key) ?? []), expense]);
+    }
+    return [...groups.values()]
+      .filter((items) => items.length > 1)
+      .map((items) => ({ concept: items[0]!.concept, items }));
+  }
+
+  /** Conserva el registro más reciente de cada concepto y elimina los demás. */
+  mergeDuplicateFixedCosts(scope: string = this.branches.operationalId()): number {
+    let deleted = 0;
+    for (const group of this.duplicateFixedCosts(scope)) {
+      const keep = [...group.items].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0]!;
+      for (const item of group.items) {
+        if (item.id === keep.id) continue;
+        this.remove(item.id);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+
   extras(scope: string = this.branches.operationalId()): Expense[] {
     return this.repos.expenses
       .list()
@@ -160,40 +196,79 @@ export class ExpenseService {
     return dailyTargetCents(monthly, date, weekly);
   }
 
-  add(kind: "fijo" | "extra", concept: string, amountPesos: number, category: string, period: ExpensePeriod = "mensual"): SimpleResult {
+  add(
+    kind: "fijo" | "extra",
+    concept: string,
+    amountPesos: number,
+    category: string,
+    period: ExpensePeriod = "mensual",
+    paidFrom: PurchasePayment = "caja"
+  ): SimpleResult {
     const cleanConcept = concept.trim();
     if (!cleanConcept) return { ok: false, error: "Escribe el concepto" };
     const amount = toPesos(toCents(amountPesos));
     if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Monto inválido" };
     const ts = nowISO();
+    const branchId = this.branches.operationalId();
+    // Un costo fijo es recurrente: si ya existe el mismo concepto en la
+    // sucursal, se actualiza en vez de crear otra fila. Antes, volver a capturar
+    // "Renta" cada mes sumaba una renta más y la utilidad se volvía negativa.
+    if (kind === "fijo") {
+      const existing = this.repos.expenses
+        .list()
+        .find(
+          (expense) =>
+            isFixedCost(expense) &&
+            expense.branch_id === branchId &&
+            conceptKey(expense.concept) === conceptKey(cleanConcept)
+        );
+      if (existing) {
+        this.repos.expenses.upsert({
+          ...existing,
+          concept: cleanConcept,
+          amount,
+          category: category || existing.category,
+          period,
+          updated_at: ts
+        });
+        return { ok: true, replaced: true };
+      }
+    }
     this.repos.expenses.upsert({
       id: uid(),
-      branch_id: this.branches.operationalId(),
+      branch_id: branchId,
       concept: cleanConcept,
       amount,
       category: category || "Varios",
       kind,
-      ...(kind === "fijo" ? { period } : {}),
+      ...(kind === "fijo" ? { period } : paidFrom === "aparte" ? { paid_from: "aparte" as const } : {}),
       created_at: ts,
       updated_at: ts
     });
     return { ok: true };
   }
 
-  update(id: string, changes: { concept: string; amount: number; category: string; period?: ExpensePeriod }): SimpleResult {
+  update(id: string, changes: { concept: string; amount: number; category: string; period?: ExpensePeriod; paidFrom?: PurchasePayment }): SimpleResult {
     const expense = this.repos.expenses.byId(id);
     if (!expense || expense.deleted) return { ok: false, error: "No se encontró el gasto" };
     const amount = toPesos(toCents(changes.amount));
     if (!changes.concept.trim()) return { ok: false, error: "Escribe el concepto" };
     if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Monto inválido" };
-    this.repos.expenses.upsert({
+    const next: Expense = {
       ...expense,
       concept: changes.concept.trim(),
       amount,
       category: changes.category,
-      ...(isFixedCost(expense) && changes.period ? { period: changes.period } : {}),
       updated_at: nowISO()
-    });
+    };
+    if (isFixedCost(expense)) {
+      if (changes.period) next.period = changes.period;
+    } else if (changes.paidFrom === "aparte") {
+      next.paid_from = "aparte";
+    } else if (changes.paidFrom === "caja") {
+      delete next.paid_from;
+    }
+    this.repos.expenses.upsert(next);
     return { ok: true };
   }
 

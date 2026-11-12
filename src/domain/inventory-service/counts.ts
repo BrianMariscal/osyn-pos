@@ -1,4 +1,5 @@
 import { toCents, toPesos } from "../../core/money";
+import { roundQty4 } from "../../core/qty";
 import type { CountIncidence, CountSummary, InventoryCount } from "../../core/types";
 import { normalizeQtyForUnit } from "../../core/units";
 import type { Repositories } from "../../data/repositories";
@@ -23,7 +24,10 @@ export function computeSummary(repos: Repositories, active: ActiveCount): CountS
     const systemStock = repos.stocks
       .list()
       .find((row) => row.product_id === product.id && row.branch_id === branchId);
-    const system = normalizeQtyForUnit(systemStock?.stock ?? 0, product.um);
+    // Si el producto ya se capturó, se compara contra la existencia que tenía
+    // en ese momento: una venta posterior no debe parecer un faltante.
+    const baseline = active.baselines?.[product.id];
+    const system = normalizeQtyForUnit(baseline !== undefined ? baseline : systemStock?.stock ?? 0, product.um);
     const difference = Math.round((physical - system) * 10000) / 10000;
     if (difference === 0) {
       ok += 1;
@@ -64,6 +68,15 @@ export function applyCount(repos: Repositories, active: ActiveCount, summary: Co
       .list()
       .find((row) => row.product_id === incidence.product_id && row.branch_id === active.branch_id);
     const um = repos.products.byId(incidence.product_id)?.um;
+    const current = normalizeQtyForUnit(stockRow?.stock ?? 0, um);
+    const baselineRaw = active.baselines?.[incidence.product_id];
+    const baseline = baselineRaw === undefined ? undefined : normalizeQtyForUnit(baselineRaw, um);
+    // Se aplica la diferencia, no el valor absoluto: si hubo ventas después de
+    // contar, el stock final sigue reflejándolas. Sin base (conteos viejos) se
+    // conserva el comportamiento anterior de fijar lo contado.
+    const nextStock = baseline === undefined
+      ? normalizeQtyForUnit(incidence.physical_stock, um)
+      : Math.max(0, roundQty4(current + incidence.physical_stock - baseline));
     // Producto contado sin fila de existencia en la sucursal: se crea.
     repos.stocks.upsert({
       id: stockRow?.id ?? `${incidence.product_id}:${active.branch_id}`,
@@ -72,7 +85,7 @@ export function applyCount(repos: Repositories, active: ActiveCount, summary: Co
       min_stock: stockRow?.min_stock ?? 0,
       ...stockRow,
       deleted: false,
-      stock: normalizeQtyForUnit(incidence.physical_stock, um),
+      stock: nextStock,
       updated_at: ts
     });
   }

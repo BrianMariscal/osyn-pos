@@ -12,7 +12,7 @@ import { ExpenseService, dailyTargetCents, fixedCostsForRange } from "../src/dom
 import { detectSaleGroup } from "../src/domain/sale-groups";
 import { assignMissingSupplierNumbers, nextSupplierNumber, productMatches, resolveScannedCode } from "../src/domain/catalog";
 import { normalizeState } from "../src/domain/normalize";
-import { dayRange, monthRange, nowISO } from "../src/core/dates";
+import { dayRange, monthInputValue, monthRange, nowISO } from "../src/core/dates";
 import type { AuthService } from "../src/domain/auth-service";
 import type { Expense, Product } from "../src/core/types";
 
@@ -134,11 +134,45 @@ describe("funciones de la tienda", () => {
     expect(fixedCostsForRange(fixed, sep.start, sep.end)).toBe(0);
   });
 
+  it("volver a capturar un costo fijo lo actualiza en vez de duplicarlo", () => {
+    expect(expenses.add("fijo", "Renta", 3100, "Renta").ok).toBe(true);
+    const second = expenses.add("fijo", "  renta  ", 3500, "Renta");
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.replaced).toBe(true);
+    expect(repos.expenses.list()).toHaveLength(1);
+    expect(expenses.monthlyFixedCents()).toBe(350_000);
+    // Un gasto extra con el mismo nombre sí es un movimiento nuevo.
+    expect(expenses.add("extra", "Renta", 100, "Renta").ok).toBe(true);
+    expect(repos.expenses.list()).toHaveLength(2);
+  });
+
+  it("detecta y unifica costos fijos duplicados de datos viejos", () => {
+    const now = nowISO();
+    const later = new Date(Date.parse(now) + 1000).toISOString();
+    repos.expenses.upsert({ id: "r1", branch_id: "sucursal-1", concept: "Renta", amount: 3000, category: "Renta", kind: "fijo", period: "mensual", created_at: now, updated_at: now });
+    repos.expenses.upsert({ id: "r2", branch_id: "sucursal-1", concept: "RENTA", amount: 3000, category: "Renta", kind: "fijo", period: "mensual", created_at: now, updated_at: later });
+
+    expect(expenses.duplicateFixedCosts()).toHaveLength(1);
+    expect(expenses.mergeDuplicateFixedCosts()).toBe(1);
+    expect(repos.expenses.list()).toHaveLength(1);
+    expect(repos.expenses.list()[0]!.id).toBe("r2");
+    expect(expenses.monthlyFixedCents()).toBe(300_000);
+  });
+
+  it("el mes en curso se reporta a la fecha, no con costos futuros", () => {
+    expenses.add("fijo", "Renta", 3100, "Renta");
+    const report = reports.monthReport("sucursal-1", monthInputValue());
+    expect(Date.parse(report.start)).toBeLessThanOrEqual(Date.parse(report.end));
+    expect(Date.parse(report.end)).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
   it("el corte solo descuenta de caja los gastos extra, no los fijos", () => {
     expenses.add("fijo", "Renta", 3000, "Renta");
     expenses.add("extra", "Garrafón", 40, "Varios");
+    expenses.add("extra", "Luz", 100, "Luz", "mensual", "aparte");
     const summary = shifts.summarize("sucursal-1");
     expect(summary.gastos).toBe(40);
+    expect(summary.gastosAparte).toBe(100);
     expect(summary.efectivoEsperado).toBe(-40);
   });
 
@@ -172,6 +206,37 @@ describe("funciones de la tienda", () => {
     expect(sales.stockOf("nuevo")).toBe(7);
   });
 
+  it("el conteo compara contra la existencia al capturar y conserva ventas posteriores", () => {
+    inventory.start();
+    // Existencia del sistema al capturar: 20.
+    inventory.setCount("coca", "18");
+    expect(inventory.baselineFor("coca")).toBe(20);
+
+    // Venta después del conteo: el sistema baja a 17, el físico sigue en 18.
+    sales.addToCart("coca", 3);
+    expect(sales.completeSale({ payment: "efectivo", customerId: null }).ok).toBe(true);
+    expect(sales.stockOf("coca")).toBe(17);
+
+    // Corregir la captura no vuelve a tomar la base.
+    inventory.setCount("coca", "18");
+    expect(inventory.baselineFor("coca")).toBe(20);
+
+    const summary = inventory.summary();
+    expect(summary?.incidences.find((row) => row.product_id === "coca")?.difference).toBe(-2);
+
+    // 18 físicos − 20 al contar = −2; sobre los 17 actuales quedan 15.
+    const applied = inventory.apply();
+    expect(applied.ok).toBe(true);
+    expect(sales.stockOf("coca")).toBe(15);
+  });
+
+  it("borrar una captura permite volver a tomar la base", () => {
+    inventory.start();
+    inventory.setCount("coca", "19");
+    inventory.setCount("coca", "");
+    expect(inventory.baselineFor("coca")).toBeUndefined();
+  });
+
   it("el conteo activo se puede guardar y recuperar", () => {
     inventory.start();
     inventory.setCount("coca", "15");
@@ -179,6 +244,7 @@ describe("funciones de la tienda", () => {
     const other = new InventoryService(repos, new BranchService(store, fakeAdminAuth(), repos));
     other.restore(saved);
     expect(other.countedValue("coca")).toBe("15");
+    expect(other.baselineFor("coca")).toBe(20);
     other.restore({ basura: true });
     expect(other.countedValue("coca")).toBe("15");
   });

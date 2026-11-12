@@ -1,5 +1,6 @@
 import { html, setHtml } from "../../../../core/html";
 import { fmtMoney, fmtMoneyPesos, lineTotalCents } from "../../../../core/money";
+import { fmtQty } from "../../../../core/qty";
 import { type CartUnit } from "../../../../core/types";
 import { bulkSubunits, isBulkUnit } from "../../../../core/units";
 import { iconFor } from "../../../icons";
@@ -9,6 +10,43 @@ import { qtyStep, type VentaScene } from "../scene";
 export function createCartLines(scene: VentaScene, renderPaymentState: () => void): { renderCart(): void } {
   const { ctx, root, ui, bulk, cartTotalCents } = scene;
   const { items, totalEl, posBarTotal, posBarCount, posBar, cartBadge } = ui;
+
+  // Productos frecuentes para la venta vacía: los más vendidos de los últimos
+  // 30 días que todavía tienen existencia. Ahorra buscar lo que más rota.
+  let rankedIds: string[] = [];
+  let rankedSalesCount = -1;
+  const frequentProducts = (): Array<{ id: string; name: string; price: number; stock: number; um: string }> => {
+    const sales = ctx.repos.sales.list();
+    if (sales.length !== rankedSalesCount) {
+      const cutoff = Date.now() - 30 * 86_400_000;
+      const counts = new Map<string, number>();
+      for (const sale of sales) {
+        if (Date.parse(sale.created_at) < cutoff) continue;
+        for (const item of sale.items ?? []) {
+          counts.set(item.productId, (counts.get(item.productId) ?? 0) + item.qty);
+        }
+      }
+      rankedIds = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+      rankedSalesCount = sales.length;
+    }
+    const quick: Array<{ id: string; name: string; price: number; stock: number; um: string }> = [];
+    for (const id of rankedIds) {
+      const product = ctx.repos.products.byId(id);
+      if (!product || product.deleted || product.active === false) continue;
+      const stock = ctx.sales.stockOf(id);
+      if (stock <= 0) continue;
+      quick.push({ id, name: product.name, price: product.price, stock, um: product.um });
+      if (quick.length >= 8) break;
+    }
+    return quick;
+  };
+
+  items.addEventListener("click", (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>("[data-quick]");
+    if (!button) return;
+    const result = ctx.sales.addToCart(button.dataset.quick!, 1);
+    if (!result.ok) ctx.toast(result.error);
+  });
 
   const renderCart = (): void => {
     const cart = ctx.sales.cart();
@@ -22,7 +60,29 @@ export function createCartLines(scene: VentaScene, renderPaymentState: () => voi
     posBarCount.textContent = pieces ? `${pieces} ${pieces === 1 ? "producto" : "productos"}` : "";
     posBar.classList.toggle("hidden", !pieces);
     if (!cart.length) {
-      setHtml(items, html`<div class="cart-empty-note">${iconFor("cart")}<span>Aún no hay productos en la venta</span><small class="muted">Escribe el nombre o escanea el código para agregar</small></div>`);
+      const quick = frequentProducts();
+      setHtml(
+        items,
+        html`
+          <div class="cart-empty-note">${iconFor("cart")}<span>Aún no hay productos en la venta</span><small class="muted">Escribe el nombre o escanea el código para agregar</small></div>
+          ${quick.length
+            ? html`<div class="quick-block">
+                <span class="micro">Frecuentes</span>
+                <div class="quick-grid">
+                  ${quick.map(
+                    (product) => html`
+                      <button class="quick-item" type="button" data-quick="${product.id}">
+                        <span>${product.name}</span>
+                        <strong>${fmtMoneyPesos(product.price)}</strong>
+                        <small class="muted">${fmtQty(product.stock)} ${product.um}</small>
+                      </button>
+                    `
+                  )}
+                </div>
+              </div>`
+            : html``}
+        `
+      );
       return;
     }
     setHtml(

@@ -17,6 +17,8 @@ export interface Expense {
   category: string;
   kind?: ExpenseKind;
   period?: ExpensePeriod;
+  /** "aparte": pagado fuera de la caja (transferencia/tarjeta); no resta el efectivo del corte. */
+  paid_from?: PurchasePayment;
   created_at: string;
   updated_at: string;
   deleted?: boolean;

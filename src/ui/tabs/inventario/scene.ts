@@ -13,6 +13,8 @@ export interface InventarioRefs {
   listEl: HTMLElement;
   historyEl: HTMLElement;
   search: HTMLInputElement;
+  onlyDiff: HTMLInputElement;
+  onlyDiffBox: HTMLElement;
 }
 
 /** Base compartida del inventario: markup, referencias, filtros y estado de lista. */
@@ -44,7 +46,9 @@ export function createInventarioScene(root: HTMLElement, ctx: AppContext): Inven
     countSummaryEl: root.querySelector<HTMLElement>("#inventoryCountSummary")!,
     listEl: root.querySelector<HTMLElement>("#inventoryList")!,
     historyEl: root.querySelector<HTMLElement>("#inventoryCountsHistory")!,
-    search: root.querySelector<HTMLInputElement>("#inventorySearch")!
+    search: root.querySelector<HTMLInputElement>("#inventorySearch")!,
+    onlyDiff: root.querySelector<HTMLInputElement>("#countOnlyDiff")!,
+    onlyDiffBox: root.querySelector<HTMLElement>("#countOnlyDiffBox")!
   };
   wireScanToSearch(ctx, root.querySelector<HTMLElement>("#inventoryScan")!, ui.search);
 
@@ -95,7 +99,7 @@ function inventarioMarkup(): SafeHtml {
         </div>
 
         <h2>Conteo físico</h2>
-        <p class="hint">Captura lo que realmente hay en tienda (Enter pasa al siguiente). Lo capturado se guarda solo; el sistema compara contra la existencia de esta sucursal.</p>
+        <p class="hint">Captura lo que realmente hay en tienda (Enter pasa al siguiente). Lo capturado se guarda solo; el sistema compara contra la existencia que había cuando capturaste cada producto.</p>
         <div class="actions wrap-actions">
           <button id="startInventoryCount" class="primary" type="button">${iconFor("layers")} Iniciar conteo</button>
           <button id="applyInventoryCount" class="danger ghost" type="button">${iconFor("edit")} Aplicar ajustes</button>
@@ -111,6 +115,7 @@ function inventarioMarkup(): SafeHtml {
           ${scanButtonMarkup("inventoryScan")}
         </div>
         ${productFiltersMarkup("inventory")}
+        <label id="countOnlyDiffBox" class="check-option hidden"><input id="countOnlyDiff" type="checkbox"> Solo diferencias</label>
         <div id="inventoryList" class="list"></div>
         <h2>Historial de conteos</h2>
         <div id="inventoryCountsHistory" class="list"></div>

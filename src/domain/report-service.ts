@@ -51,9 +51,15 @@ export class ReportService {
     const [yearRaw, monthRaw] = month.split("-").map(Number);
     const year = yearRaw ?? 1970;
     const monthIndex = (monthRaw ?? 1) - 1;
-    const start = new Date(year, monthIndex, 1).toISOString();
-    const end = new Date(year, monthIndex + 1, 1).toISOString();
-    return this.periodReport(scope, start, end);
+    const start = new Date(year, monthIndex, 1);
+    const monthEnd = new Date(year, monthIndex + 1, 1);
+    const now = new Date();
+    // El mes en curso se reporta a la fecha. Antes se prorrateaban los costos
+    // fijos de TODO el mes contra las ventas de unos cuantos días, así que la
+    // utilidad salía negativa hasta el final del mes. Los meses cerrados van
+    // completos.
+    const end = monthEnd.getTime() > now.getTime() ? now : monthEnd;
+    return this.periodReport(scope, start.toISOString(), end.toISOString());
   }
 
   private compute(scope: string, start: string, end: string): PeriodReport {

@@ -40,6 +40,7 @@ export function renderSummary(scene: InventarioScene): void {
 export function renderCountSummary(scene: InventarioScene): void {
   const { ctx, ui } = scene;
   const summary = ctx.inventory.summary();
+  const total = ctx.repos.products.list().filter((product) => product.active !== false).length;
   if (!summary) {
     setHtml(ui.countSummaryEl, html`<p class="muted">No hay conteo activo.</p>`);
     return;
@@ -48,7 +49,7 @@ export function renderCountSummary(scene: InventarioScene): void {
     ui.countSummaryEl,
     html`
       <div><span>Estado</span><strong>Conteo en proceso · desde ${fmtDateTime(ctx.inventory.activeCount()?.started_at)}</strong></div>
-      <div><span>Productos capturados</span><strong>${summary.captured}</strong></div>
+      <div><span>Productos capturados</span><strong>${summary.captured} de ${total}</strong></div>
       <div><span>Con faltante</span><strong>${summary.shortage}</strong></div>
       <div><span>Con sobrante</span><strong>${summary.surplus}</strong></div>
       <div><span>Ajustes a aplicar</span><strong>${summary.adjusted}</strong></div>
@@ -60,20 +61,37 @@ export function renderList(scene: InventarioScene): void {
   const { ctx, ui, filters, state } = scene;
   const branchId = ctx.branches.operationalId();
   const counting = Boolean(ctx.inventory.activeCount());
+  ui.onlyDiffBox.classList.toggle("hidden", !counting);
   // Todos los productos activos: los que aún no tienen existencia en esta
   // sucursal también se pueden contar (antes no aparecían).
   const stockByProduct = new Map(
     ctx.repos.stocks.list().filter((row) => row.branch_id === branchId).map((row) => [row.product_id, row])
   );
   filters.refresh();
-  const rows = filters
+  let rows = filters
     .apply(ctx.repos.products.list().filter((product) => product.active !== false), ui.search.value)
     .map((product) => ({
       product,
       row: stockByProduct.get(product.id) ?? { stock: 0, min_stock: 0 }
     }));
+  const onlyDifferences = counting && ui.onlyDiff.checked;
+  if (onlyDifferences) {
+    rows = rows.filter(({ product, row }) => {
+      const counted = ctx.inventory.countedValue(product.id);
+      if (counted === undefined || counted.trim() === "") return false;
+      const system = ctx.inventory.baselineFor(product.id) ?? row.stock;
+      return Math.abs(normalizeQty(counted) - normalizeQty(system)) > 0.0001;
+    });
+  }
   if (!rows.length) {
-    setHtml(ui.listEl, html`<p class="muted">${ui.search.value.trim() || filters.active() ? "Ningún producto coincide." : "Sin productos en inventario."}</p>`);
+    setHtml(
+      ui.listEl,
+      html`<p class="muted">${onlyDifferences
+        ? "Sin diferencias capturadas."
+        : ui.search.value.trim() || filters.active()
+          ? "Ningún producto coincide."
+          : "Sin productos en inventario."}</p>`
+    );
     return;
   }
   // Sin conteo: de 15 en 15. Durante el conteo se ven todos (Enter pasa al siguiente).
@@ -82,15 +100,16 @@ export function renderList(scene: InventarioScene): void {
     ui.listEl,
     html`${page.items.map(({ row, product }) => {
       const counted = counting ? ctx.inventory.countedValue(product!.id) : undefined;
+      const systemStock = ctx.inventory.baselineFor(product!.id) ?? row.stock;
       const diff =
         counted === undefined || counted === ""
           ? null
-          : Math.round((normalizeQty(counted) - normalizeQty(row.stock)) * 100) / 100;
+          : Math.round((normalizeQty(counted) - normalizeQty(systemStock)) * 100) / 100;
       return html`
         <div class="list-item ${row.stock <= row.min_stock ? "low" : ""}">
           <div class="item-line">
             <strong>${product!.name}</strong>
-            <strong>${fmtQty(row.stock)} ${product!.um}</strong>
+            <strong>${fmtQty(counting ? (ctx.inventory.baselineFor(product!.id) ?? row.stock) : row.stock)} ${product!.um}</strong>
           </div>
           <p class="muted">${product!.category || "Sin categoría"} | Mín ${fmtQty(row.min_stock)} | Costo ${fmtMoneyPesos(product!.cost)} | Venta ${fmtMoneyPesos(product!.price)}</p>
           ${counting
@@ -130,6 +149,13 @@ export function renderHistory(scene: InventarioScene): void {
 export function renderAll(scene: InventarioScene): void {
   renderSummary(scene);
   renderCountSummary(scene);
+  const counting = Boolean(scene.ctx.inventory.activeCount());
+  const start = scene.root.querySelector<HTMLButtonElement>("#startInventoryCount");
+  const apply = scene.root.querySelector<HTMLButtonElement>("#applyInventoryCount");
+  const cancel = scene.root.querySelector<HTMLButtonElement>("#cancelInventoryCount");
+  if (start) start.disabled = counting;
+  if (apply) apply.disabled = !counting;
+  if (cancel) cancel.disabled = !counting;
   if (scene.isTypingCount()) scene.state.pendingListRender = true;
   else renderList(scene);
   renderHistory(scene);

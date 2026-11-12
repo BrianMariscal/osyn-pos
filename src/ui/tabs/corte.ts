@@ -29,6 +29,7 @@ export const corteTab: TabModule = {
                   <input id="cashCounted" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
                 </label>
               </div>
+              <p class="hint">Si dejas la base inicial en 0, el fondo de cambio aparecerá como sobrante.</p>
               <div class="row">
                 <label class="form-field">Retirado / entregado
                   <input id="cashWithdrawn" class="input" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
@@ -81,7 +82,7 @@ export const corteTab: TabModule = {
       const withdrawnValue = Number(withdrawn.value || 0);
       const nextValue = Number(nextBase.value || 0);
       const expectedWithBase = toPesos(toCents(openingValue) + toCents(summary.efectivoEsperado));
-      const difference = toPesos(toCents(countedValue) - toCents(expectedWithBase));
+      const difference = toPesos(toCents(countedValue) + toCents(withdrawnValue) - toCents(expectedWithBase));
       const rest = toPesos(toCents(summary.ventas) - toCents(summary.cigarros ?? 0) - toCents(summary.cerveza ?? 0));
       const rows: Array<[string, string, string?]> = [
         ["Base inicial", fmtMoneyPesos(openingValue)],
@@ -96,6 +97,7 @@ export const corteTab: TabModule = {
         ["Abonos de fiado (cobrados en caja)", fmtMoneyPesos(summary.abonos ?? 0)],
         ["Consumo interno (a costo, no es venta)", fmtMoneyPesos(summary.interno ?? 0)],
         ["Gastos extra (de caja)", fmtMoneyPesos(summary.gastos)],
+        ...(summary.gastosAparte ? [["Gastos extra fuera de caja (no afectan efectivo)", fmtMoneyPesos(summary.gastosAparte), "group"] as [string, string, string]] : []),
         ["Proveedores (pagado de caja)", fmtMoneyPesos(summary.proveedores)],
         ["Compras pagadas aparte (no salen de caja)", fmtMoneyPesos(summary.proveedoresAparte ?? 0)],
         ["Mermas", fmtMoneyPesos(summary.mermas)],
@@ -104,7 +106,7 @@ export const corteTab: TabModule = {
         ["Ganancia estimada", fmtMoneyPesos(summary.ganancia)],
         ["Efectivo esperado con base", fmtMoneyPesos(expectedWithBase), "strong"],
         ["Efectivo contado", fmtMoneyPesos(countedValue)],
-        ["Diferencia contra esperado", fmtMoneyPesos(difference), difference < 0 ? "neg" : difference > 0 ? "pos" : "strong"],
+        ["Diferencia (contado + retirado − esperado)", fmtMoneyPesos(difference), difference < 0 ? "neg" : difference > 0 ? "pos" : "strong"],
         ["Retirado / entregado", fmtMoneyPesos(withdrawnValue)],
         ["Base siguiente día", fmtMoneyPesos(nextValue)],
         ["Sin repartir (contado − retiro − base)", fmtMoneyPesos(toPesos(toCents(countedValue) - toCents(withdrawnValue) - toCents(nextValue)))]
@@ -133,6 +135,7 @@ export const corteTab: TabModule = {
         ["Abonos de fiado (cobrados en caja)", fmtMoneyPesos(s.abonos ?? 0)],
         ["Consumo interno (a costo, no es venta)", fmtMoneyPesos(s.interno ?? 0)],
         ["Gastos extra (de caja)", fmtMoneyPesos(s.gastos ?? 0)],
+        ...(s.gastosAparte ? [["Gastos extra fuera de caja (no afectan efectivo)", fmtMoneyPesos(s.gastosAparte), "group"] as [string, string, string]] : []),
         ["Proveedores (pagado de caja)", fmtMoneyPesos(s.proveedores ?? 0)],
         ["Compras pagadas aparte (no salen de caja)", fmtMoneyPesos(s.proveedoresAparte ?? 0)],
         ["Mermas", fmtMoneyPesos(s.mermas ?? 0)],
@@ -141,7 +144,7 @@ export const corteTab: TabModule = {
         ["Ganancia estimada", fmtMoneyPesos(s.ganancia ?? 0)],
         ["Efectivo esperado con base", fmtMoneyPesos(shift.expected_cash_with_base || 0), "strong"],
         ["Efectivo contado", fmtMoneyPesos(shift.counted_cash || 0)],
-        ["Diferencia contra esperado", fmtMoneyPesos(shift.difference || 0), shift.difference < 0 ? "neg" : shift.difference > 0 ? "pos" : "strong"],
+        ["Diferencia (contado + retirado − esperado)", fmtMoneyPesos(shift.difference || 0), shift.difference < 0 ? "neg" : shift.difference > 0 ? "pos" : "strong"],
         ["Retirado / entregado", fmtMoneyPesos(shift.withdrawn_cash || 0)],
         ["Base siguiente día", fmtMoneyPesos(shift.next_opening_cash || 0)],
         ["Sin repartir (contado − retiro − base)", fmtMoneyPesos(toPesos(toCents(shift.counted_cash || 0) - toCents(shift.withdrawn_cash || 0) - toCents(shift.next_opening_cash || 0)))]
@@ -216,6 +219,7 @@ export const corteTab: TabModule = {
         ...(s.abonos ? [`Abonos de fiado: ${fmtMoneyPesos(s.abonos)}`] : []),
         `Consumo interno (a costo): ${fmtMoneyPesos(s.interno ?? 0)}`,
         `Gastos extra: ${fmtMoneyPesos(s.gastos)}`,
+        ...(s.gastosAparte ? [`Gastos fuera de caja (no afectan efectivo): ${fmtMoneyPesos(s.gastosAparte)}`] : []),
         `Proveedores (de caja): ${fmtMoneyPesos(s.proveedores)}`,
         ...(s.proveedoresAparte ? [`Compras pagadas aparte: ${fmtMoneyPesos(s.proveedoresAparte)}`] : []),
         `Mermas: ${fmtMoneyPesos(s.mermas)}`,
@@ -225,7 +229,7 @@ export const corteTab: TabModule = {
         `Efectivo contado: ${fmtMoneyPesos(shift.counted_cash)}`,
         `Dinero retirado/entregado: ${fmtMoneyPesos(shift.withdrawn_cash)}`,
         `Base para siguiente día: ${fmtMoneyPesos(shift.next_opening_cash)}`,
-        `Diferencia contra esperado: ${fmtMoneyPesos(shift.difference)}`,
+        `Diferencia (contado + retirado − esperado): ${fmtMoneyPesos(shift.difference)}`,
         `Diferencia contado vs retirado+base: ${fmtMoneyPesos(shift.distribution_difference)}`,
         "",
         "TOP 10 MÁS VENDIDOS",
@@ -390,12 +394,26 @@ export const corteTab: TabModule = {
 
     root.querySelector<HTMLButtonElement>("#closeShift")!.addEventListener("click", async () => {
       const summary = ctx.shifts.summarize(branchId());
-      const confirmed = await confirmDialog({
-        title: "Cerrar corte",
-        message: `Ventas: ${fmtMoneyPesos(summary.ventas)} | Efectivo esperado: ${fmtMoneyPesos(summary.efectivoEsperado)}. Se cerrará el corte de esta sucursal.`,
-        confirmLabel: "Cerrar corte"
-      });
-      if (!confirmed) return;
+      const pending = ctx.store.getState().sync.pending;
+      // Cerrar con ventas offline pendientes deja el efectivo esperado
+      // incompleto y produce un sobrante/faltante falso. Se avisa y se pide
+      // confirmación explícita; la tienda puede seguir vendiendo sin red.
+      if (pending > 0) {
+        const proceed = await confirmDialog({
+          title: "Hay cambios sin sincronizar",
+          message: `Quedan ${pending} cambio(s) por subir. El efectivo esperado puede no incluir ventas de este u otros equipos. Conecta y espera a "Todo sincronizado" antes de cerrar. ¿Cerrar de todos modos?`,
+          confirmLabel: "Cerrar de todos modos",
+          danger: true
+        });
+        if (!proceed) return;
+      } else {
+        const confirmed = await confirmDialog({
+          title: "Cerrar corte",
+          message: `Ventas: ${fmtMoneyPesos(summary.ventas)} | Efectivo esperado: ${fmtMoneyPesos(summary.efectivoEsperado)}. Se cerrará el corte de esta sucursal.`,
+          confirmLabel: "Cerrar corte"
+        });
+        if (!confirmed) return;
+      }
       const shift = ctx.shifts.closeShift({
         opening_cash: Number(opening.value || 0),
         counted_cash: Number(counted.value || 0),

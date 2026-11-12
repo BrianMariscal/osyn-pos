@@ -101,6 +101,22 @@ describe("cortes por rango, de días pasados y automáticos", () => {
     expect(shifts.lastShift(BRANCH)?.summary.ventas).toBe(200);
   });
 
+  it("el retiro de caja no genera un faltante falso", () => {
+    seedSale("retiro", nowISO(), 100);
+
+    // Contado $50 + retirado $50 = $100 esperados.
+    const shift = shifts.closeShift({
+      opening_cash: 0,
+      counted_cash: 50,
+      withdrawn_cash: 50,
+      next_opening_cash: 0,
+      notes: ""
+    });
+
+    expect(shift.difference).toBe(0);
+    expect(shift.distribution_difference).toBe(0);
+  });
+
   it("no deja cerrar un día ya cerrado ni uno sin movimientos", () => {
     seedSale("a1", at(-5, 12), 100);
     const info = shifts.dayInfo(BRANCH, day(-5));
@@ -131,6 +147,9 @@ describe("cortes por rango, de días pasados y automáticos", () => {
     expect(auto.summary.ventas).toBe(150);
     expect(auto.closed_at).toBe(dayRange(day(-1)).end);
     expect(auto.difference).toBe(0);
+    // Sin retiro, todo el efectivo queda como base del día siguiente.
+    expect(auto.next_opening_cash).toBe(150);
+    expect(auto.distribution_difference).toBe(0);
     // Idempotente: una segunda pasada no duplica el corte.
     expect(shifts.autoCloseIfNeeded(BRANCH)).toBeNull();
   });

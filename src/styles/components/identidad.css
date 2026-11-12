@@ -1,0 +1,201 @@
+/* ============ Identidad OSYN POS ============ */
+/* Riel oscuro, superficies planas y jerarquía tipográfica. Este archivo se
+   importa al final para ajustar el tema sin pelear con los partials. */
+
+/* ---------- Navegación ---------- */
+.tabs {
+  background: var(--rail);
+  border-right: 0;
+}
+.nav-group-label { color: color-mix(in srgb, var(--rail-ink) 72%, transparent); }
+.tab { color: var(--rail-ink); border-radius: var(--r-sm); }
+.tab:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.tab.active {
+  background: var(--rail-active);
+  color: var(--rail-strong);
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.tab.active:hover { color: var(--rail-strong); }
+
+@media (max-width: 860px) {
+  /* La barra inferior móvil conserva la superficie clara. */
+  .tabs { background: var(--card); border-top: var(--line-w) solid var(--line); }
+  .tab { color: var(--muted); }
+  .tab:hover { background: var(--card-2); color: var(--ink); }
+  .tab.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    box-shadow: inset 0 3px 0 var(--primary);
+  }
+  .tab.active:hover { color: var(--primary); }
+}
+
+/* ---------- Superficies ---------- */
+.card { box-shadow: none; }
+.hero-card { background: var(--card); }
+.hero-stat {
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-3);
+  background: transparent;
+  border-left: 2px solid var(--tone);
+  border-radius: 0;
+}
+.hero-stat strong { font-size: var(--fs-xl); }
+.hero-card .hint { max-width: 72ch; }
+
+/* ---------- Cobro ---------- */
+.pay-total {
+  background: var(--rail);
+  color: var(--rail-strong);
+  border: var(--line-w) solid var(--rail);
+}
+.pay-total span { color: color-mix(in srgb, var(--rail-strong) 76%, transparent); }
+.pay-methods button.active {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+  box-shadow: none;
+}
+.pay-button {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.pay-button:hover:not(:disabled) { background: var(--primary-hover); }
+[data-theme="dark"] .pay-button { color: var(--on-primary); }
+
+/* ---------- Avisos ---------- */
+@media (min-width: 861px) {
+  .toast {
+    left: auto;
+    right: var(--sp-4);
+    top: calc(56px + var(--sp-3));
+    bottom: auto;
+    transform: translateY(-140%);
+    text-align: left;
+    max-width: min(48vw, 420px);
+  }
+  .toast.show { transform: none; }
+}
+
+/* ---------- Encabezados ---------- */
+.card > h2 { font-weight: 700; letter-spacing: -0.015em; }
+
+/* ---------- Barra superior ---------- */
+.topbar {
+  background: var(--rail);
+  color: var(--rail-strong);
+  border-bottom: 0;
+}
+.brand h1 { color: var(--rail-strong); }
+.brand-mark {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+.total-pill { background: rgba(255, 255, 255, 0.1); color: var(--rail-strong); }
+.session-chip {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--rail-strong);
+}
+.session-chip:hover { border-color: var(--rail-strong); }
+#sessionName { color: var(--rail-strong); }
+.avatar-icon { background: rgba(255, 255, 255, 0.12); color: var(--rail-strong); }
+.topbar .branch-select {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--rail-strong);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.topbar .tag {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--rail-strong);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ---------- Gráficas ---------- */
+.goal-ring { background: conic-gradient(var(--primary) calc(var(--p) * 1%), var(--card-2) 0); }
+.hour-t { background: var(--primary); }
+.hour-col.now .hour-t { background: var(--accent); }
+#weekCard .chart-bar { background: color-mix(in srgb, var(--muted) 22%, var(--card)); }
+#weekCard .chart-col.today .chart-bar { background: var(--primary); }
+
+/* ---------- Detalles ---------- */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* ---------- Métricas planas ---------- */
+.mini-stats > div {
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-3);
+  background: transparent;
+  border-left: 2px solid var(--tone);
+  border-radius: 0;
+}
+.bar-row .bar-fill { background: var(--primary); }
+.payroll-bar > div { background: var(--primary); }
+.payroll-figures strong { color: var(--primary); }
+.chart-col.today .chart-val { color: var(--primary); }
+.kpi { background: transparent; box-shadow: none; }
+.kpi::before { width: 2px; }
+
+/* ---------- Venta vacía: productos frecuentes ---------- */
+.quick-block {
+  width: 100%;
+  max-width: 760px;
+  margin-top: var(--sp-4);
+  text-align: left;
+}
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.quick-item {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  border: var(--line-w) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card-2);
+  color: var(--ink);
+}
+.quick-item:hover { border-color: var(--primary); background: var(--primary-soft); }
+.quick-item span {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-item strong { font-variant-numeric: tabular-nums; }
+
+/* La venta vacía muestra frecuentes debajo: el aviso no debe ocupar todo el alto. */
+#panel-venta .pos-lines .cart-empty-note {
+  height: auto;
+  min-height: 120px;
+}
+#panel-venta .pos-lines .cart-empty-note svg { width: 38px; height: 38px; }
+
+@media (max-width: 860px) {
+  .toast {
+    top: calc(56px + var(--sp-2));
+    bottom: auto;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) translateY(-140%);
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%); }
+}
+.quick-item span {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-height: 2.6em;
+}

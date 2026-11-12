@@ -5,6 +5,12 @@ export interface ActiveCount {
   branch_id: string;
   started_at: string;
   items: Record<string, string>;
+  /**
+   * Existencia del sistema en el momento en que se capturó cada producto
+   * (sin normalizar). Sirve para que una venta ocurrida después del conteo no
+   * se confunda con un faltante.
+   */
+  baselines?: Record<string, number>;
 }
 
 export type ApplyCountResult = { ok: true; count: InventoryCount } | { ok: false; error: string };
