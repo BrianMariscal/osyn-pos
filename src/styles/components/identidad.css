@@ -5,14 +5,6 @@
 /* ---------- Superficies ---------- */
 .card { box-shadow: none; }
 .hero-card { background: var(--card); }
-.hero-stat {
-  padding: var(--sp-1) 0 var(--sp-1) var(--sp-3);
-  background: transparent;
-  border-left: 2px solid var(--tone);
-  border-radius: 0;
-}
-.hero-stat strong { font-size: var(--fs-xl); }
-.hero-card .hint { max-width: 72ch; }
 
 /* ---------- Avisos ---------- */
 @media (min-width: 861px) {
@@ -108,66 +100,67 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .toast.show { transform: translateX(-50%); }
 }
 
-/* ---------- Resumen del negocio (Inicio) ---------- */
-#monthCard { grid-column: 1 / -1; }
-.pnl-result {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 11px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--success) 10%, var(--card));
-  color: var(--success);
+/* ---------- Inicio: resumen ---------- */
+#heroCard { grid-column: 1 / -1; }
+#monthCard { grid-column: span 2; }
+.hero-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-3);
 }
-.pnl-result span {
-  font-size: var(--fs-xs);
+.hero-kpi {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-4);
+  border-left: 3px solid var(--tone);
+  border-radius: var(--r-sm);
+  background: var(--card-2);
+}
+.hero-kpi span {
+  font-size: var(--fs-2xs);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  color: var(--muted);
 }
-.pnl-result.neg { background: color-mix(in srgb, var(--danger) 9%, var(--card)); color: var(--danger); }
-.pnl-result.pos { color: var(--success); }
-.pnl { display: grid; margin-top: var(--sp-3); max-width: 860px; }
-.pnl-row {
+.hero-kpi strong {
+  font-size: 1.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.hero-kpi small { font-size: var(--fs-xs); color: var(--muted); }
+.month-lines { display: grid; margin-top: var(--sp-3); }
+.month-lines > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-3);
   align-items: baseline;
-  padding: 9px 0;
+  padding: 8px 0;
   border-bottom: var(--line-w) solid var(--line);
 }
-.pnl-row strong { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
-.pnl-row.sub span { padding-left: var(--sp-4); color: var(--muted); }
-.pnl-row.sub strong { color: var(--muted); font-weight: 600; }
-.pnl-row.total { border-bottom: 2px solid var(--line-strong); }
-.pnl-row.total span, .pnl-row.total strong { font-weight: 800; }
-.pnl-row.result {
+.month-lines strong { font-variant-numeric: tabular-nums; }
+.month-net {
   margin-top: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
-  border: 0;
+  border: 0 !important;
   border-radius: var(--r-sm);
-}
-.pnl-row.result span, .pnl-row.result strong { font-size: var(--fs-xl); font-weight: 800; }
-.pnl-row.result.neg { background: color-mix(in srgb, var(--danger) 8%, var(--card)); color: var(--danger); }
-.pnl-row.result.pos { background: color-mix(in srgb, var(--success) 9%, var(--card)); color: var(--success); }
-.pnl-progress { margin-top: var(--sp-3); max-width: 860px; }
-.pnl-progress-head {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  margin-bottom: 6px;
-  font-size: var(--fs-sm);
-  color: var(--muted);
-}
-.pnl-progress-head strong { color: var(--ink); font-variant-numeric: tabular-nums; }
-.pnl-note { max-width: 860px; margin-top: var(--sp-3); }
-.pnl-notes { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
-.pnl-notes span {
-  padding: 3px 10px;
-  border: var(--line-w) solid var(--line);
-  border-radius: 999px;
   background: var(--card-2);
-  color: var(--muted);
-  font-size: var(--fs-xs);
+  font-weight: 800;
+}
+.month-net span, .month-net strong { font-size: var(--fs-lg); }
+.month-net.neg { background: color-mix(in srgb, var(--danger) 8%, var(--card)); color: var(--danger); }
+.month-net.pos { background: color-mix(in srgb, var(--success) 9%, var(--card)); color: var(--success); }
+.month-progress { margin-top: var(--sp-3); }
+@media (max-width: 1100px) {
+  .hero-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  #heroCard, #monthCard { grid-column: auto; }
+  .hero-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .hero-kpis { grid-template-columns: 1fr; }
 }
 
 /* Aviso de mes cerrado: azul, no el tono de advertencia general. */

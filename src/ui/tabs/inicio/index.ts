@@ -42,7 +42,7 @@ export const inicioTab: TabModule = {
 
       const today = scene.dayReport(scope, 0);
       const monthReport = ctx.reports.monthReport(scope, monthInputValue());
-      renderHero(scene, scope, today, isManager);
+      renderHero(scene, scope, today, monthReport, isManager);
       if (!isManager) {
         renderVendorPayments(scene, scope);
         return;

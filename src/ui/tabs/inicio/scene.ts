@@ -95,6 +95,11 @@ function inicioMarkup(): SafeHtml {
       </section>
       <section class="card" id="lowCard"></section>
       <section class="card" id="creditCard"></section>
+      <section class="card">
+        <div class="card-head"><h2>Reportes</h2></div>
+        <p class="hint">El detalle de ventas, gastos y ganancias del día, del mes o acumulado está en Reportes.</p>
+        <button class="primary block" type="button" data-go="reportes">Ver reportes</button>
+      </section>
     </div>
   `;
 }
