@@ -106,6 +106,11 @@ export class ShiftService {
     const returns = this.repos.returns.list().filter((ret) => ret.branch_id === branchId && since(ret.created_at));
     const totalCents = (rows: Array<{ total: number }>): number => sumCents(rows.map((row) => toCents(row.total)));
     const gastos = sumCents(expenses.map((expense) => toCents(expense.amount)));
+    // Solo los gastos pagados con efectivo de la caja reducen el efectivo
+    // esperado. Los pagados con transferencia/tarjeta van "aparte" (igual que
+    // las compras) y solo se informan.
+    const gastosCaja = sumCents(expenses.filter((expense) => expense.paid_from !== "aparte").map((expense) => toCents(expense.amount)));
+    const gastosAparte = gastos - gastosCaja;
     // Solo las compras pagadas con dinero de la caja salen del efectivo.
     const proveedores = totalCents(purchases.filter((p) => p.paid_from !== "aparte"));
     const proveedoresAparte = totalCents(purchases.filter((p) => p.paid_from === "aparte"));
@@ -148,13 +153,14 @@ export class ShiftService {
       interno: toPesos(sumCents(internal.map((s) => toCents(s.cost)))),
       devoluciones: toPesos(devolucionesCents),
       devolucionesEfectivo: toPesos(devolucionesEfectivoCents),
-      gastos: toPesos(gastos),
+      gastos: toPesos(gastosCaja),
+      ...(gastosAparte ? { gastosAparte: toPesos(gastosAparte) } : {}),
       proveedores: toPesos(proveedores),
       proveedoresAparte: toPesos(proveedoresAparte),
       mermas: toPesos(mermasCents),
       ganancia: toPesos(gananciaCents),
       // El efectivo ya viene neto de lo reembolsado en efectivo.
-      efectivoEsperado: toPesos(efectivo + abonosCents - gastos - proveedores)
+      efectivoEsperado: toPesos(efectivo + abonosCents - gastosCaja - proveedores)
     };
   }
 

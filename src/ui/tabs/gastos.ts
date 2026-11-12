@@ -1,7 +1,7 @@
 import { html, setHtml } from "../../core/html";
 import { fmtDate, fmtDateTime } from "../../core/dates";
 import { fmtMoney, fmtMoneyPesos } from "../../core/money";
-import { EXPENSE_CATEGORIES, type Expense, type ExpensePeriod } from "../../core/types";
+import { EXPENSE_CATEGORIES, type Expense, type ExpensePeriod, type PurchasePayment } from "../../core/types";
 import { daysInMonth, expensePeriod } from "../../domain/expense-service";
 import { confirmDialog, openModal } from "../components/modal";
 import { iconFor } from "../icons";
@@ -57,6 +57,12 @@ export const gastosTab: TabModule = {
                   ${EXPENSE_CATEGORIES.map((category) => html`<option ${category === "Varios" ? "selected" : null}>${category}</option>`)}
                 </select>
               </div>
+              <label class="form-field">Pagado con
+                <select id="expensePaidFrom" class="input">
+                  <option value="caja">Efectivo de caja</option>
+                  <option value="aparte">Transferencia / tarjeta (fuera de caja)</option>
+                </select>
+              </label>
               <button class="ghost" type="submit">Registrar gasto extra</button>
             </form>
             <div id="expensesList" class="list"></div>
@@ -88,13 +94,14 @@ export const gastosTab: TabModule = {
     const concept = root.querySelector<HTMLInputElement>("#expenseConcept")!;
     const amount = root.querySelector<HTMLInputElement>("#expenseAmount")!;
     const category = root.querySelector<HTMLSelectElement>("#expenseCategory")!;
+    const paidFrom = root.querySelector<HTMLSelectElement>("#expensePaidFrom")!;
     const list = root.querySelector<HTMLElement>("#expensesList")!;
 
     const expenseRow = (expense: Expense, fixed: boolean) => html`
       <div class="list-item item-line expense-row">
         <div>
           <strong>${expense.concept}</strong>
-          <p class="muted">${fixed ? `${expensePeriod(expense) === "semanal" ? "Semanal" : "Mensual"} · ` : ""}${expense.category} | ${fixed ? `Desde ${fmtDate(expense.created_at)}` : fmtDateTime(expense.created_at)}</p>
+          <p class="muted">${fixed ? `${expensePeriod(expense) === "semanal" ? "Semanal" : "Mensual"} · ` : ""}${expense.category} | ${fixed ? `Desde ${fmtDate(expense.created_at)}` : fmtDateTime(expense.created_at)}${!fixed && expense.paid_from === "aparte" ? " · Fuera de caja" : ""}</p>
         </div>
         <div class="row-end">
           <strong>${fmtMoneyPesos(expense.amount)}${fixed ? html`<small class="muted"> /${expensePeriod(expense) === "semanal" ? "semana" : "mes"}</small>` : html``}</strong>
@@ -189,13 +196,14 @@ export const gastosTab: TabModule = {
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const result = ctx.expenses.add("extra", concept.value, Number(amount.value || 0), category.value);
+      const result = ctx.expenses.add("extra", concept.value, Number(amount.value || 0), category.value, "mensual", paidFrom.value as PurchasePayment);
       if (!result.ok) {
         ctx.toast(result.error);
         return;
       }
       form.reset();
       category.value = "Varios";
+      paidFrom.value = "caja";
       ctx.toast("Gasto registrado");
     });
 
@@ -226,7 +234,12 @@ export const gastosTab: TabModule = {
                   <option value="semanal" ${expensePeriod(expense) === "semanal" ? "selected" : null}>Semanal</option>
                 </select>
               </label>`
-            : html``}
+            : html`<label class="form-field">Pagado con
+                <select id="ePaidFrom" class="input">
+                  <option value="caja" ${expense.paid_from !== "aparte" ? "selected" : null}>Efectivo de caja</option>
+                  <option value="aparte" ${expense.paid_from === "aparte" ? "selected" : null}>Transferencia / tarjeta (fuera de caja)</option>
+                </select>
+              </label>`}
         `,
         actions: [
           { label: "Cancelar", kind: "ghost", onClick: (close) => close() },
@@ -238,7 +251,8 @@ export const gastosTab: TabModule = {
                 concept: (document.getElementById("eConcept") as HTMLInputElement).value,
                 amount: Number((document.getElementById("eAmount") as HTMLInputElement).value || 0),
                 category: (document.getElementById("eCategory") as HTMLSelectElement).value,
-                period: fixed ? ((document.getElementById("ePeriod") as HTMLSelectElement).value as ExpensePeriod) : undefined
+                period: fixed ? ((document.getElementById("ePeriod") as HTMLSelectElement).value as ExpensePeriod) : undefined,
+                paidFrom: fixed ? undefined : ((document.getElementById("ePaidFrom") as HTMLSelectElement).value as PurchasePayment)
               });
               if (!result.ok) {
                 ctx.toast(result.error);

@@ -23,6 +23,8 @@ export interface ShiftSummary {
   /** Devoluciones reembolsadas EN EFECTIVO (ya restadas de `efectivo`). */
   devolucionesEfectivo?: number;
   gastos: number;
+  /** Gastos extra pagados fuera de la caja (transferencia/tarjeta). No restan efectivo. */
+  gastosAparte?: number;
   proveedores: number;
   mermas: number;
   /** Compras pagadas con dinero aparte (no salen de la caja). Opcional en cortes viejos. */

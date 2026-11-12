@@ -162,8 +162,10 @@ describe("funciones de la tienda", () => {
   it("el corte solo descuenta de caja los gastos extra, no los fijos", () => {
     expenses.add("fijo", "Renta", 3000, "Renta");
     expenses.add("extra", "Garrafón", 40, "Varios");
+    expenses.add("extra", "Luz", 100, "Luz", "mensual", "aparte");
     const summary = shifts.summarize("sucursal-1");
     expect(summary.gastos).toBe(40);
+    expect(summary.gastosAparte).toBe(100);
     expect(summary.efectivoEsperado).toBe(-40);
   });
 

@@ -1,7 +1,7 @@
 import { nowISO } from "../core/dates";
 import { uid } from "../core/id";
 import { sumCents, toCents, toPesos, type Cents } from "../core/money";
-import type { Expense, ExpensePeriod } from "../core/types";
+import type { Expense, ExpensePeriod, PurchasePayment } from "../core/types";
 import type { Repositories } from "../data/repositories";
 import { VIEW_ALL } from "./app-state";
 import type { BranchService } from "./branch-service";
@@ -196,7 +196,14 @@ export class ExpenseService {
     return dailyTargetCents(monthly, date, weekly);
   }
 
-  add(kind: "fijo" | "extra", concept: string, amountPesos: number, category: string, period: ExpensePeriod = "mensual"): SimpleResult {
+  add(
+    kind: "fijo" | "extra",
+    concept: string,
+    amountPesos: number,
+    category: string,
+    period: ExpensePeriod = "mensual",
+    paidFrom: PurchasePayment = "caja"
+  ): SimpleResult {
     const cleanConcept = concept.trim();
     if (!cleanConcept) return { ok: false, error: "Escribe el concepto" };
     const amount = toPesos(toCents(amountPesos));
@@ -234,27 +241,34 @@ export class ExpenseService {
       amount,
       category: category || "Varios",
       kind,
-      ...(kind === "fijo" ? { period } : {}),
+      ...(kind === "fijo" ? { period } : paidFrom === "aparte" ? { paid_from: "aparte" as const } : {}),
       created_at: ts,
       updated_at: ts
     });
     return { ok: true };
   }
 
-  update(id: string, changes: { concept: string; amount: number; category: string; period?: ExpensePeriod }): SimpleResult {
+  update(id: string, changes: { concept: string; amount: number; category: string; period?: ExpensePeriod; paidFrom?: PurchasePayment }): SimpleResult {
     const expense = this.repos.expenses.byId(id);
     if (!expense || expense.deleted) return { ok: false, error: "No se encontró el gasto" };
     const amount = toPesos(toCents(changes.amount));
     if (!changes.concept.trim()) return { ok: false, error: "Escribe el concepto" };
     if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Monto inválido" };
-    this.repos.expenses.upsert({
+    const next: Expense = {
       ...expense,
       concept: changes.concept.trim(),
       amount,
       category: changes.category,
-      ...(isFixedCost(expense) && changes.period ? { period: changes.period } : {}),
       updated_at: nowISO()
-    });
+    };
+    if (isFixedCost(expense)) {
+      if (changes.period) next.period = changes.period;
+    } else if (changes.paidFrom === "aparte") {
+      next.paid_from = "aparte";
+    } else if (changes.paidFrom === "caja") {
+      delete next.paid_from;
+    }
+    this.repos.expenses.upsert(next);
     return { ok: true };
   }
 
