@@ -25,6 +25,23 @@ export function createSearch(scene: VentaScene): VentaSearch {
   let found: Product[] = [];
   let activeIndex = 0;
 
+  // Por defecto no se muestran productos agotados: en la caja estorban. El
+  // cajero puede revelarlos con el enlace "Ver N sin existencia"; la
+  // preferencia se recuerda en este dispositivo.
+  const OUT_OF_STOCK_KEY = "osyn.venta.mostrarAgotados";
+  let showOutOfStock = false;
+  try {
+    showOutOfStock = localStorage.getItem(OUT_OF_STOCK_KEY) === "1";
+  } catch {
+    showOutOfStock = false;
+  }
+  const outOfStock = (product: Product): boolean => ctx.sales.stockOf(product.id) <= 0;
+  /** Con agotados visibles, los deja al final para no tapar lo que sí hay. */
+  const visibleMatches = (products: Product[]): Product[] =>
+    showOutOfStock
+      ? [...products].sort((a, b) => Number(outOfStock(a)) - Number(outOfStock(b)))
+      : products.filter((product) => !outOfStock(product));
+
   /** "3*coca" o "3 x coca": cantidad antes del producto (como en las cajas registradoras). */
   const parseQuery = (raw: string): { qty: number; text: string } => {
     const match = /^\s*(\d+(?:[.,]\d+)?)\s*[*xX]\s*(.*)$/.exec(raw);
@@ -42,14 +59,27 @@ export function createSearch(scene: VentaScene): VentaSearch {
       setHtml(resultsEl, html``);
       return;
     }
-    found = matchesFor(text).slice(0, MAX_RESULTS);
-    const total = found.length ? matchesFor(text).length : 0;
+    const all = matchesFor(text);
+    const visible = visibleMatches(all);
+    const hidden = all.length - visible.length;
+    found = visible.slice(0, MAX_RESULTS);
+    const total = visible.length;
     activeIndex = Math.min(activeIndex, Math.max(0, found.length - 1));
     resultsEl.classList.remove("hidden");
     if (!found.length) {
-      setHtml(resultsEl, html`<p class="search-empty">Ningún producto coincide con “${text}”.</p>`);
+      setHtml(
+        resultsEl,
+        html`
+          <p class="search-empty">${hidden > 0 ? `Sin existencia para “${text}”.` : `Ningún producto coincide con “${text}”.`}</p>
+          ${hidden > 0 ? html`<button class="link-btn" type="button" data-toggle-stock>Ver ${hidden} sin existencia</button>` : html``}
+        `
+      );
       return;
     }
+    const stockToggle =
+      hidden > 0 || showOutOfStock
+        ? html` · <button class="link-btn" type="button" data-toggle-stock>${showOutOfStock ? "Ocultar agotados" : `Ver ${hidden} sin existencia`}</button>`
+        : html``;
     setHtml(
       resultsEl,
       html`${found.map((product, index) => {
@@ -62,7 +92,7 @@ export function createSearch(scene: VentaScene): VentaSearch {
             <strong class="row-price">${qty !== 1 ? html`<small class="muted">${fmtQty(qty)} × </small>` : html``}${fmtMoneyPesos(product.price)}</strong>
           </button>
         `;
-      })}${total > MAX_RESULTS ? html`<p class="search-more">${total - MAX_RESULTS} más: sigue escribiendo para afinar</p>` : html``}<p class="search-keys">↑ ↓ elegir · Enter agregar · Esc limpiar</p>`
+      })}${total > MAX_RESULTS ? html`<p class="search-more">${total - MAX_RESULTS} más: sigue escribiendo para afinar</p>` : html``}<p class="search-keys">↑ ↓ elegir · Enter agregar · Esc limpiar${stockToggle}</p>`
     );
   };
 
@@ -158,13 +188,26 @@ export function createSearch(scene: VentaScene): VentaSearch {
       addProduct(exact, qty);
       return;
     }
-    const matches = matchesFor(text);
+    const matches = visibleMatches(matchesFor(text));
     if (matches.length) addProduct(matches[Math.min(activeIndex, matches.length - 1)]!, qty);
     else if (/^\d{6,}$/.test(text)) handleCode(text, qty);
     else renderResults();
   });
 
   resultsEl.addEventListener("click", (event) => {
+    const toggle = (event.target as HTMLElement).closest<HTMLElement>("[data-toggle-stock]");
+    if (toggle) {
+      event.preventDefault();
+      showOutOfStock = !showOutOfStock;
+      try {
+        localStorage.setItem(OUT_OF_STOCK_KEY, showOutOfStock ? "1" : "0");
+      } catch {
+        // Sin almacenamiento: la preferencia dura solo esta sesión.
+      }
+      activeIndex = 0;
+      renderResults();
+      return;
+    }
     const row = (event.target as HTMLElement).closest<HTMLElement>("[data-result]");
     const product = row && ctx.repos.products.byId(row.dataset.result!);
     if (product) addProduct(product, parseQuery(search.value).qty);
