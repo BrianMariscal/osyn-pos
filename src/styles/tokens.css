@@ -1,7 +1,4 @@
 /* ============ Design tokens — OSYN POS ============ */
-/* Identidad "almacén contemporáneo": papel cálido, tinta, verde profundo y
-   terracota. Sin degradados ni sombras de plantilla. */
-
 @font-face {
   font-family: "IBM Plex Sans";
   src: url("/fonts/ibm-plex-sans-latin.woff2") format("woff2");
@@ -10,50 +7,46 @@
   font-display: swap;
 }
 
+/* Paleta sobria con buen contraste: tonos firmes, sin pastel ni saturación. */
+
 :root {
   color-scheme: light;
 
   /* Marca */
-  --primary: #14532d;
-  --primary-hover: #0f3f22;
-  --primary-soft: #e6efe7;
-  --on-primary: #fffdf7;
-  --accent: #b4420f;
-  --danger: #a3231d;
-  --success: #1f6b3a;
+  --primary: #2c5aa0;
+  --primary-hover: #234a86;
+  --primary-soft: #e2eaf6;
+  --on-primary: #ffffff;
+  --accent: #9a5b0e;
+  --danger: #c0473c;
+  --success: #2e8a57;
 
   /* Colores de datos (tableros, métricas, etiquetas) */
-  --c-blue: #2f5d7c;
-  --c-teal: #1d6b5e;
-  --c-green: #1f6b3a;
+  --c-blue: #2c5aa0;
+  --c-teal: #1d7a6e;
+  --c-green: #2e8a57;
   --c-amber: #9a5b0e;
-  --c-coral: #b4420f;
-  --c-violet: #5b4b8a;
+  --c-coral: #c0473c;
+  --c-violet: #5f4fb0;
 
   /* Superficies */
-  --bg: #f2ede3;
-  --card: #fffdf8;
-  --card-2: #f6f0e5;
-  --ink: #1b1a17;
-  --muted: #6b6357;
-  --line: #ded4c3;
-  --line-strong: #c6b9a4;
-  --input-bg: #fffdf8;
-  --overlay: rgba(27, 26, 23, 0.55);
-
-  /* Riel de navegación (siempre oscuro, en ambos temas) */
-  --rail: #1b1a17;
-  --rail-ink: #cfc6b8;
-  --rail-active: #14532d;
-  --rail-strong: #fffdf7;
+  --bg: #eef1f5;
+  --card: #ffffff;
+  --card-2: #f4f6f9;
+  --ink: #17202a;
+  --muted: #546374;
+  --line: #dce2e9;
+  --line-strong: #c3ccd7;
+  --input-bg: #ffffff;
+  --overlay: rgba(16, 24, 34, 0.5);
 
   /* Tipografía */
   /* Colores fijos: papel (ticket, etiqueta QR), WhatsApp y visor de cámara */
   --paper: #ffffff;
-  --paper-ink: #1b1a17;
-  --paper-muted: #6b6357;
+  --paper-ink: #17202a;
+  --paper-muted: #546374;
   --paper-line: #9aa5b1;
-  --paper-ok: #1f6b3a;
+  --paper-ok: #2e8a57;
   --whatsapp: #1f8f5a;
   --whatsapp-hover: #187449;
   --camera-bg: #0a0f13;
@@ -80,7 +73,7 @@
   --r-lg: 12px;
   --line-w: 1px;
   --shadow-card: none;
-  --shadow-pop: 0 18px 50px rgba(27, 26, 23, 0.22);
+  --shadow-pop: 0 18px 50px rgba(30, 42, 55, 0.22);
 
   /* Móvil */
   --nav-h: 60px;
@@ -96,35 +89,30 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --primary: #7fbf94;
-  --primary-hover: #9ad0ab;
-  --primary-soft: #173225;
-  --on-primary: #0c1710;
-  --accent: #e08b5b;
-  --danger: #e07a72;
-  --success: #6cc08a;
+  --primary: #7ea6e8;
+  --primary-hover: #98b9ef;
+  --primary-soft: #1b2a40;
+  --on-primary: #0b1220;
+  --accent: #e2a54c;
+  --danger: #ec8276;
+  --success: #5fc28c;
 
-  --c-blue: #8fb3cc;
-  --c-teal: #6cc3b2;
-  --c-green: #6cc08a;
+  --c-blue: #7ea6e8;
+  --c-teal: #4fbfa9;
+  --c-green: #5fc28c;
   --c-amber: #e2a54c;
-  --c-coral: #e08b5b;
-  --c-violet: #b3a6e0;
+  --c-coral: #ec8276;
+  --c-violet: #a596ec;
 
-  --bg: #141310;
-  --card: #1d1b17;
-  --card-2: #252219;
-  --ink: #f2ece0;
-  --muted: #a89f90;
-  --line: #37322a;
-  --line-strong: #4c463b;
-  --input-bg: #17150f;
-  --overlay: rgba(0, 0, 0, 0.72);
-
-  --rail: #0f0e0c;
-  --rail-ink: #a89f90;
-  --rail-active: #1f6b3a;
-  --rail-strong: #f2ece0;
+  --bg: #0d1117;
+  --card: #161b22;
+  --card-2: #1c232c;
+  --ink: #e8edf2;
+  --muted: #9eaab7;
+  --line: #29313b;
+  --line-strong: #3b4552;
+  --input-bg: #10151b;
+  --overlay: rgba(0, 0, 0, 0.7);
 
   --shadow-card: none;
   --shadow-pop: 0 18px 50px rgba(0, 0, 0, 0.6);
