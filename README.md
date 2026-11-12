@@ -65,7 +65,8 @@ Los límites de estas decisiones están documentados en
 
 | Métrica | Valor | Cómo verificarla |
 |---|---:|---|
-| Pruebas automatizadas | **186** en 27 archivos | `npm test` y CI en cada push |
+| Pruebas automatizadas | **192** unitarias en 27 archivos | `npm test` y CI en cada push |
+| Flujos E2E | **10** con Playwright (venta, escáner, agotados, fiado, instancia única) | `npm run test:e2e` |
 | Pruebas del Sync Engine | **26** en 5 archivos · simulación de 2 dispositivos | [`tests/sync-pull.test.ts`](tests/sync-pull.test.ts) · [`tests/settings-sync.test.ts`](tests/settings-sync.test.ts) |
 | Tablas con RLS | **14/14** · 52 políticas | [`supabase/schema.sql`](supabase/schema.sql) |
 | Sync con Realtime | **~1 s** (objetivo) | [`supabase/migracion-realtime.sql`](supabase/migracion-realtime.sql) |
@@ -215,7 +216,7 @@ mientras el workflow siga corriendo en verde. No hay PITR configurado.
 
 ## Stack
 
-`TypeScript` · `Vite` · `PWA` · `IndexedDB` · `Supabase (Postgres, Auth, Realtime, RLS)` · `Cloudflare Pages Functions` · `ElevenLabs` · `Vitest`
+`TypeScript` · `Vite` · `PWA` · `IndexedDB` · `Supabase (Postgres, Auth, Realtime, RLS)` · `Cloudflare Pages Functions` · `ElevenLabs` · `Vitest` · `Playwright`
 
 ## Desarrollo
 
