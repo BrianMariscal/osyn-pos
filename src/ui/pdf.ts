@@ -46,6 +46,38 @@ export function openReportPdf(title: string, storeName: string, report: PeriodRe
   openPrintable(title, body);
 }
 
+export interface RotationPdfRow {
+  name: string;
+  category: string;
+  sold: number;
+  stock: number;
+  min: number;
+  um: string;
+}
+
+/** PDF completo de productos con rotación que están en su mínimo. */
+export function openRotationPdf(storeName: string, scopeName: string, rows: RotationPdfRow[]): void {
+  const tableRows = rows.length
+    ? rows
+        .map((row, index) => {
+          const out = row.stock <= 0;
+          return (
+            `<tr><td>${index + 1}</td><td>${esc(row.name)}</td><td>${esc(row.category || "Sin categoría")}</td>` +
+            `<td>${esc(withUnit(row.sold, row.um))}</td><td>${esc(withUnit(row.stock, row.um))}</td>` +
+            `<td>${esc(withUnit(row.min, row.um))}</td><td>${out ? "Agotado" : "Por agotarse"}</td></tr>`
+          );
+        })
+        .join("")
+    : `<tr><td colspan="7">No hay productos con rotación por debajo de su mínimo.</td></tr>`;
+  const body = `
+    <h1>${esc(storeName)}</h1>
+    <h2>Productos que se venden y están por agotarse</h2>
+    <p class="muted">${esc(scopeName)} · Ventas de los últimos 30 días · Generado: ${esc(fmtDateTime(new Date().toISOString()))}</p>
+    <p class="muted">Solo incluye productos con ventas en el periodo y stock en o por debajo de su mínimo.</p>
+    <table><thead><tr><th>#</th><th>Producto</th><th>Categoría</th><th>Vendidos</th><th>Stock</th><th>Mínimo</th><th>Estado</th></tr></thead><tbody>${tableRows}</tbody></table>`;
+  openPrintable("Productos por agotarse", body);
+}
+
 export function openCountPdf(storeName: string, count: InventoryCount): void {
   const summary = count.summary;
   const rows: Array<[string, string]> = [

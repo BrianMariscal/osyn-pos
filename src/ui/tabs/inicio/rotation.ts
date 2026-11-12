@@ -1,6 +1,8 @@
 import { html, setHtml } from "../../../core/html";
 import { fmtQty } from "../../../core/qty";
+import { VIEW_ALL } from "../../../domain/app-state";
 import { isRevenueSale } from "../../../domain/sale-groups";
+import { openRotationPdf } from "../../pdf";
 import type { InicioScene } from "./scene";
 
 const ROTATION_DAYS = 30;
@@ -69,7 +71,6 @@ export function renderRotation(scene: InicioScene, scope: string): void {
   `;
 
   const visible = rows.slice(0, VISIBLE);
-  const rest = rows.slice(VISIBLE);
 
   setHtml(
     ui.rotationCard,
@@ -77,21 +78,33 @@ export function renderRotation(scene: InicioScene, scope: string): void {
       <div class="card-head">
         <div>
           <h2>Se venden y están por agotarse</h2>
-          <p class="hint">Ventas de los últimos 30 días en o por debajo del mínimo.</p>
+          <p class="hint">Ventas de los últimos 30 días en o por debajo del mínimo.${rows.length > VISIBLE ? ` Mostrando ${VISIBLE} de ${rows.length}.` : ""}</p>
         </div>
-        ${rows.length ? html`<span class="count-badge" data-tone="coral">${rows.length}</span>` : html``}
+        ${rows.length
+          ? html`<div class="head-actions">
+              <span class="count-badge" data-tone="coral">${rows.length}</span>
+              <button class="ghost small-btn" type="button" data-rotation-pdf>Descargar PDF</button>
+            </div>`
+          : html``}
       </div>
       ${rows.length
-        ? html`
-            <div class="rotation-list">${visible.map(row)}</div>
-            ${rest.length
-              ? html`<details class="rotation-more">
-                  <summary>Ver todos (${rows.length})</summary>
-                  <div class="rotation-list">${rest.map(row)}</div>
-                </details>`
-              : html``}
-          `
+        ? html`<div class="rotation-list">${visible.map(row)}</div>`
         : html`<p class="empty-note">Ningún producto con rotación está por debajo de su mínimo.</p>`}
     `
   );
+
+  ui.rotationCard.querySelector<HTMLButtonElement>("[data-rotation-pdf]")?.addEventListener("click", () => {
+    openRotationPdf(
+      ctx.store.getState().settings.storeName || "Mi tienda",
+      scope === VIEW_ALL ? "Todas las sucursales" : ctx.branches.name(scope),
+      rows.map((item) => ({
+        name: item.product.name,
+        category: item.product.category || "",
+        sold: item.qty,
+        stock: item.stock,
+        min: item.min,
+        um: item.product.um
+      }))
+    );
+  });
 }
